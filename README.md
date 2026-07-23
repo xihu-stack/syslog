@@ -12,6 +12,21 @@
 ## 🚀 快速部署
 见 [DEPLOY.md](DEPLOY.md)
 
+### 国内用户（Gitee 镜像）
+```bash
+# 从 Gitee 克隆（国内快）
+git clone https://gitee.com/xi-hu/syslog.git
+cd syslog
+docker compose up -d --build
+```
+
+**更新代码**：
+```bash
+git pull && docker compose up -d --build
+```
+
+> GitHub 推送后，在 Gitee 仓库点「强制同步」即可拉到最新。
+
 ## 🏗️ 技术栈
 - 后端：Python 3.12 + FastAPI + SQLAlchemy + SQLite（可切PostgreSQL）
 - 前端：React 18 + Ant Design 5 + ECharts 5（BootCDN，免Node构建）
