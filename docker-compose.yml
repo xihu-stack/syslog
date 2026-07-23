@@ -3,11 +3,10 @@ services:
   app:
     build: .
     container_name: ipguard-ai
-    ports:
-      - "18000:8000"     # Web 界面（浏览器访问 18000）
-      - "8514:8514/udp"  # Syslog 接收（深信服推 8514）
+    network_mode: host          # 直接用宿主网络（UDP syslog 最可靠，不走 Docker 端口映射）
     volumes:
       - ./backend/data:/app/data
     restart: unless-stopped
     environment:
       - PYTHONIOENCODING=utf-8
+      - PORT=18000              # Web 端口（浏览器访问 18000）
