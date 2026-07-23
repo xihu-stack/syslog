@@ -89,14 +89,18 @@ SANGFOR_SYSLOG_FIELDS = ["record_time", "user", "group", "host_ip", "dst_ip", "s
 
 
 def parse_sangfor_syslog(raw_msg: str):
-    """解析深信服 syslog 报文 → CanonicalEvent。支持 key=value 和 tab 分隔两种格式。"""
+    """解析深信服 syslog 报文 → CanonicalEvent。支持 [key:value]、key=value、tab 三种格式。"""
     msg = raw_msg.strip()
     # 去掉 syslog 头部 <PRI>timestamp host tag:
     msg = re.sub(r'^<\d+>', '', msg).strip()
     msg = re.sub(r'^\w{3}\s+\d+\s+\d+:\d+:\d+\s+\S+\s+\S+:\s*', '', msg).strip()
 
     fields = {}
-    if "=" in msg and ("record_time=" in msg or "user=" in msg):
+    if '[' in msg and ']' in msg:
+        # 深信服标准 [key:value] 格式
+        for m in re.finditer(r'\[(\w+):([^\]]*)\]', msg):
+            fields[m.group(1)] = m.group(2).strip()
+    elif "=" in msg and ("record_time=" in msg or "user=" in msg):
         for m in re.finditer(r'(\w+)=(.*?)(?=\s+\w+=|$)', msg):
             fields[m.group(1)] = m.group(2).strip().strip('"')
     else:
@@ -110,12 +114,14 @@ def parse_sangfor_syslog(raw_msg: str):
     if not user or not url or url == "-":
         return None
     domain = url_domain(url)
+    # syslog 里 app=网站分类(IT行业)，site=位置(未定义位置)
+    category = fields.get("app", "") or fields.get("site", "")
     return CanonicalEvent(
         occurred_at=_parse_time(fields.get("record_time", "")),
         employee_id=user or fields.get("host_ip", ""),
         device_id=fields.get("host_ip", ""),
         category="WEB", action="VISIT", target_type="URL", target_value=url, count=1,
-        raw={"domain": domain, "category": fields.get("site", ""), "group": fields.get("group", ""),
+        raw={"domain": domain, "category": category, "group": fields.get("group", ""),
              "src_ip": fields.get("host_ip", ""), "dst_ip": fields.get("dst_ip", ""),
              "app": fields.get("app", ""), "serv": fields.get("serv", ""),
              "title": fields.get("title", ""), "net_action": fields.get("net_action", "")})
