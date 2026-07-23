@@ -194,6 +194,23 @@ def feedback(alert_id: int, label: str, reason: str = ""):
         s.close()
 
 
+@app.put("/api/alerts/{alert_id}/status")
+def update_alert_status(alert_id: int, status: str = "TRIAGING"):
+    """更新告警状态：NEW/TRIAGING/CONFIRMED/FP/CLOSED。"""
+    if status not in ("NEW", "TRIAGING", "CONFIRMED", "FP", "CLOSED"):
+        raise HTTPException(400, "无效状态")
+    s = Session()
+    try:
+        a = s.get(AlertRow, alert_id)
+        if not a:
+            raise HTTPException(404, "告警不存在")
+        a.status = status
+        s.commit()
+        return {"ok": True, "status": status}
+    finally:
+        s.close()
+
+
 # ---------------- 字典配置（后台可增删改）----------------
 @app.get("/api/dicts")
 def get_dicts():
@@ -227,13 +244,14 @@ def get_config():
         "syslog_enabled": dicts.get_setting("syslog_enabled", "0"),
         "syslog_host": dicts.get_setting("syslog_host", "0.0.0.0"),
         "syslog_port": dicts.get_setting("syslog_port", "8514"),
+        "notify_webhook": dicts.get_setting("notify_webhook", ""),
     }
 
 
 @app.put("/api/config")
 def set_config(body: dict = Body(...)):
     for k in ("llm_base_url", "llm_active", "llm_qwen_model", "llm_deepseek_model",
-              "syslog_enabled", "syslog_host", "syslog_port"):
+              "syslog_enabled", "syslog_host", "syslog_port", "notify_webhook"):
         if body.get(k) is not None:
             dicts.set_setting(k, str(body[k]))
     if body.get("qwen_key"):

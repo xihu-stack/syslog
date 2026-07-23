@@ -143,6 +143,8 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                         wsession.add(AlertRow(employee_id=emp, scenario=v.get("intent"),
                             severity=severity_of(v.get("risk_score", 0)), risk_score=v.get("risk_score", 0),
                             verdict_id=vr.id, summary=v.get("explanation"), dedup_key=key, window_start=wstart))
+                        if v.get("risk_score", 0) >= 75:
+                            _notify_webhook(emp, v.get("risk_score", 0), v.get("explanation", ""))
             wsession.commit()
         finally:
             wsession.close()
@@ -215,6 +217,35 @@ def start_detection(risk_threshold: int = 50) -> dict:
 
     threading.Thread(target=_worker, daemon=True).start()
     return detection_status()
+
+
+def cleanup_old_events(days: int = 90) -> int:
+    """清理超过保留期的事件（告警/研判记录保留）。返回删除条数。"""
+    from datetime import datetime, timedelta
+    init_db()
+    s = Session()
+    try:
+        cutoff = datetime.utcnow() - timedelta(days=days)
+        n = s.query(EventRow).filter(EventRow.occurred_at < cutoff).delete(synchronize_session=False)
+        s.commit()
+        return n
+    finally:
+        s.close()
+
+
+def _notify_webhook(user: str, risk: int, explanation: str):
+    """高危告警推送到钉钉/飞书/企业微信 webhook。"""
+    import json
+    import urllib.request
+    url = dicts.get_setting("notify_webhook", "")
+    if not url:
+        return
+    try:
+        body = json.dumps({"msgtype": "text", "text": {"content": f"IP-Guard 高危告警\n用户: {user}\n风险: {risk}\n说明: {explanation}"}}).encode("utf-8")
+        req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=5)
+    except Exception:
+        pass
 
 
 def rejudge_all(risk_threshold: int = 50) -> dict:

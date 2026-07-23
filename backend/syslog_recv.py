@@ -15,6 +15,7 @@ _lock = threading.Lock()
 _event_buffer = []
 _buf_lock = threading.Lock()
 _flush_timer = None
+_flush_count = 0
 
 
 def _flush_events():
@@ -39,9 +40,16 @@ def _flush_events():
 
 
 def _flush_loop():
-    """每30秒刷新一次事件缓冲（收到 syslog 后近实时入库+研判）。"""
-    global _flush_timer
+    """每30秒刷新一次事件缓冲（收到 syslog 后近实时入库+研判）。每小时清理一次过期事件。"""
+    global _flush_timer, _flush_count
     _flush_events()
+    _flush_count += 1
+    if _flush_count % 120 == 0:  # 约1小时清理一次（默认90天前的事件）
+        try:
+            import pipeline
+            pipeline.cleanup_old_events(int(__import__("dicts").get_setting("retention_days", "90")))
+        except Exception:
+            pass
     if _state["enabled"]:
         _flush_timer = threading.Timer(30.0, _flush_loop)
         _flush_timer.daemon = True
