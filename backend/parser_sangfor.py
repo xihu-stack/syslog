@@ -11,6 +11,7 @@ import re
 from datetime import datetime
 
 from models import CanonicalEvent
+from parser_ipguard import url_domain
 
 
 def _clean_user(u):
