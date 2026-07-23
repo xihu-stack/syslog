@@ -257,7 +257,7 @@ function Alerts({goProfile}){
   useEffect(()=>{ load(); },[]);
   const open=async v=>{ setCur(v); setEmp(await GET('/api/employees/'+encodeURIComponent(v.employee))); };
   return (<div>
-    <div className="sec-title" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><span>AI 研判 · 点行查看证据（默认隐藏正常）</span><Space><Legend/><label style={{fontSize:12,color:'#6b7280',cursor:'pointer'}}><input type="checkbox" checked={showAll} onChange={e=>setShowAll(e.target.checked)} style={{marginRight:4}}/>显示全部</label></Space></div>
+    <div className="sec-title" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><span>AI 研判 · 点行查看证据（默认隐藏正常）</span><Space><Legend/><label style={{fontSize:12,color:'#6b7280',cursor:'pointer',userSelect:'none'}}><input type="checkbox" checked={showAll} onChange={e=>setShowAll(e.target.checked)} style={{marginRight:4,cursor:'pointer'}}/>显示正常</label></Space></div>
     <Card className="card" size="small">
       <Space style={{marginBottom:8}}>
         <Input.Search placeholder="搜索用户/关键词" allowClear style={{width:200}} onChange={e=>setQ(e.target.value)} />
@@ -318,7 +318,7 @@ function Config(){
   const saveDict=async(n,val)=>{ await PUTJ('/api/dicts/'+n,val); message.success('字典已保存'); };
   const toggleSys=async(on)=>{ await POST('/api/syslog/'+(on?'start':'stop')); message.success(on?'Syslog 已监听':'已停止'); load(); };
   const uploadLog=f=>{ const fd=new FormData(); fd.append('file',f); message.loading({content:'导入研判中…',key:'up',duration:0});
-    fetch('/api/ingest',{method:'POST',body:fd}).then(r=>r.json()).then(r=>message.success({content:`导入 ${r.imported}；研判 ${r.windows} 窗口；告警 ${r.alerts}`,key:'up'})); return false; };
+    fetch('/api/ingest',{method:'POST',body:fd}).then(r=>r.json()).then(r=>message.success({content:`已导入 ${r.imported} 条`,key:'up',duration:2})); return false; };
   const DM={sensitive_keywords:'敏感文件名关键词',recruitment_sites:'招聘网站域名',netdisk_domains:'网盘域名',personal_email_domains:'个人邮箱域名',job_search_terms:'求职搜索词',risk_search_terms:'高危搜索词'};
   return (<Row gutter={16}>
     <Col span={12}>
@@ -345,7 +345,7 @@ function Config(){
           <Button size="small" type="primary" ghost={syslog.enabled} danger={syslog.enabled} onClick={()=>toggleSys(!syslog.enabled)} style={{marginLeft:8}}>{syslog.enabled?'停止':'启动'}</Button></div>
         {syslog.recent&&syslog.recent.length? <div style={{background:'#f6f8fb',padding:8,fontSize:12,maxHeight:110,overflow:'auto',border:'1px solid #e6ecf5',borderRadius:6}}>
           {syslog.recent.map((m,i)=><div key={i}><b>{m.t}</b> {m.from}: {m.msg.slice(0,80)}</div>)}</div>
-          :<Typography.Text type="secondary" style={{fontSize:12}}>（真实字段解析需一份 IP-Guard syslog 样例）</Typography.Text>}
+          :<Typography.Text type="secondary" style={{fontSize:12}}>等待深信服 syslog 推送（配好后自动接收→解析→入库→研判）</Typography.Text>}
       </Card>
     </Col>
     <Col span={12}>
