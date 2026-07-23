@@ -324,8 +324,9 @@ function Config(){
         </Form>
       </Card>
       <Card className="card" title="Syslog 实时接收" size="small" style={{marginBottom:16}}>
-        <Space style={{marginBottom:8}}>监听 <Input style={{width:130}} defaultValue={cfg.syslog_host||'0.0.0.0'} onChange={e=>PUTJ('/api/config',{syslog_host:e.target.value})}/>
-          端口 <Input style={{width:80}} defaultValue={cfg.syslog_port||'8514'} onChange={e=>PUTJ('/api/config',{syslog_port:e.target.value})}/></Space>
+        <div style={{marginBottom:8,color:'#6b7280',fontSize:13}}>
+          监听 <b>{cfg.syslog_host||'0.0.0.0'}:{cfg.syslog_port||'8514'}</b>（固定，深信服推到这个地址）
+        </div>
         <div style={{marginBottom:8}}><Badge status={syslog.enabled?'success':'default'} text={syslog.enabled?'监听中（已收 '+syslog.count+' 条）':'未启用'}/>
           <Button size="small" type="primary" ghost={syslog.enabled} danger={syslog.enabled} onClick={()=>toggleSys(!syslog.enabled)} style={{marginLeft:8}}>{syslog.enabled?'停止':'启动'}</Button></div>
         {syslog.recent&&syslog.recent.length? <div style={{background:'#f6f8fb',padding:8,fontSize:12,maxHeight:110,overflow:'auto',border:'1px solid #e6ecf5',borderRadius:6}}>
