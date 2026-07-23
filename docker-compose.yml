@@ -4,8 +4,8 @@ services:
     build: .
     container_name: ipguard-ai
     ports:
-      - "8000:8000"       # Web 界面 + API
-      - "8514:8514/udp"   # Syslog 接收（深信服推送）
+      - "18000:8000"     # Web 界面 + API（外部18000→容器8000）
+      - "18514:8514/udp" # Syslog 接收（外部18514→容器8514）
     volumes:
       - ./backend/data:/app/data       # 数据库持久化
     restart: unless-stopped
