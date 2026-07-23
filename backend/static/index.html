@@ -29,26 +29,29 @@
   .tl .it{margin:7px 0;font-size:13px;} .tl .t{color:#9aa3b2;font-size:12px;}
   .card{border:1px solid #e6ecf5 !important;border-radius:10px !important;box-shadow:0 1px 3px rgba(20,40,80,.05) !important;}
   .sec-title{color:#6b7280;font-size:12px;letter-spacing:1px;margin:6px 0 8px;}
+  .st-tag{display:inline-block;padding:1px 7px;border-radius:3px;font-size:11px;font-weight:600;}
 </style>
 </head>
 <body>
 <div id="root"><div style="padding:40px;text-align:center;color:#9aa3b2">加载中（本地库，约1~2秒）…</div></div>
 <script>window.onerror=function(m,s,l,c,e){var d=document.getElementById('root');if(d)d.innerHTML='<div style="padding:30px;color:#c0392b;font-family:monospace;white-space:pre-wrap">前端出错：'+(e&&e.stack||m)+'\n\n请截图发我。</div>';return false;};</script>
 <script type="text/babel">
-const { Layout, Menu, Card, Row, Col, Table, Tag, Drawer, Button, Input, Form, message, Select,
-        Space, Upload, Divider, Typography, Badge, Empty, Descriptions, Alert, Radio, ConfigProvider, Statistic } = antd;
+const { Layout, Menu, Card, Row, Col, Table, Tag, Button, Input, Form, message, Select, Modal,
+        Space, Upload, Divider, Typography, Badge, Empty, Descriptions, Alert, Radio, ConfigProvider, Statistic, Tooltip } = antd;
 const { Sider, Header, Content } = Layout;
 const { useState, useEffect, useRef } = React;
 
 const LVL = s => (s==null)?{c:'#9aa3b2',l:'-'} : s>=86?{c:'#ff4d4f',l:'严重'} : s>=61?{c:'#fa8c16',l:'高危'} : s>=31?{c:'#faad14',l:'关注'} : {c:'#52c41a',l:'正常'};
 const INTENT = {data_exfiltration:'数据外发', job_seeking:'求职离职', baseline_deviation:'行为偏离', policy_violation:'违规', normal_work:'正常', unknown:'未知'};
 const DEV = {none:'无', minor:'轻微', major:'重大', severe:'严重', unknown:'未知'};
+const STATUS_MAP = {NEW:{c:'#1677ff',t:'待处理'}, TRIAGING:{c:'#faad14',t:'处理中'}, CONFIRMED:{c:'#ff4d4f',t:'已确认'}, FP:{c:'#bfbfbf',t:'误报'}, CLOSED:{c:'#52c41a',t:'已关闭'}};
 const fmt = s => (s||'').replace('T',' ').slice(0,16);
 const GET = u=>fetch(u).then(r=>r.json());
 const POST=(u,o)=>fetch(u,{method:'POST',...o}).then(r=>r.json());
 const PUTJ=(u,b)=>fetch(u,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json());
 
 function RiskBadge({s}){ const v=LVL(s); return <span className="risk" style={{background:v.c+'1a',color:v.c,border:'1px solid '+v.c+'66'}}>{s==null?'-':s} {v.l}</span>; }
+function StatusTag({s}){ const v=STATUS_MAP[s]||{c:'#999',t:s}; return <span className="st-tag" style={{background:v.c+'1a',color:v.c}}>{v.t}</span>; }
 function Legend(){ return <div className="legend">
   <span><i className="swatch" style={{background:'#52c41a'}}/>0-30 正常</span>
   <span><i className="swatch" style={{background:'#faad14'}}/>31-60 关注</span>
@@ -72,7 +75,7 @@ function ProfilePage({user, goBack}){
     if(hrs.length&&hoursRef.current){ const c=echarts.init(hoursRef.current);
       const full=Array.from({length:24},(_,h)=>hrs.includes(h)?1:0);
       c.setOption({tooltip:{},grid:{left:30,right:15,top:15,bottom:30},
-        xAxis:{type:'category',data:Array.from({length:24},(_,h)=>h),axisLabel:{color:'#9aa3b2',fontSize:9}},
+        xAxis:{type:'category',data:Array.from({length:24},(_,h)=>h+'时'),axisLabel:{color:'#9aa3b2',fontSize:9}},
         yAxis:{type:'value',show:false},
         series:[{type:'bar',data:full,itemStyle:{color:full.map(v=>v?'#1677ff':'#e6ecf5')}}]});}
   },[data]);
@@ -110,7 +113,7 @@ function ProfilePage({user, goBack}){
         </div>
       </div>
     </Card>
-    <Card className="card" title="AI 研判历史" size="small" style={{marginTop:16}}>
+    <Card className="card" title="研判历史" size="small" style={{marginTop:16}}>
       <Table size="small" rowKey="window_start" pagination={{pageSize:8}} dataSource={vs}
         columns={[{title:'时间',dataIndex:'window_start',width:150,render:v=>(v||'').replace('T',' ').slice(0,16)},
           {title:'意图',dataIndex:'intent',width:120,render:v=><Tag color="blue">{INTENT[v]||v}</Tag>},
@@ -129,30 +132,28 @@ function App(){
   const [key,setKey]=useState('dashboard'); const [profileUser,setProfileUser]=useState(null);
   const pollDetect=()=>{
     const tick=()=>fetch('/api/detect/status').then(r=>r.json()).then(s=>{
-      if(s.running){ message.loading({content:`AI 研判中 ${s.done}/${s.total||'?'}`,key:'det',duration:0}); setTimeout(tick,2000); }
-      else { message.success({content:`研判完成：${s.judged} 窗口，告警 ${s.alerts}`,key:'det',duration:2}); setTimeout(()=>location.reload(),700); }
+      if(s.running){ message.loading({content:'研判中 '+s.done+'/'+s.total,key:'det',duration:0}); setTimeout(tick,2000); }
+      else { message.success({content:'研判完成：'+s.judged+' 窗口，告警 '+s.alerts,key:'det',duration:2}); setTimeout(()=>location.reload(),700); }
     });
     tick();
   };
   const uploadLog=f=>{ const fd=new FormData(); fd.append('file',f);
     message.loading({content:'导入中…',key:'up',duration:0});
-    fetch('/api/ingest',{method:'POST',body:fd}).then(r=>r.json()).then(r=>{ message.success({content:`已导入 ${r.imported} 条，开始 AI 研判…`,key:'up',duration:2}); pollDetect(); }); return false; };
+    fetch('/api/ingest',{method:'POST',body:fd}).then(r=>r.json()).then(r=>{ message.success({content:'已导入 '+r.imported+' 条，开始研判…',key:'up',duration:2}); pollDetect(); }); return false; };
   return (
     <ConfigProvider theme={{token:{colorPrimary:'#1677ff',borderRadius:8}}}>
     <Layout style={{minHeight:'100vh'}}>
-      <Sider width={208} style={{background:'#fff',borderRight:'1px solid #e8eef7'}}>
+      <Sider width={200} style={{background:'#fff',borderRight:'1px solid #e8eef7'}}>
         <div className="logo">IP-Guard<br/>行为研判中心</div>
-        <Menu mode="inline" selectedKeys={[key]} onClick={e=>setKey(e.key)} style={{borderRight:'none'}}
-          items={[{key:'dashboard',label:'监控大屏'},{key:'computers',label:'用户视图'},{key:'alerts',label:'告警研判'},{key:'config',label:'后台配置'}]}/>
-        <div style={{position:'absolute',bottom:10,left:0,right:0,textAlign:'center',color:'#bcc6d6',fontSize:10}}>历史数据 → 画像 → 下次研判</div>
+        <Menu mode="inline" selectedKeys={[key==='profile'?'alerts':key]} onClick={e=>setKey(e.key)} style={{borderRight:'none'}}
+          items={[{key:'dashboard',label:'监控大屏'},{key:'computers',label:'用户视图'},{key:'alerts',label:'告警管理'},{key:'config',label:'系统设置'}]}/>
       </Sider>
       <Layout>
-        <Header style={{background:'#fff',borderBottom:'1px solid #e8eef7',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-          <Typography.Title level={4} style={{margin:0}}>{({dashboard:'监控大屏',computers:'用户视图（按用户合并）',alerts:'告警研判',config:'后台配置'})[key]}</Typography.Title>
+        <Header style={{background:'#fff',borderBottom:'1px solid #e8eef7',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 20px'}}>
+          <Typography.Title level={4} style={{margin:0}}>{({dashboard:'监控大屏',computers:'用户视图',alerts:'告警管理',config:'系统设置',profile:'用户画像'})[key]}</Typography.Title>
           <Space>
             <Upload showUploadList={false} beforeUpload={uploadLog}><Button type="primary">导入日志</Button></Upload>
             <Button onClick={()=>{ POST('/api/run'); pollDetect(); }}>重新研判</Button>
-            <Button onClick={()=>{ POST('/api/rejudge'); pollDetect(); }}>全量重研判</Button>
           </Space>
         </Header>
         <Content style={{margin:16}}>
@@ -160,7 +161,7 @@ function App(){
           {key==='computers' && <Computers goProfile={(u)=>{setProfileUser(u);setKey('profile');}}/>}
           {key==='alerts' && <Alerts goProfile={(u)=>{setProfileUser(u);setKey('profile');}}/>}
           {key==='config' && <Config/>}
-          {key==='profile' && profileUser && <ProfilePage user={profileUser} goBack={()=>{setKey('computers');setProfileUser(null);}}/>}
+          {key==='profile' && profileUser && <ProfilePage user={profileUser} goBack={()=>{setKey('alerts');setProfileUser(null);}}/>}
         </Content>
       </Layout>
     </Layout>
@@ -176,7 +177,7 @@ function Dashboard({go}){
   useEffect(()=>{
     if(vs.length&&pie.current){ const cnt={}; vs.filter(v=>v.intent!=='normal_work').forEach(v=>cnt[v.intent]=(cnt[v.intent]||0)+1); const c=echarts.init(pie.current);
       c.setOption({tooltip:{trigger:'item'},legend:{bottom:0,textStyle:{color:'#6b7280',fontSize:11}},
-        color:['#1677ff','#13c2c2','#fa8c16','#722ed1','#ff4d4f','#9aa3b2'],
+        color:['#1677ff','#13c2c2','#fa8c16','#722ed1','#ff4d4f'],
         series:[{type:'pie',radius:['42%','70%'],label:{color:'#4b5563'},data:Object.entries(cnt).map(([k,v])=>({name:INTENT[k]||k,value:v}))}]});}
     if(vs.length&&bar.current){ const er={}; vs.forEach(v=>er[v.employee]=Math.max(er[v.employee]||0,v.risk_score));
       const top=Object.entries(er).sort((a,b)=>b[1]-a[1]).slice(0,10); const c=echarts.init(bar.current);
@@ -196,25 +197,26 @@ function Dashboard({go}){
   return (<div>
     <Row gutter={16}>
       {tile(st.events||0,'历史日志事件','','computers')}
-      {tile(st.employees||0,'用户(已识别)','','computers')}
-      {tile(st.verdicts||0,'AI 研判窗口','','alerts')}
+      {tile(st.employees||0,'用户','','computers')}
+      {tile(st.verdicts||0,'研判窗口','','alerts')}
       {tile(st.alerts||0,'风险告警','alert','alerts')}
     </Row>
     <div style={{margin:'14px 2px'}}><Legend/></div>
-    {(st.alerts>0&&st.verdicts>0&&(st.alerts/st.verdicts>0.12))&&<Alert type="warning" message="基线建设中（冷启动期）— 告警偏多属正常，积累1-2周后误报显著下降" style={{marginBottom:12}} showIcon/>}
+    {(st.alerts>0&&st.verdicts>0&&(st.alerts/st.verdicts>0.12))&&<Alert type="warning" message="基线建设中（冷启动期）— 告警偏多属正常，积累数据后误报显著下降" style={{marginBottom:12}} showIcon/>}
     <Row gutter={16}>
-      <Col span={10}><Card className="card" title="风险意图分布" size="small"><div ref={pie} style={{height:280}}></div></Card></Col>
-      <Col span={14}><Card className="card" title="高风险用户 TOP10" size="small"><div ref={bar} style={{height:280}}></div></Card></Col>
+      <Col span={10}><Card className="card" title="风险意图分布" size="small"><div ref={pie} style={{height:260}}></div></Card></Col>
+      <Col span={14}><Card className="card" title="高风险用户 TOP10" size="small"><div ref={bar} style={{height:260}}></div></Card></Col>
     </Row>
-    <Card className="card" title="风险趋势（按10分钟峰值）" size="small" style={{marginTop:16}}><div ref={trend} style={{height:200}}></div></Card>
+    <Card className="card" title="风险趋势（按10分钟峰值）" size="small" style={{marginTop:16}}><div ref={trend} style={{height:180}}></div></Card>
     {(()=>{
-      const ag={};(al||[]).forEach(a=>{if(!ag[a.employee])ag[a.employee]={key:a.employee,employee:a.employee,scenarios:[],maxRisk:0,summary:''};const g=ag[a.employee];const sc=INTENT[a.scenario]||a.scenario;if(!g.scenarios.includes(sc))g.scenarios.push(sc);if((a.risk_score||0)>g.maxRisk){g.maxRisk=a.risk_score;g.summary=a.summary;}});
+      const ag={};(al||[]).forEach(a=>{if(!ag[a.employee])ag[a.employee]={key:a.employee,employee:a.employee,scenarios:[],maxRisk:0,summary:'',status:a.status};const g=ag[a.employee];const sc=INTENT[a.scenario]||a.scenario;if(!g.scenarios.includes(sc))g.scenarios.push(sc);if((a.risk_score||0)>g.maxRisk){g.maxRisk=a.risk_score;g.summary=a.summary;}});
       const ga=Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);
-      return <Card className="card" style={{marginTop:16}} title={"最新告警（按用户合并，共"+ga.length+"人）"} size="small">
+      return <Card className="card" style={{marginTop:16}} title={'最新告警（按用户合并，共'+ga.length+'人）'} size="small">
         {ga.length? <Table size="small" rowKey="key" pagination={{pageSize:10}} dataSource={ga}
-          columns={[{title:'用户',dataIndex:'employee',width:130},
+          columns={[{title:'用户',dataIndex:'employee',width:120},
             {title:'风险场景',dataIndex:'scenarios',render:v=><Space wrap size={[4,4]}>{v.map(s=><Tag color="blue" key={s}>{s}</Tag>)}</Space>},
-            {title:'最高风险',dataIndex:'maxRisk',width:110,render:v=><RiskBadge s={v}/>},
+            {title:'风险',dataIndex:'maxRisk',width:100,render:v=><RiskBadge s={v}/>},
+            {title:'状态',dataIndex:'status',width:80,render:v=><StatusTag s={v}/>},
             {title:'说明',dataIndex:'summary',ellipsis:true}]}/> : <Empty description="暂无告警（数据良性时属正常）" style={{padding:20}}/>}
       </Card>;
     })()}
@@ -222,42 +224,51 @@ function Dashboard({go}){
 }
 
 function Computers({goProfile}){
-  const [rows,setRows]=useState([]); const [cur,setCur]=useState(null); const [emp,setEmp]=useState(null); const [uq,setUq]=useState('');
+  const [rows,setRows]=useState([]); const [uq,setUq]=useState('');
   const load=async()=> setRows(await GET('/api/computers'));
   useEffect(()=>{ load(); },[]);
-  const open=async c=>{ setCur(c); setEmp(await GET('/api/employees/'+encodeURIComponent(c.computer))); };
   return (<div>
-    <div className="sec-title">同一用户的所有日志已合并为一行；点击查看其完整历史与画像</div>
+    <div className="sec-title">点击用户查看完整画像（风险趋势/活跃时段/基线/研判历史）</div>
     <Card className="card" size="small">
-      <Input.Search placeholder="搜索用户" allowClear style={{width:200,marginBottom:8}} onChange={e=>setUq(e.target.value)} />
+      <Input.Search placeholder="搜索用户名" allowClear style={{width:220,marginBottom:8}} onChange={e=>setUq(e.target.value)} />
       <Table size="small" rowKey="computer" pagination={{pageSize:14}} dataSource={rows.filter(r=>!uq||(r.computer||'').toLowerCase().includes(uq.toLowerCase()))} onRow={r=>({onClick:()=>goProfile(r.computer)})}
         columns={[
-          {title:'用户',dataIndex:'computer',width:180},
-          {title:'历史事件',dataIndex:'event_count',width:100,render:v=><span className="num">{v}</span>},
-          {title:'告警数',dataIndex:'alert_count',width:80,render:v=>v>0?<Tag color="red">{v}</Tag>:<span className="num">{v}</span>},
-          {title:'最高风险',dataIndex:'max_risk',width:130,render:v=><RiskBadge s={v}/>},
+          {title:'用户',dataIndex:'computer',width:160},
+          {title:'历史事件',dataIndex:'event_count',width:90,render:v=><span className="num">{v}</span>},
+          {title:'告警数',dataIndex:'alert_count',width:70,render:v=>v>0?<Tag color="red">{v}</Tag>:<span className="num">{v}</span>},
+          {title:'最高风险',dataIndex:'max_risk',width:120,render:v=><RiskBadge s={v}/>},
           {title:'最近活动',dataIndex:'last_seen',render:fmt}]}/>
     </Card>
-    <Drawer open={!!cur} onClose={()=>setCur(null)} width={560} title={cur?cur.computer:''}>
-      {emp&&<div>
-        <Descriptions column={1} size="small" bordered>
-          <Descriptions.Item label="历史事件数">{cur&&cur.event_count}</Descriptions.Item>
-          <Descriptions.Item label="行为基线（画像）">{emp.profile_summary||'样本不足'}</Descriptions.Item>
-        </Descriptions>
-        <Divider>最近行为（最多50条）</Divider>
-        <div className="tl">{(emp.events||[]).map((e,i)=><div className="it" key={i}><span className="t">{fmt(e.occurred_at)}</span> <b>[{e.action}]</b> {e.target_value}<div style={{color:'#9aa3b2',fontSize:12}}>{e.channel} · {e.application} · {e.size_bytes}B</div></div>)}</div>
-      </div>}
-    </Drawer>
   </div>);
 }
 
 function Alerts({goProfile}){
-  const [rows,setRows]=useState([]); const [cur,setCur]=useState(null); const [emp,setEmp]=useState(null); const [showAll,setShowAll]=useState(false); const [q,setQ]=useState(''); const [lvl,setLvl]=useState('all');
+  const [rows,setRows]=useState([]); const [showAll,setShowAll]=useState(false); const [q,setQ]=useState(''); const [lvl,setLvl]=useState('all');
   const load=async()=> setRows(await GET('/api/verdicts?limit=500'));
   useEffect(()=>{ load(); },[]);
-  const open=async v=>{ setCur(v); setEmp(await GET('/api/employees/'+encodeURIComponent(v.employee))); };
+  const changeStatus=async(id,status)=>{
+    await PUTJ('/api/alerts/'+id+'/status?status='+status);
+    message.success('状态已更新');
+    load();
+  };
+  const markFP=async(v)=>{
+    Modal.confirm({
+      title:'确认误报', content:'确认此告警为误报？该用户同类行为将不再告警（豁免）。',
+      okText:'确认误报', cancelText:'取消', okType:'danger',
+      onOk:async()=>{
+        await POST('/api/feedback?alert_id='+v.verdict_id+'&label=FP&signal_type='+v.intent+'&reason=误报&expires_days=0');
+        message.success('已标记误报并创建豁免');
+        load();
+      }
+    });
+  };
   return (<div>
-    <div className="sec-title" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><span>AI 研判 · 点行查看证据（默认隐藏正常）</span><Space><Legend/><label style={{fontSize:12,color:'#6b7280',cursor:'pointer',userSelect:'none'}}><input type="checkbox" checked={showAll} onChange={e=>setShowAll(e.target.checked)} style={{marginRight:4,cursor:'pointer'}}/>显示正常</label></Space></div>
+    <div className="sec-title" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+      <span>研判记录 · 点击用户查看画像</span>
+      <Space><Legend/>
+        <label style={{fontSize:12,color:'#6b7280',cursor:'pointer',userSelect:'none'}}><input type="checkbox" checked={showAll} onChange={e=>setShowAll(e.target.checked)} style={{marginRight:4,cursor:'pointer'}}/>显示正常</label>
+      </Space>
+    </div>
     <Card className="card" size="small">
       <Space style={{marginBottom:8}}>
         <Input.Search placeholder="搜索用户/关键词" allowClear style={{width:200}} onChange={e=>setQ(e.target.value)} />
@@ -273,28 +284,16 @@ function Alerts({goProfile}){
         if(lvl==='high'&&v.risk_score<61)return false;
         if(lvl==='mid'&&(v.risk_score<31||v.risk_score>60))return false;
         return true;
-      })} onRow={r=>({onClick:()=>goProfile(r.employee)})}
+      })}
+        onRow={r=>({onClick:()=>goProfile(r.employee)})}
         columns={[
-          {title:'时间',dataIndex:'window_start',width:140,render:fmt},
-          {title:'用户',dataIndex:'employee',width:160},
-          {title:'意图',dataIndex:'intent',width:110,render:v=><Tag color="blue">{INTENT[v]||v}</Tag>},
-          {title:'偏离',dataIndex:'deviation',width:90,render:v=><Tag>{DEV[v]||v}</Tag>},
-          {title:'风险',dataIndex:'risk_score',width:130,render:v=><RiskBadge s={v}/>},
-          {title:'AI 解释',dataIndex:'explanation',ellipsis:true}]}/>
+          {title:'时间',dataIndex:'window_start',width:130,render:fmt},
+          {title:'用户',dataIndex:'employee',width:120},
+          {title:'意图',dataIndex:'intent',width:90,render:v=><Tag color="blue">{INTENT[v]||v}</Tag>},
+          {title:'偏离',dataIndex:'deviation',width:70,render:v=><Tag>{DEV[v]||v}</Tag>},
+          {title:'风险',dataIndex:'risk_score',width:110,render:v=><RiskBadge s={v}/>},
+          {title:'解释',dataIndex:'explanation',ellipsis:true}]}/>
     </Card>
-    <Drawer open={!!cur} onClose={()=>setCur(null)} width={560} title={cur?cur.employee:''}>
-      {cur&&<div>
-        <Space wrap style={{marginBottom:8}}><RiskBadge s={cur.risk_score}/><Tag color="blue">{INTENT[cur.intent]||cur.intent}</Tag><Tag>偏离 {DEV[cur.deviation]||cur.deviation}</Tag>{!cur.ai_participated&&<Tag color="red">规则兜底</Tag>}</Space>
-        <Descriptions column={1} size="small" bordered>
-          <Descriptions.Item label="窗口">{fmt(cur.window_start)} → {fmt(cur.window_end).slice(11)}</Descriptions.Item>
-          <Descriptions.Item label="AI 解释">{cur.explanation}</Descriptions.Item>
-          <Descriptions.Item label="涉及通道">{(cur.channels||[]).join(', ')||'-'}</Descriptions.Item>
-          <Descriptions.Item label="该用户基线">{emp?emp.profile_summary:'-'}</Descriptions.Item>
-        </Descriptions>
-        <Divider>证据时间线</Divider>
-        <div className="tl">{(cur.events||[]).map((e,i)=><div className="it" key={i}><span className="t">{fmt(e.occurred_at)}</span> <b>[{e.action}]</b> {e.target_value}<div style={{color:'#9aa3b2',fontSize:12}}>{e.channel} · {e.application} · {e.size_bytes}B</div></div>)}</div>
-      </div>}
-    </Drawer>
   </div>);
 }
 
@@ -314,44 +313,44 @@ function Config(){
   useEffect(()=>{ load(); const t=setInterval(()=>GET('/api/syslog/status').then(setSyslog),5000); return ()=>clearInterval(t); },[]);
   const saveLlm=async(v)=>{ setSaving(true); const body={llm_base_url:v.base_url,llm_active:v.active,llm_qwen_model:v.qwen_model,llm_deepseek_model:v.deepseek_model};
     if(v.qwen_key) body.qwen_key=v.qwen_key; if(v.deepseek_key) body.deepseek_key=v.deepseek_key;
-    await PUTJ('/api/config',body); setSaving(false); message.success('LLM 配置已保存'); load(); };
-  const saveDict=async(n,val)=>{ await PUTJ('/api/dicts/'+n,val); message.success('字典已保存'); };
-  const toggleSys=async(on)=>{ await POST('/api/syslog/'+(on?'start':'stop')); message.success(on?'Syslog 已监听':'已停止'); load(); };
-  const uploadLog=f=>{ const fd=new FormData(); fd.append('file',f); message.loading({content:'导入研判中…',key:'up',duration:0});
-    fetch('/api/ingest',{method:'POST',body:fd}).then(r=>r.json()).then(r=>message.success({content:`已导入 ${r.imported} 条`,key:'up',duration:2})); return false; };
+    await PUTJ('/api/config',body); setSaving(false); message.success('已保存'); load(); };
+  const saveDict=async(n,val)=>{ await PUTJ('/api/dicts/'+n,val); message.success('已保存'); };
+  const toggleSys=async(on)=>{ await POST('/api/syslog/'+(on?'start':'stop')); message.success(on?'已启动':'已停止'); load(); };
+  const uploadLog=f=>{ const fd=new FormData(); fd.append('file',f); message.loading({content:'导入中…',key:'up',duration:0});
+    fetch('/api/ingest',{method:'POST',body:fd}).then(r=>r.json()).then(r=>message.success({content:'已导入 '+r.imported+' 条',key:'up',duration:2})); return false; };
   const DM={sensitive_keywords:'敏感文件名关键词',recruitment_sites:'招聘网站域名',netdisk_domains:'网盘域名',personal_email_domains:'个人邮箱域名',job_search_terms:'求职搜索词',risk_search_terms:'高危搜索词'};
   return (<Row gutter={16}>
     <Col span={12}>
-      <Card className="card" title="LLM 多模型（活动优先·失败自动切换）" size="small" style={{marginBottom:16}}>
+      <Card className="card" title="模型配置（活动优先·失败自动切换）" size="small" style={{marginBottom:16}}>
         <Form form={form} layout="vertical" onFinish={saveLlm}>
-          <Form.Item label="API 地址 (Base URL)" name="base_url"><Input placeholder="http://10.4.128.18:4000/v1"/></Form.Item>
+          <Form.Item label="接口地址" name="base_url"><Input placeholder="http://10.4.128.18:4000/v1"/></Form.Item>
           <Form.Item label="活动模型" name="active"><Radio.Group><Radio value="qwen">Qwen</Radio><Radio value="deepseek">DeepSeek</Radio></Radio.Group></Form.Item>
-          <Form.Item label={"Qwen 模型名（Key: "+((cfg.qwen||{}).key_masked||'无')+"）"} name="qwen_model"><Input placeholder="Qwen3-32B"/></Form.Item>
-          <Form.Item label="Qwen Key（留空不改）" name="qwen_key"><Input.Password placeholder="sk-..."/></Form.Item>
-          <Form.Item label={"DeepSeek 模型名（Key: "+((cfg.deepseek||{}).key_masked||'无')+"）"} name="deepseek_model"><Input placeholder="deepseek"/></Form.Item>
-          <Form.Item label="DeepSeek Key（留空不改）" name="deepseek_key"><Input.Password placeholder="sk-..."/></Form.Item>
+          <Form.Item label={'Qwen 模型（Key: '+((cfg.qwen||{}).key_masked||'无')+'）'} name="qwen_model"><Input placeholder="Qwen3-32B"/></Form.Item>
+          <Form.Item label="Qwen 密钥（留空不改）" name="qwen_key"><Input.Password placeholder="sk-..."/></Form.Item>
+          <Form.Item label={'DeepSeek 模型（Key: '+((cfg.deepseek||{}).key_masked||'无')+'）'} name="deepseek_model"><Input placeholder="deepseek"/></Form.Item>
+          <Form.Item label="DeepSeek 密钥（留空不改）" name="deepseek_key"><Input.Password placeholder="sk-..."/></Form.Item>
           <Button type="primary" htmlType="submit" loading={saving}>保存</Button>
         </Form>
       </Card>
       <Card className="card" title="Syslog 实时接收" size="small" style={{marginBottom:16}}>
         <div style={{marginBottom:8,color:'#6b7280',fontSize:13}}>
-          监听 <b>{cfg.syslog_host||'0.0.0.0'}:{cfg.syslog_port||'8514'}</b>（固定，深信服推到这个地址）
+          监听地址：<b>{cfg.syslog_host||'0.0.0.0'}:{cfg.syslog_port||'8514'}</b>
         </div>
         <div style={{marginBottom:8}}>
-          <Typography.Text style={{fontSize:12}}>告警推送 Webhook（风险≥75自动推送，留空不推）</Typography.Text>
+          <Typography.Text style={{fontSize:12}}>告警推送地址（留空不推）</Typography.Text>
           <Input placeholder="https://oapi.dingtalk.com/robot/send?access_token=..." defaultValue={cfg.notify_webhook||''} onChange={e=>PUTJ('/api/config',{notify_webhook:e.target.value})} />
         </div>
-        <div style={{marginBottom:8}}><Badge status={syslog.enabled?'success':'default'} text={syslog.enabled?'监听中（已收 '+syslog.count+' 条）':'未启用'}/>
+        <div style={{marginBottom:8}}><Badge status={syslog.enabled?'success':'default'} text={syslog.enabled?'监听中（已收 '+syslog.count+' 条，入库 '+syslog.ingested+' 条）':'未启用'}/>
           <Button size="small" type="primary" ghost={syslog.enabled} danger={syslog.enabled} onClick={()=>toggleSys(!syslog.enabled)} style={{marginLeft:8}}>{syslog.enabled?'停止':'启动'}</Button></div>
         {syslog.recent&&syslog.recent.length? <div style={{background:'#f6f8fb',padding:8,fontSize:12,maxHeight:110,overflow:'auto',border:'1px solid #e6ecf5',borderRadius:6}}>
-          {syslog.recent.map((m,i)=><div key={i}><b>{m.t}</b> {m.from}: {m.msg.slice(0,80)}</div>)}</div>
-          :<Typography.Text type="secondary" style={{fontSize:12}}>等待深信服 syslog 推送（配好后自动接收→解析→入库→研判）</Typography.Text>}
+          {syslog.recent.map((m,i)=><div key={i} style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><b>{m.t}</b> {m.from}: {m.msg.slice(0,80)}</div>)}</div>
+          :<Typography.Text type="secondary" style={{fontSize:12}}>等待深信服推送（配好后自动接收→解析→研判）</Typography.Text>}
       </Card>
     </Col>
     <Col span={12}>
-      <Card className="card" title="检测字典（可选调优，默认全自动）" size="small" extra={<Upload showUploadList={false} beforeUpload={uploadLog}><Button size="small" type="primary">导入日志</Button></Upload>}>
+      <Card className="card" title="检测字典（可选，默认全自动）" size="small" extra={<Upload showUploadList={false} beforeUpload={uploadLog}><Button size="small" type="primary">导入日志</Button></Upload>}>
         {Object.keys(DM).map(n=><DictEditor key={n} name={n} label={DM[n]} initial={dicts[n]} onSave={saveDict}/>)}
-        <Alert type="info" showIcon style={{marginTop:8}} message="检测默认全自动，不依赖这些词；此处仅供强制标注某些站点/词。导入的日志会沉淀为历史数据，用于画像与下次研判。"/>
+        <Alert type="info" showIcon style={{marginTop:8}} message="检测默认全自动（不依赖这些词）。标为误报的行为会自动豁免，下次同类不再告警。"/>
       </Card>
     </Col>
   </Row>);
