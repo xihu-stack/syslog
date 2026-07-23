@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Secrets —— 永不提交（API key、数据库密码等）
+.env
+*.env.local
+
+# 运行数据
+backend/data/
+
+# 运行输出
+backend/output/
+
+# 样本数据（含真实信息，不提交）
+samples/
+
+# 临时文件
+.tmp_*
+
+# OS
+.DS_Store
+Thumbs.db

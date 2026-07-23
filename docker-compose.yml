@@ -1,0 +1,14 @@
+version: '3.8'
+services:
+  app:
+    build: .
+    container_name: ipguard-ai
+    ports:
+      - "8000:8000"       # Web 界面 + API
+      - "8514:8514/udp"   # Syslog 接收（深信服推送）
+    volumes:
+      - ./backend/data:/app/data       # 数据库持久化
+      - ./backend/.env:/app/.env:ro    # 配置（只读）
+    restart: unless-stopped
+    environment:
+      - PYTHONIOENCODING=utf-8
