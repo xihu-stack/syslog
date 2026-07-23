@@ -42,6 +42,7 @@ const { useState, useEffect, useRef } = React;
 
 const LVL = s => (s==null)?{c:'#9aa3b2',l:'-'} : s>=86?{c:'#ff4d4f',l:'严重'} : s>=61?{c:'#fa8c16',l:'高危'} : s>=31?{c:'#faad14',l:'关注'} : {c:'#52c41a',l:'正常'};
 const INTENT = {data_exfiltration:'数据外发', job_seeking:'求职离职', baseline_deviation:'行为偏离', policy_violation:'违规', normal_work:'正常', unknown:'未知'};
+const DEV = {none:'无', minor:'轻微', major:'重大', severe:'严重', unknown:'未知'};
 const fmt = s => (s||'').replace('T',' ').slice(0,16);
 const GET = u=>fetch(u).then(r=>r.json());
 const POST=(u,o)=>fetch(u,{method:'POST',...o}).then(r=>r.json());
@@ -268,13 +269,13 @@ function Alerts({goProfile}){
           {title:'时间',dataIndex:'window_start',width:140,render:fmt},
           {title:'用户',dataIndex:'employee',width:160},
           {title:'意图',dataIndex:'intent',width:110,render:v=><Tag color="blue">{INTENT[v]||v}</Tag>},
-          {title:'偏离',dataIndex:'deviation',width:90,render:v=><Tag>{v}</Tag>},
+          {title:'偏离',dataIndex:'deviation',width:90,render:v=><Tag>{DEV[v]||v}</Tag>},
           {title:'风险',dataIndex:'risk_score',width:130,render:v=><RiskBadge s={v}/>},
           {title:'AI 解释',dataIndex:'explanation',ellipsis:true}]}/>
     </Card>
     <Drawer open={!!cur} onClose={()=>setCur(null)} width={560} title={cur?cur.employee:''}>
       {cur&&<div>
-        <Space wrap style={{marginBottom:8}}><RiskBadge s={cur.risk_score}/><Tag color="blue">{INTENT[cur.intent]||cur.intent}</Tag><Tag>偏离 {cur.deviation}</Tag>{!cur.ai_participated&&<Tag color="red">规则兜底</Tag>}</Space>
+        <Space wrap style={{marginBottom:8}}><RiskBadge s={cur.risk_score}/><Tag color="blue">{INTENT[cur.intent]||cur.intent}</Tag><Tag>偏离 {DEV[cur.deviation]||cur.deviation}</Tag>{!cur.ai_participated&&<Tag color="red">规则兜底</Tag>}</Space>
         <Descriptions column={1} size="small" bordered>
           <Descriptions.Item label="窗口">{fmt(cur.window_start)} → {fmt(cur.window_end).slice(11)}</Descriptions.Item>
           <Descriptions.Item label="AI 解释">{cur.explanation}</Descriptions.Item>
