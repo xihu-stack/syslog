@@ -170,7 +170,7 @@ function App(){
 
 function Dashboard({go}){
   const [st,setSt]=useState({}); const [vs,setVs]=useState([]); const [al,setAl]=useState([]);
-  const pie=useRef(),bar=useRef();
+  const pie=useRef(),bar=useRef(),trend=useRef();
   const load=async()=>{ setSt(await GET('/api/stats')); setVs(await GET('/api/verdicts?limit=300')); setAl(await GET('/api/alerts?limit=50')); };
   useEffect(()=>{ load(); },[]);
   useEffect(()=>{
@@ -183,6 +183,14 @@ function Dashboard({go}){
       c.setOption({tooltip:{},grid:{left:130,right:34},xAxis:{type:'value',max:100,axisLine:{lineStyle:{color:'#d0d7e3'}},axisLabel:{color:'#9aa3b2'}},
         yAxis:{type:'category',data:top.map(x=>x[0]).reverse(),axisLabel:{color:'#6b7280',fontSize:11},axisLine:{lineStyle:{color:'#d0d7e3'}}},
         series:[{type:'bar',data:top.map(x=>x[1]).reverse(),itemStyle:{color:'#1677ff',borderRadius:[0,4,4,0]},label:{show:true,position:'right',color:'#1677ff'}}]});}
+    if(vs.length&&trend.current){
+      const bk={}; vs.forEach(v=>{const t=new Date(v.window_start); if(isNaN(t))return; const k=Math.floor(t.getTime()/600000)*600000; bk[k]=Math.max(bk[k]||0,v.risk_score||0);});
+      const ts=Object.keys(bk).sort((a,b)=>+a-+b);
+      const c=echarts.init(trend.current);
+      c.setOption({tooltip:{trigger:'axis'},grid:{left:40,right:20,top:20,bottom:40},
+        xAxis:{type:'category',data:ts.map(t=>{const d=new Date(+t);return (d.getMonth()+1)+'/'+d.getDate()+' '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');}),axisLabel:{color:'#9aa3b2',fontSize:9,rotate:30}},
+        yAxis:{type:'value',max:100,axisLabel:{color:'#9aa3b2'}},
+        series:[{type:'line',data:ts.map(t=>bk[t]),smooth:true,areaStyle:{color:'#1677ff22'},lineStyle:{color:'#1677ff'},itemStyle:{color:'#ff4d4f',borderColor:'#fff'}}]});}
   },[vs]);
   const tile=(val,lbl,cls,goKey)=>(<Col span={6}><div className={'tile '+(cls||'')} onClick={()=>go(goKey)}><div className="v num">{val}</div><div className="l">{lbl}</div><div className="arr">查看 ▸</div></div></Col>);
   return (<div>
@@ -198,6 +206,7 @@ function Dashboard({go}){
       <Col span={10}><Card className="card" title="风险意图分布" size="small"><div ref={pie} style={{height:280}}></div></Card></Col>
       <Col span={14}><Card className="card" title="高风险用户 TOP10" size="small"><div ref={bar} style={{height:280}}></div></Card></Col>
     </Row>
+    <Card className="card" title="风险趋势（按10分钟峰值）" size="small" style={{marginTop:16}}><div ref={trend} style={{height:200}}></div></Card>
     {(()=>{
       const ag={};(al||[]).forEach(a=>{if(!ag[a.employee])ag[a.employee]={key:a.employee,employee:a.employee,scenarios:[],maxRisk:0,summary:''};const g=ag[a.employee];const sc=INTENT[a.scenario]||a.scenario;if(!g.scenarios.includes(sc))g.scenarios.push(sc);if((a.risk_score||0)>g.maxRisk){g.maxRisk=a.risk_score;g.summary=a.summary;}});
       const ga=Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);
