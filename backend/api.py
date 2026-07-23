@@ -179,15 +179,22 @@ def rejudge():
 
 
 @app.post("/api/feedback")
-def feedback(alert_id: int, label: str, reason: str = ""):
+def feedback(alert_id: int, label: str, reason: str = "", signal_type: str = "", expires_days: int = 0):
+    """标记告警 TP/FP。FP 可带原因+信号类型创建豁免（下次同类不再告警）。"""
     if label not in ("TP", "FP"):
         raise HTTPException(400, "label 必须是 TP 或 FP")
+    from datetime import datetime, timedelta
+    from db import ExceptionRow
     s = Session()
     try:
         s.add(FeedbackRow(alert_id=alert_id, label=label, reason=reason))
         a = s.get(AlertRow, alert_id)
         if a:
             a.status = "CONFIRMED" if label == "TP" else "FP"
+            if label == "FP" and signal_type:
+                exp = datetime.utcnow() + timedelta(days=expires_days) if expires_days > 0 else None
+                s.add(ExceptionRow(employee_id=a.employee_id, signal_type=signal_type,
+                                   reason=reason, expires_at=exp))
         s.commit()
         return {"ok": True}
     finally:

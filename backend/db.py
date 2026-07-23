@@ -110,6 +110,18 @@ class SettingRow(Base):
     value = Column(Text)
 
 
+class ExceptionRow(Base):
+    """人工确认的误报豁免：某用户某类行为=正常（岗位/工作/时间需要）。"""
+    __tablename__ = "exceptions"
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(String, index=True)
+    signal_type = Column(String)    # data_exfiltration / job_seeking / 等（与 intent 对应）
+    reason = Column(String)         # 岗位需要 / 工作需要 / 时间正常 / 临时项目
+    note = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)  # null=永久
+
+
 # ---------------- 工具 ----------------
 
 def init_db() -> None:

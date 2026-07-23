@@ -15,6 +15,10 @@ import llm_client
 import dicts
 from models import CanonicalEvent
 
+# 绝对风险模式：永远触发（不被基线"正常化"）
+ABSOLUTE_RISK = ["招聘", "求职", "网盘", "远程控制", "个人邮箱", "todesk", "teamviewer",
+                 "向日葵", "anydesk", "pan.baidu", "aliyundrive", "dropbox", "115.com"]
+
 # 写类 / 外发类动作（文档侧）
 WRITE_ACTIONS = {
     "COPY", "MOVE", "DELETE", "UPLOAD", "DOWNLOAD", "SEND", "PRINT",
@@ -137,18 +141,22 @@ def deviation(window, baseline) -> list:
 
 
 def should_trigger(window, dev, baseline) -> bool:
-    """基线感知触发：无基线 / 有偏离 / 写操作 / 外发通道 → 调 AI；常规行为 → 跳过（省 AI）。"""
+    """基线感知触发：无基线 / 有偏离 / 写操作 / 外发通道 / 绝对风险 → 调 AI；常规行为 → 跳过。"""
     if not baseline or baseline.get("sample_count", 0) < 3:
-        return True  # 无基线，无法判断，先研判
+        return True
     if dev:
-        return True  # 有偏离信号
+        return True
     for e in window:
         if e.category == "DOC" and e.action in WRITE_ACTIONS:
             return True
         ch = (e.raw or {}).get("channel")
         if ch and ch != "LOCAL":
             return True
-    return False  # 与基线一致的常规浏览/搜索 → 跳过
+        # 绝对风险：招聘/网盘/远程控制/个人邮箱 → 永远触发（不被基线正常化）
+        cat = ((e.raw or {}).get("category") or "") + " " + ((e.raw or {}).get("domain") or "")
+        if any(p in cat.lower() for p in ABSOLUTE_RISK):
+            return True
+    return False
 
 
 def analyze_window(window: list[CanonicalEvent], profile=None, dev=None) -> dict:

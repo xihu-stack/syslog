@@ -5,7 +5,7 @@ import concurrent.futures
 import sys
 import threading
 
-from db import (AlertRow, EventRow, Session, SettingRow, VerdictRow,
+from db import (AlertRow, EventRow, ExceptionRow, Session, SettingRow, VerdictRow,
                 init_db, severity_of)
 from models import CanonicalEvent
 from parser_ipguard import parse_ipguard_excel
@@ -138,6 +138,12 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                     ai_participated=1 if v.get("ai_participated", True) else 0, event_hashes=hashes, model="Qwen3-32B")
                 wsession.add(vr); wsession.flush()
                 if v.get("risk_score", 0) >= risk_threshold:
+                    _exc = wsession.query(ExceptionRow).filter(
+                        ExceptionRow.employee_id == emp, ExceptionRow.signal_type == v.get("intent"),
+                        (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > datetime.utcnow())
+                    ).first()
+                    if _exc:
+                        continue
                     key = f"{emp}|{v.get('intent')}|{wstart.date()}"
                     if not wsession.query(AlertRow).filter_by(dedup_key=key).first():
                         wsession.add(AlertRow(employee_id=emp, scenario=v.get("intent"),
