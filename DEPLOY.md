@@ -2,7 +2,7 @@
 
 ## 一句话部署
 ```bash
-git clone https://github.com/xihu-stack/syslog.git && cd syslog && docker-compose up -d --build
+git clone https://github.com/xihu-stack/syslog.git && cd syslog && docker compose up -d --build
 ```
 
 ## 完成！然后：
