@@ -109,11 +109,12 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
             target_value=r.target_value or "", size_bytes=r.size_bytes or 0, count=r.count or 1,
             source=r.source or "", raw=r.raw or {}) for r in new_rows]
         max_id = max(r.id for r in new_rows)
+        gdomains = profiles.global_common_domains(rs)
         to_judge = []
         for emp, wins in detector.build_windows(new_events).items():
             for w in wins:
                 baseline = profiles.baseline_for(rs, emp, w[0].occurred_at)
-                dev = detector.deviation(w, baseline)
+                dev = detector.deviation(w, baseline, global_domains=gdomains)
                 if not detector.should_trigger(w, dev, baseline):
                     continue
                 if rs.query(VerdictRow).filter_by(employee_id=emp, window_start=w[0].occurred_at,

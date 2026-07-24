@@ -203,13 +203,21 @@ function Dashboard({go}){
         yAxis:{type:'category',data:top.map(x=>x[0]).reverse(),axisLabel:{color:'#6b7280',fontSize:13,width:200,overflow:'truncate',ellipsis:'…'},axisLine:{lineStyle:{color:'#d0d7e3'}}},
         series:[{type:'bar',data:top.map(x=>x[1]).reverse(),itemStyle:{color:function(p){return barColors[p.dataIndex];},borderRadius:[0,4,4,0]},label:{show:true,position:'right',color:'#6b7280',formatter:'{c}分'}}]});}
     if(vs.length&&trend.current){
-      const bk={}; vs.forEach(v=>{const t=new Date(v.window_start); if(isNaN(t))return; const k=Math.floor(t.getTime()/600000)*600000; bk[k]=Math.max(bk[k]||0,v.risk_score||0);});
+      const bk={};
+      vs.forEach(v=>{
+        const t=new Date(v.window_start); if(isNaN(t))return;
+        const k=Math.floor(t.getTime()/600000)*600000;
+        if((v.risk_score||0)>=50){
+          if(!bk[k])bk[k]=new Set();
+          bk[k].add(v.employee);
+        }
+      });
       const ts=Object.keys(bk).sort((a,b)=>+a-+b);
       const c=echarts.init(trend.current);
       c.setOption({tooltip:{trigger:'axis'},grid:{left:40,right:20,top:20,bottom:40},
         xAxis:{type:'category',data:ts.map(t=>{const d=new Date(+t);return (d.getMonth()+1)+'/'+d.getDate()+' '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');}),axisLabel:{color:'#9aa3b2',fontSize:9,rotate:30}},
         yAxis:{type:'value',max:100,axisLabel:{color:'#9aa3b2'}},
-        series:[{type:'line',data:ts.map(t=>bk[t]),smooth:true,areaStyle:{color:'#1677ff22'},lineStyle:{color:'#1677ff'},itemStyle:{color:'#ff4d4f',borderColor:'#fff'}}]});}
+        series:[{type:'line',data:ts.map(t=>bk[t].size),smooth:true,areaStyle:{color:'#1677ff22'},lineStyle:{color:'#1677ff'},itemStyle:{color:'#ff4d4f',borderColor:'#fff'},name:'风险用户数'}]});}
   },[vs]);
   const SRC={"sangfor":"深信服","ipguard":"IP-Guard","":"未知"};
   const srcData=Object.entries(sys.sources||{});
@@ -232,7 +240,7 @@ function Dashboard({go}){
       <Col span={10}><Card className="card" title="风险意图分布" size="small"><div ref={pie} style={{height:240}}></div></Card></Col>
       <Col span={14}><Card className="card" title="高风险用户 TOP10" size="small"><div ref={bar} style={{height:240}}></div></Card></Col>
     </Row>
-    <Card className="card" title="风险趋势（按10分钟峰值）" size="small" style={{marginTop:16}}><div ref={trend} style={{height:160}}></div></Card>
+    <Card className="card" title="风险用户数趋势（按10分钟，风险≥50的人数）" size="small" style={{marginTop:16}}><div ref={trend} style={{height:160}}></div></Card>
     {(()=>{
       const ag={};(al||[]).forEach(a=>{if(!ag[a.employee])ag[a.employee]={key:a.employee,employee:a.employee,scenarios:[],maxRisk:0,summary:'',status:a.status};const g=ag[a.employee];const sc=INTENT[a.scenario]||a.scenario;if(!g.scenarios.includes(sc))g.scenarios.push(sc);if((a.risk_score||0)>g.maxRisk){g.maxRisk=a.risk_score;g.summary=a.summary;}});
       const ga=Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);

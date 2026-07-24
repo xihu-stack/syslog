@@ -124,11 +124,12 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
     return "\n".join(lines) if lines else "(无行为)"
 
 
-def deviation(window, baseline) -> list:
-    """数值化偏离信号（vs 该员工历史基线）。基线不足(<3样本)返回空。"""
+def deviation(window, baseline, global_domains=None) -> list:
+    """数值化偏离信号（vs 该员工历史基线 + 全局通用域名）。"""
     flags = []
     if not baseline or baseline.get("sample_count", 0) < 3:
         return flags
+    gdom = global_domains or set()
     hrs = set(baseline.get("active_hours_top", []))
     wh = {e.occurred_at.hour for e in window}
     if wh and (min(wh) < 8 or max(wh) > 20) and not wh.issubset(hrs):
@@ -140,7 +141,7 @@ def deviation(window, baseline) -> list:
     new_ch = sorted({(e.raw or {}).get("channel") for e in window} - bch - {None, ""})
     if new_ch:
         flags.append("new_channel:" + ",".join(new_ch))
-    bdom = set(baseline.get("common_domains", []))
+    bdom = set(baseline.get("common_domains", [])) | gdom
     newdom = sorted({(e.raw or {}).get("domain") for e in window if e.category == "WEB"
                      and (e.raw or {}).get("domain") and (e.raw or {}).get("domain") not in bdom})
     if newdom:

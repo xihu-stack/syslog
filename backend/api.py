@@ -359,44 +359,72 @@ def syslog_status():
 
 @app.get("/api/system/stats")
 def system_stats():
-    """系统运行状态：syslog接收/入库/研判进度/LLM调用/数据库/事件来源。"""
+    """系统运行状态：日志量/研判量/数据来源/告警状态/管线健康。"""
     from datetime import datetime, timedelta
+    from sqlalchemy import func as _f
     s = Session()
     try:
-        # 事件来源分布
-        from sqlalchemy import func as _f
-        src_rows = s.query(EventRow.source, _f.count(EventRow.id)).group_by(EventRow.source).all()
-        sources = {r[0] or "未知": r[1] for r in src_rows}
-        # 最近24h事件量
-        since = datetime.utcnow() - timedelta(hours=24)
-        ev_24h = s.query(EventRow).filter(EventRow.occurred_at >= since).count()
-        # 最近24h告警量
-        al_24h = s.query(AlertRow).filter(AlertRow.created_at >= since).count()
-        # 告警状态分布
-        st_rows = s.query(AlertRow.status, _f.count(AlertRow.id)).group_by(AlertRow.status).all()
-        alert_status = {r[0]: r[1] for r in st_rows}
-        # 研判统计
-        vd_24h = s.query(VerdictRow).filter(VerdictRow.created_at >= since).count()
+        now = datetime.utcnow()
+        today_start = (now - timedelta(hours=now.hour, minutes=now.minute, seconds=now.second, microseconds=now.microsecond))
+        yesterday_start = today_start - timedelta(days=1)
+        week_start = today_start - timedelta(days=7)
+
+        # 按来源统计：今日/昨日/近7天/总量
+        def src_count(since):
+            rows = s.query(EventRow.source, _f.count(EventRow.id)).filter(
+                EventRow.occurred_at >= since).group_by(EventRow.source).all()
+            return {r[0] or "sangfor": r[1] for r in rows}
+
+        src_today = src_count(today_start)
+        src_yesterday = src_count(yesterday_start).keys() and {k: v for k, v in src_count(yesterday_start).items()} or {}
+        src_week = src_count(week_start)
+        src_total = src_count(datetime(2000, 1, 1))
+
+        # 事件量
+        ev_today = sum(src_today.values())
+        ev_yesterday = sum(src_yesterday.values())
+        ev_week = sum(src_week.values())
+        ev_total = s.query(EventRow).count()
+
+        # 研判量（今日/总量）
+        vd_today = s.query(VerdictRow).filter(VerdictRow.created_at >= today_start).count()
+        vd_total = s.query(VerdictRow).count()
         vd_ai = s.query(VerdictRow).filter(VerdictRow.ai_participated == 1).count()
         vd_fallback = s.query(VerdictRow).filter(VerdictRow.ai_participated == 0).count()
+
+        # 告警（今日/总量）
+        al_today = s.query(AlertRow).filter(AlertRow.created_at >= today_start).count()
+        al_total = s.query(AlertRow).count()
+        st_rows = s.query(AlertRow.status, _f.count(AlertRow.id)).group_by(AlertRow.status).all()
+        alert_status = {r[0]: r[1] for r in st_rows}
+
+        # 豁免
+        ex_count = s.query(ExceptionRow).filter(
+            (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > now)
+        ).count()
+
         # 数据库大小
         import os as _os
-        db_size = _os.path.getsize(_os.path.join(_os.path.dirname(__file__), "data", "ipguard.db")) if _os.path.exists(_os.path.join(_os.path.dirname(__file__), "data", "ipguard.db")) else 0
-        # 豁免数量
-        ex_count = s.query(ExceptionRow).filter(
-            (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > datetime.utcnow())
-        ).count()
+        db_path = _os.path.join(_os.path.dirname(__file__), "data", "ipguard.db")
+        db_size = _os.path.getsize(db_path) if _os.path.exists(db_path) else 0
+
+        # 去重/降噪统计（总事件中WEB事件比例，估算降噪效果）
+        web_total = s.query(EventRow).filter(EventRow.category == "WEB").count()
+
         return {
-            "events_total": s.query(EventRow).count(),
-            "events_24h": ev_24h,
-            "sources": sources,
-            "verdicts_total": s.query(VerdictRow).count(),
-            "verdicts_24h": vd_24h,
-            "verdicts_ai": vd_ai,
-            "verdicts_fallback": vd_fallback,
-            "alerts_total": s.query(AlertRow).count(),
-            "alerts_24h": al_24h,
-            "alert_status": alert_status,
+            "events": {
+                "today": ev_today, "yesterday": ev_yesterday, "week": ev_week, "total": ev_total,
+                "web_ratio": round(web_total / max(ev_total, 1) * 100, 1),
+            },
+            "sources": {
+                "today": src_today, "yesterday": src_yesterday, "week": src_week, "total": src_total,
+            },
+            "verdicts": {
+                "today": vd_today, "total": vd_total, "ai": vd_ai, "fallback": vd_fallback,
+            },
+            "alerts": {
+                "today": al_today, "total": al_total, "status": alert_status,
+            },
             "exceptions": ex_count,
             "db_size_mb": round(db_size / 1024 / 1024, 1),
             "employees": s.query(EventRow.employee_id).distinct().count(),

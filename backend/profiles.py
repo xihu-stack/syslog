@@ -21,6 +21,26 @@ def _events_for(session, emp):
             .all())
 
 
+def global_common_domains(session, min_users_ratio=0.3, min_count=5):
+    """全局通用域名：超过 min_users_ratio 比例用户访问过的域名。
+    这些域名对任何人都不算'陌生'（微软云/CDN/搜索引擎等）。"""
+    from collections import Counter
+    from sqlalchemy import func as _f
+    total_users = session.query(EventRow.employee_id).distinct().count()
+    if total_users < 3:
+        return set()
+    threshold = max(2, int(total_users * min_users_ratio))
+    # 统计每个域名被多少不同用户访问
+    rows = session.query(
+        EventRow.raw.op('->>')('domain'),
+        _f.count(_f.distinct(EventRow.employee_id))
+    ).filter(
+        EventRow.category == 'WEB',
+        EventRow.raw.op('->>')('domain').isnot(None)
+    ).group_by(EventRow.raw.op('->>')('domain')).all()
+    return {r[0] for r in rows if r[0] and r[1] >= threshold}
+
+
 def compute_profile(rows) -> dict:
     hours = Counter()
     per_day = Counter()
