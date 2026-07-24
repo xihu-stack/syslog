@@ -45,6 +45,8 @@ const LVL = s => (s==null)?{c:'#9aa3b2',l:'-'} : s>=86?{c:'#ff4d4f',l:'严重'} 
 const INTENT = {data_exfiltration:'数据外发', job_seeking:'求职离职', baseline_deviation:'行为偏离', policy_violation:'违规', normal_work:'正常', unknown:'未知'};
 const DEV = {none:'无', minor:'轻微', major:'重大', severe:'严重', unknown:'未知'};
 const STATUS_MAP = {NEW:{c:'#1677ff',t:'待处理'}, TRIAGING:{c:'#faad14',t:'处理中'}, CONFIRMED:{c:'#ff4d4f',t:'已确认'}, FP:{c:'#bfbfbf',t:'误报'}, CLOSED:{c:'#52c41a',t:'已关闭'}};
+// 防抖回调（延迟ms后执行，取消前序）
+function debounce(fn, delay){ let t; return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), delay); }; }
 const STATUS_OPTS = [{label:'待处理',value:'NEW'},{label:'处理中',value:'TRIAGING'},{label:'已确认',value:'CONFIRMED'},{label:'误报',value:'FP'},{label:'已关闭',value:'CLOSED'}];
 const fmt = s => (s||'').replace('T',' ').slice(0,16);
 const GET = u=>fetch(u).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('GET '+u,e);return {};});
@@ -611,7 +613,7 @@ function Config(){
         </div>
         <div style={{marginBottom:8}}>
           <Typography.Text style={{fontSize:12}}>告警推送地址（留空不推）</Typography.Text>
-          <Input placeholder="https://oapi.dingtalk.com/robot/send?access_token=..." defaultValue={cfg.notify_webhook||''} onChange={e=>PUTJ('/api/config',{notify_webhook:e.target.value})} />
+          <Input placeholder="https://oapi.dingtalk.com/robot/send?access_token=..." defaultValue={cfg.notify_webhook||''} onChange={debounce(e=>PUTJ('/api/config',{notify_webhook:e.target.value}), 800)} />
         </div>
         <div style={{marginBottom:8}}><Badge status={syslog.enabled?'success':'default'} text={syslog.enabled?'监听中（已收 '+syslog.count+' 条，入库 '+syslog.ingested+' 条）':'未启用'}/>
           <Button size="small" type="primary" ghost={syslog.enabled} danger={syslog.enabled} onClick={()=>toggleSys(!syslog.enabled)} style={{marginLeft:8}}>{syslog.enabled?'停止':'启动'}</Button></div>
