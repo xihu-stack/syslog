@@ -174,11 +174,13 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         try:
             from datetime import datetime as _dt
             es = Session()
-            exs = es.query(ExceptionRow).filter(
-                ExceptionRow.employee_id == emp,
-                (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > _dt.utcnow())
-            ).all()
-            es.close()
+            try:
+                exs = es.query(ExceptionRow).filter(
+                    ExceptionRow.employee_id == emp,
+                    (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > _dt.utcnow())
+                ).all()
+            finally:
+                es.close()
             if exs:
                 exempt = "; ".join(f"{INTENT_MAP.get(e.signal_type, e.signal_type)}({e.reason})" for e in exs)
         except Exception:
