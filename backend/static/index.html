@@ -409,59 +409,72 @@ function Monitor(){
   const load=async()=> setData(await GET('/api/system/stats'));
   useEffect(()=>{ load(); const t=setInterval(load,5000); return ()=>clearInterval(t); },[]);
   const d=data.detect||{}, sl=data.syslog||{};
+  const ev=data.events||{}, vd=data.verdicts||{}, al=data.alerts||{}, src=data.sources||{};
   const pct = d.total ? Math.round(d.done/d.total*100) : 0;
-  const SRC={"ipguard":"IP-Guard","sangfor":"深信服","":"深信服(syslog)"};
+  const SRC={"ipguard":"IP-Guard","sangfor":"深信服","":"深信服"};
+  const st=src.total||{};
   return (<div>
-    <Row gutter={16}>
-      <Col span={6}><Card className="card"><Statistic title="数据库大小" value={data.db_size_mb||0} suffix="MB"/></Card></Col>
-      <Col span={6}><Card className="card"><Statistic title="事件总量" value={data.events_total||0}/><div style={{fontSize:11,color:'#9aa3b2'}}>24h +{data.events_24h||0}</div></Card></Col>
-      <Col span={6}><Card className="card"><Statistic title="研判总量" value={data.verdicts_total||0}/><div style={{fontSize:11,color:'#9aa3b2'}}>AI {data.verdicts_ai||0} / 兜底 {data.verdicts_fallback||0}</div></Card></Col>
-      <Col span={6}><Card className="card"><Statistic title="自动清理" value="90天"/></Card></Col>
+    <Card className="card" title="日志量统计" size="small" style={{marginBottom:16}}>
+      <Table size="small" pagination={false} dataSource={[
+        {key:'today',period:'今日',sangfor:(src.today||{}).sangfor||0,ipguard:(src.today||{}).ipguard||0,total:ev.today||0},
+        {key:'yesterday',period:'昨日',sangfor:(src.yesterday||{}).sangfor||0,ipguard:(src.yesterday||{}).ipguard||0,total:ev.yesterday||0},
+        {key:'week',period:'近7天',sangfor:(src.week||{}).sangfor||0,ipguard:(src.week||{}).ipguard||0,total:ev.week||0},
+        {key:'total',period:'累计',sangfor:(st.sangfor)||0,ipguard:(st.ipguard)||0,total:ev.total||0},
+      ]} columns={[
+        {title:'时间段',dataIndex:'period',width:70},
+        {title:'深信服',dataIndex:'sangfor',width:100,render:v=><span className="num">{v}</span>},
+        {title:'IP-Guard',dataIndex:'ipguard',width:100,render:v=><span className="num">{v}</span>},
+        {title:'合计',dataIndex:'total',width:80,render:v=><span className="num" style={{fontWeight:600}}>{v}</span>},
+      ]}/>
+    </Card>
+    <Row gutter={16} style={{marginBottom:16}}>
+      <Col span={6}><Card className="card"><Statistic title="AI研判(今日)" value={vd.today||0}/><div style={{fontSize:11,color:'#9aa3b2'}}>累计 {vd.total||0}</div></Card></Col>
+      <Col span={6}><Card className="card"><Statistic title="AI成功" value={vd.ai||0} valueStyle={{color:'#52c41a'}}/><div style={{fontSize:11,color:'#9aa3b2'}}>兜底 {vd.fallback||0}</div></Card></Col>
+      <Col span={6}><Card className="card"><Statistic title="告警(今日)" value={al.today||0} valueStyle={{color:'#fa8c16'}}/><div style={{fontSize:11,color:'#9aa3b2'}}>累计 {al.total||0}</div></Card></Col>
+      <Col span={6}><Card className="card"><Statistic title="数据库" value={data.db_size_mb||0} suffix="MB"/></Card></Col>
     </Row>
-    <Row gutter={16} style={{marginTop:16}}>
-      <Col span={12}><Card className="card" title="Syslog 接收管线" size="small">
+    <Row gutter={16} style={{marginBottom:16}}>
+      <Col span={12}><Card className="card" title="Syslog 接收" size="small">
         <Row gutter={8}>
-          <Col span={6}><Statistic title="监听" valueRender={()=><Badge status={sl.enabled?'success':'default'} text={sl.enabled?'运行中':'停止'}/>}/></Col>
+          <Col span={6}><div style={{textAlign:'center'}}><Badge status={sl.enabled?'success':'default'} text={sl.enabled?'监听中':'停止'}/></div></Col>
           <Col span={6}><Statistic title="已接收" value={sl.count||0}/></Col>
           <Col span={6}><Statistic title="已入库" value={sl.ingested||0}/></Col>
           <Col span={6}><Statistic title="刷新" value="30秒"/></Col>
         </Row>
         {sl.error&&<div style={{color:'#ff4d4f',fontSize:12,marginTop:4}}>{sl.error}</div>}
-        {sl.recent&&sl.recent.length>0&&<div style={{marginTop:8,padding:6,background:'#f6f8fb',borderRadius:4,fontSize:11,maxHeight:60,overflow:'auto'}}>
-          {sl.recent.slice(0,3).map((m,i)=><div key={i} style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{m.t} {m.from}: {m.msg.slice(0,60)}</div>)}
+        {sl.recent&&sl.recent.length>0&&<div style={{marginTop:6,fontSize:11,maxHeight:40,overflow:'auto'}}>
+          {sl.recent.slice(0,2).map((m,i)=><div key={i} style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{m.t} {m.msg.slice(20,70)}</div>)}
         </div>}
       </Card></Col>
       <Col span={12}><Card className="card" title="AI 研判引擎" size="small">
         {d.running ? (<div>
           <Progress percent={pct} status="active" format={()=>d.done+'/'+d.total}/>
-          <div style={{marginTop:6,color:'#6b7280',fontSize:12}}>4线程并发 · 已完成 {d.judged} 个研判</div>
-        </div>) : (<div>
-          {d.last_finished ? (<div style={{padding:'8px 0'}}>
-            <Badge status="success" text={<span style={{color:'#52c41a'}}>引擎就绪（等待新事件）</span>}/>
-            <div style={{marginTop:6,fontSize:12,color:'#9aa3b2'}}>
-              上次研判：处理 {d.last_judged||0} 个窗口，告警 {d.last_alerts||0} 条
-            </div>
-            <div style={{fontSize:12,color:'#9aa3b2'}}>
-              完成时间：{(d.last_finished||'').replace('T',' ').slice(0,19)}
-            </div>
-          </div>) : <div style={{padding:'12px 0',color:'#9aa3b2'}}>等待首次研判触发...</div>}
-        </div>)}
-        <Descriptions column={2} size="small" style={{marginTop:8}}>
-          <Descriptions.Item label="触发">基线感知+绝对风险</Descriptions.Item>
-          <Descriptions.Item label="增量">仅新事件(30秒刷新)</Descriptions.Item>
-        </Descriptions>
+          <div style={{marginTop:4,color:'#6b7280',fontSize:12}}>4线程并发 · 已完成 {d.judged}</div>
+        </div>) : (
+          <div style={{padding:'6px 0'}}>
+            <Badge status="success" text={<span style={{color:'#52c41a',fontSize:13}}>引擎就绪</span>}/>
+            {d.last_finished&&<div style={{marginTop:4,fontSize:12,color:'#9aa3b2'}}>上次：{d.last_judged||0}窗口 / {d.last_alerts||0}告警</div>}
+          </div>
+        )}
       </Card></Col>
     </Row>
-    <Row gutter={16} style={{marginTop:16}}>
-      <Col span={12}><Card className="card" title="数据来源" size="small">
-        {Object.keys(data.sources||{}).length ? <Table size="small" pagination={false} dataSource={Object.entries(data.sources||{}).map(([k,v])=>({key:k,src:SRC[k]||k,count:v}))}
-          columns={[{title:'来源',dataIndex:'src'},{title:'事件数',dataIndex:'count',render:val=><span className="num">{val}</span>}]}/> : <Empty description="无数据"/>}
+    <Row gutter={16}>
+      <Col span={8}><Card className="card" title="告警状态" size="small">
+        {Object.keys(al.status||{}).length ? <Table size="small" pagination={false} dataSource={Object.entries(al.status||{}).map(([k,v])=>({key:k,status:k,count:v}))}
+          columns={[{title:'状态',dataIndex:'status',width:60,render:v=><StatusTag s={v}/>},{title:'数量',dataIndex:'count',render:v=><span className="num">{v}</span>}]}/> : <Empty/>}
       </Card></Col>
-      <Col span={12}><Card className="card" title="豁免列表" size="small">
-        {data.exceptions>0 ? <Descriptions column={1} size="small">
-          <Descriptions.Item label="有效豁免">{data.exceptions} 条</Descriptions.Item>
-          <Descriptions.Item label="作用">豁免后同类行为不再告警，AI可见标签</Descriptions.Item>
-        </Descriptions> : <div style={{padding:8,color:'#9aa3b2',fontSize:12}}>暂无豁免（误报标记后自动创建）</div>}
+      <Col span={8}><Card className="card" title="用户与豁免" size="small">
+        <Descriptions column={1} size="small">
+          <Descriptions.Item label="监控用户">{data.employees||0}</Descriptions.Item>
+          <Descriptions.Item label="有效豁免">{data.exceptions||0} 条</Descriptions.Item>
+          <Descriptions.Item label="WEB占比">{(ev||{}).web_ratio||0}%</Descriptions.Item>
+          <Descriptions.Item label="自动清理">90天/每小时</Descriptions.Item>
+        </Descriptions>
+      </Card></Col>
+      <Col span={8}><Card className="card" title="最近报文" size="small">
+        {sl.recent&&sl.recent.length>0 ? <div style={{fontSize:11,maxHeight:80,overflow:'auto'}}>
+          {sl.recent.slice(0,4).map((m,i)=><div key={i} style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginBottom:2}}><b>{m.t}</b> {m.msg.slice(20,65)}</div>)}
+        </div> : <div style={{color:'#9aa3b2',fontSize:12,padding:8}}>等待推送...</div>}
       </Card></Col>
     </Row>
   </div>);
