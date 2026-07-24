@@ -127,7 +127,8 @@ def parse_sangfor_syslog(raw_msg: str):
         raw={"domain": domain, "category": category, "group": fields.get("group", ""),
              "src_ip": fields.get("host_ip", ""), "dst_ip": fields.get("dst_ip", ""),
              "app": fields.get("app", ""), "serv": fields.get("serv", ""),
-             "title": fields.get("title", ""), "net_action": fields.get("net_action", "")})
+             "title": fields.get("title", ""), "net_action": fields.get("net_action", ""),
+             "visit_count": 1})
 
 
 def parse_sangfor(path: str):

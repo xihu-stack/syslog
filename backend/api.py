@@ -63,10 +63,14 @@ def _verdict_dict(s: Session, r: VerdictRow) -> dict:
 
 @app.get("/api/stats")
 def stats():
+    from datetime import datetime, timedelta
     s = Session()
     try:
+        now = datetime.utcnow()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         return {
             "events": s.query(EventRow).count(),
+            "events_today": s.query(EventRow).filter(EventRow.occurred_at >= today_start).count(),
             "verdicts": s.query(VerdictRow).count(),
             "alerts": s.query(AlertRow).count(),
             "alerts_open": s.query(AlertRow).filter(AlertRow.status != "CLOSED").count(),
@@ -377,7 +381,7 @@ def system_stats():
             return {r[0] or "sangfor": r[1] for r in rows}
 
         src_today = src_count(today_start)
-        src_yesterday = {k: v for k, v in src_count(yesterday_start).items()} if src_count(yesterday_start) else {}
+        src_yesterday = src_count(yesterday_start)
         src_week = src_count(week_start)
         src_total = src_count(datetime(2000, 1, 1))
 

@@ -239,14 +239,15 @@ function Dashboard({go}){
         }
       });
       const ts=Object.keys(bk).sort((a,b)=>+a-+b);
+      const vals=ts.map(t=>bk[t].size);
+      const maxY=Math.max(...vals,1);
       const c=echarts.init(trend.current);
       c.setOption({tooltip:{trigger:'axis'},grid:{left:40,right:20,top:20,bottom:40},
         xAxis:{type:'category',data:ts.map(t=>{const d=new Date(+t);return (d.getMonth()+1)+'/'+d.getDate()+' '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');}),axisLabel:{color:'#9aa3b2',fontSize:9,rotate:30}},
-        yAxis:{type:'value',max:100,axisLabel:{color:'#9aa3b2'}},
-        series:[{type:'line',data:ts.map(t=>bk[t].size),smooth:true,areaStyle:{color:'#1677ff22'},lineStyle:{color:'#1677ff'},itemStyle:{color:'#ff4d4f',borderColor:'#fff'},name:'风险用户数'}]});}
+        yAxis:{type:'value',max:maxY+1,axisLabel:{color:'#9aa3b2'}},
+        series:[{type:'bar',data:vals,smooth:true,areaStyle:{color:'#1677ff22'},lineStyle:{color:'#1677ff'},itemStyle:{color:'#1677ff',borderColor:'#fff'},name:'风险用户数'}]});}
   },[vs]);
   const SRC={"sangfor":"深信服","ipguard":"IP-Guard","":"未知"};
-  const srcData=Object.entries(sys.sources||{});
   return (<div>
     <Row gutter={16}>
       {(()=>{const v=st.events||0,lbl='日志事件';return <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{v}</div><div className="l">{lbl}</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日 {(sys.events||{}).today||0}</div></div></Col>;})()}
@@ -257,6 +258,7 @@ function Dashboard({go}){
     <Row gutter={16} style={{marginTop:12}}>
       <Col span={6}><Card className="card" size="small" style={{padding:'4px 12px'}}><Statistic title="深信服" value={(sys.sources||{}).total?(sys.sources.total.sangfor||0):0} valueStyle={{fontSize:16}}/></Card></Col>
       <Col span={6}><Card className="card" size="small" style={{padding:'4px 12px'}}><Statistic title="IP-Guard" value={(sys.sources||{}).total?(sys.sources.total.ipguard||0):0} valueStyle={{fontSize:16}}/></Card></Col>
+      <Col span={6}><Card className="card" size="small" style={{padding:'4px 12px'}}><Statistic title="今日告警" value={(sys.alerts||{}).today||0} valueStyle={{fontSize:16,color:'#fa8c16'}}/></Card></Col>
       <Col span={6}><Card className="card" size="small" style={{padding:'4px 12px'}}><Statistic title="数据库" value={sys.db_size_mb||0} suffix="MB" valueStyle={{fontSize:16}}/></Card></Col>
     </Row>
     <div style={{margin:'12px 2px'}}><Legend/></div>
@@ -272,10 +274,10 @@ function Dashboard({go}){
       return <Card className="card" style={{marginTop:16}} title={'最新告警（'+ga.length+'人）'} size="small">
         {ga.length? <Table size="small" rowKey="key" pagination={{pageSize:10}} dataSource={ga}
           columns={[{title:'用户',dataIndex:'employee',width:110},
-            {title:'风险场景',dataIndex:'scenarios',render:v=><Space wrap size={[4,4]}>{v.map(s=><Tag color="blue" key={s}>{s}</Tag>)}</Space>},
+            {title:'风险场景',dataIndex:'scenarios',render:v=><Space wrap size={[4,4]}>{v.map(s=><Tag key={s} style={{fontSize:11}} color={'blue'}>{s}</Tag>)}</Space>},
             {title:'风险',dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
             {title:'状态',dataIndex:'status',width:80,render:v=><StatusTag s={v}/>},
-            {title:'说明',dataIndex:'summary',render:v=><Tooltip title={v}><span style={{display:'inline-block',maxWidth:250,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',verticalAlign:'bottom'}}>{v}</span></Tooltip>}]}/> : <Empty description="暂无告警" style={{padding:20}}/>}
+            {title:'说明',dataIndex:'summary',render:v=><Tooltip title={v}><span style={{display:'inline-block',maxWidth:250,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',verticalAlign:'bottom'}}>{v||'-'}</span></Tooltip>}]}/> : <Empty description="暂无告警" style={{padding:20}}/>}
       </Card>;
     })()}
   </div>);
@@ -445,15 +447,15 @@ function Monitor(){
   const d=data.detect||{}, sl=data.syslog||{};
   const ev=data.events||{}, vd=data.verdicts||{}, al=data.alerts||{}, src=data.sources||{};
   const pct = d.total ? Math.round(d.done/d.total*100) : 0;
-  const SRC={"ipguard":"IP-Guard","sangfor":"深信服","":"深信服"};
   const st=src.total||{};
+  const todayRate=ev.total?(Math.round((ev.today||0)/ev.total*100))+'%':'-';
   return (<div>
     <Card className="card" title="日志量统计" size="small" style={{marginBottom:16}}>
       <Table size="small" pagination={false} dataSource={[
-        {key:'today',period:'今日',sangfor:(src.today||{}).sangfor||0,ipguard:(src.today||{}).ipguard||0,total:ev.today||0},
-        {key:'yesterday',period:'昨日',sangfor:(src.yesterday||{}).sangfor||0,ipguard:(src.yesterday||{}).ipguard||0,total:ev.yesterday||0},
-        {key:'week',period:'近7天',sangfor:(src.week||{}).sangfor||0,ipguard:(src.week||{}).ipguard||0,total:ev.week||0},
-        {key:'total',period:'累计',sangfor:(st.sangfor)||0,ipguard:(st.ipguard)||0,total:ev.total||0},
+        {key:'today',period:'今日',sangfor:(src.today||{})['sangfor']||0,ipguard:(src.today||{})['ipguard']||0,total:ev.today||0},
+        {key:'yesterday',period:'昨日',sangfor:(src.yesterday||{})['sangfor']||0,ipguard:(src.yesterday||{})['ipguard']||0,total:ev.yesterday||0},
+        {key:'week',period:'近7天',sangfor:(src.week||{})['sangfor']||0,ipguard:(src.week||{})['ipguard']||0,total:ev.week||0},
+        {key:'total',period:'累计',sangfor:st['sangfor']||0,ipguard:st['ipguard']||0,total:ev.total||0},
       ]} columns={[
         {title:'时间段',dataIndex:'period',width:70},
         {title:'深信服',dataIndex:'sangfor',width:100,render:v=><span className="num">{v}</span>},
@@ -465,7 +467,7 @@ function Monitor(){
       <Col span={6}><Card className="card"><Statistic title="AI研判(今日)" value={vd.today||0}/><div style={{fontSize:11,color:'#9aa3b2'}}>累计 {vd.total||0}</div></Card></Col>
       <Col span={6}><Card className="card"><Statistic title="AI成功" value={vd.ai||0} valueStyle={{color:'#52c41a'}}/><div style={{fontSize:11,color:'#9aa3b2'}}>兜底 {vd.fallback||0}</div></Card></Col>
       <Col span={6}><Card className="card"><Statistic title="告警(今日)" value={al.today||0} valueStyle={{color:'#fa8c16'}}/><div style={{fontSize:11,color:'#9aa3b2'}}>累计 {al.total||0}</div></Card></Col>
-      <Col span={6}><Card className="card"><Statistic title="数据库" value={data.db_size_mb||0} suffix="MB"/></Card></Col>
+      <Col span={6}><Card className="card"><Statistic title="今日占比" value={todayRate} valueStyle={{color:'#1677ff'}}/><div style={{fontSize:11,color:'#9aa3b2'}}>数据库 {data.db_size_mb||0}MB</div></Card></Col>
     </Row>
     <Row gutter={16} style={{marginBottom:16}}>
       <Col span={12}><Card className="card" title="Syslog 接收" size="small">
