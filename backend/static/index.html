@@ -261,16 +261,16 @@ function Dashboard({go}){
   useEffect(()=>{
     // 饼图数据：优先用 alerts，其次用 verdicts
     const pieData = al.length ? al : vs;
-    if(pieData.length&&pie.current){ const cnt={}; pieData.forEach(v=>{const s=v.scenario||v.intent||'unknown';cnt[s]=(cnt[s]||0)+1;}); const c=echarts.init(pie.current);
+    if(pieData.length&&pie.current){ const cnt={}; pieData.forEach(v=>{const s=v.scenario||v.intent||'unknown';cnt[s]=(cnt[s]||0)+1;}); if(!Object.keys(cnt).length){ pie.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无告警分布</div>'; } else { const c=echarts.init(pie.current);
       c.setOption({tooltip:{trigger:'item'},legend:{bottom:0,textStyle:{color:'#6b7280',fontSize:11}},
         color:['#ff4d4f','#fa8c16','#faad14','#1677ff','#52c41a'],
-        series:[{type:'pie',radius:['42%','70%'],label:{color:'#4b5563'},data:Object.entries(cnt).map(([k,v])=>({name:INTENT[k]||k,value:v}))}]});}
+        series:[{type:'pie',radius:['42%','70%'],label:{color:'#4b5563'},data:Object.entries(cnt).map(([k,v])=>({name:INTENT[k]||k,value:v}))}]});}}
     if(vs.length&&bar.current){ const er={}; vs.forEach(v=>er[v.employee]=Math.max(er[v.employee]||0,v.risk_score));
-      const top=Object.entries(er).sort((a,b)=>b[1]-a[1]).slice(0,10); const c=echarts.init(bar.current);
+      const top=Object.entries(er).sort((a,b)=>b[1]-a[1]).slice(0,10); if(!top.length){ bar.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无高风险用户</div>'; } else { const c=echarts.init(bar.current);
       const barColors=top.map(x=>{const v=x[1];return v>=86?'#ff4d4f':v>=61?'#fa8c16':v>=31?'#faad14':'#52c41a';}).reverse();
       c.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0].name+'：'+p[0].value+'分'},grid:{left:220,right:60},xAxis:{type:'value',max:100,axisLine:{lineStyle:{color:'#d0d7e3'}},axisLabel:{color:'#9aa3b2'}},
         yAxis:{type:'category',data:top.map(x=>x[0]).reverse(),axisLabel:{color:'#6b7280',fontSize:13,width:200,overflow:'truncate',ellipsis:'…'},axisLine:{lineStyle:{color:'#d0d7e3'}}},
-        series:[{type:'bar',data:top.map(x=>x[1]).reverse(),itemStyle:{color:function(p){return barColors[p.dataIndex];},borderRadius:[0,4,4,0]},label:{show:true,position:'right',color:'#6b7280',formatter:'{c}分'}}]});}
+        series:[{type:'bar',data:top.map(x=>x[1]).reverse(),itemStyle:{color:function(p){return barColors[p.dataIndex];},borderRadius:[0,4,4,0]},label:{show:true,position:'right',color:'#6b7280',formatter:'{c}分'}}]});}}
     if(vs.length&&trend.current){
       const bk={};
       vs.forEach(v=>{
@@ -283,6 +283,7 @@ function Dashboard({go}){
       });
       const ts=Object.keys(bk).sort((a,b)=>+a-+b);
       const vals=ts.map(t=>bk[t].size);
+      if(!vals.length){ trend.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:40px">暂无风险趋势数据</div>'; return; }
       const maxY=Math.max(...vals,1);
       const c=echarts.init(trend.current);
       c.setOption({tooltip:{trigger:'axis'},grid:{left:40,right:20,top:20,bottom:40},

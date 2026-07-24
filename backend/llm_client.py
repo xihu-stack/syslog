@@ -50,7 +50,8 @@ def _candidates():
         "deepseek": (ds_base, ds_key, ds_model),
     }
     order = [active] + [m for m in ("qwen", "deepseek") if m != active]
-    return [(pairs[m][0], pairs[m][1], pairs[m][2]) for m in order if pairs[m][1]]
+    # 只要 base_url 有效就返回（本地模型可能无需 key）
+    return [(pairs[m][0], pairs[m][1], pairs[m][2]) for m in order if pairs[m][0] and pairs[m][0].startswith("http")]
 
 
 def chat(messages, model=None, temperature=0.1, max_tokens=1000, timeout=120):
