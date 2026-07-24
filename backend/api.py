@@ -467,7 +467,7 @@ def category_stats():
         yesterday_start = today_start - timedelta(days=1)
 
         def cat_count(since, until=None):
-            q = s.query(EventRow.raw.op('->>')('app'), _f.count(EventRow.id)).filter(
+            q = s.query(EventRow.raw.op('->>')('app'), func.count(EventRow.id)).filter(
                 EventRow.category == 'WEB', EventRow.occurred_at >= since)
             if until:
                 q = q.filter(EventRow.occurred_at < until)
