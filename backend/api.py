@@ -357,6 +357,56 @@ def syslog_status():
     return syslog_recv.status()
 
 
+@app.get("/api/system/stats")
+def system_stats():
+    """系统运行状态：syslog接收/入库/研判进度/LLM调用/数据库/事件来源。"""
+    from datetime import datetime, timedelta
+    s = Session()
+    try:
+        # 事件来源分布
+        from sqlalchemy import func as _f
+        src_rows = s.query(EventRow.source, _f.count(EventRow.id)).group_by(EventRow.source).all()
+        sources = {r[0] or "未知": r[1] for r in src_rows}
+        # 最近24h事件量
+        since = datetime.utcnow() - timedelta(hours=24)
+        ev_24h = s.query(EventRow).filter(EventRow.occurred_at >= since).count()
+        # 最近24h告警量
+        al_24h = s.query(AlertRow).filter(AlertRow.created_at >= since).count()
+        # 告警状态分布
+        st_rows = s.query(AlertRow.status, _f.count(AlertRow.id)).group_by(AlertRow.status).all()
+        alert_status = {r[0]: r[1] for r in st_rows}
+        # 研判统计
+        vd_24h = s.query(VerdictRow).filter(VerdictRow.created_at >= since).count()
+        vd_ai = s.query(VerdictRow).filter(VerdictRow.ai_participated == 1).count()
+        vd_fallback = s.query(VerdictRow).filter(VerdictRow.ai_participated == 0).count()
+        # 数据库大小
+        import os as _os
+        db_size = _os.path.getsize(_os.path.join(_os.path.dirname(__file__), "data", "ipguard.db")) if _os.path.exists(_os.path.join(_os.path.dirname(__file__), "data", "ipguard.db")) else 0
+        # 豁免数量
+        ex_count = s.query(ExceptionRow).filter(
+            (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > datetime.utcnow())
+        ).count()
+        return {
+            "events_total": s.query(EventRow).count(),
+            "events_24h": ev_24h,
+            "sources": sources,
+            "verdicts_total": s.query(VerdictRow).count(),
+            "verdicts_24h": vd_24h,
+            "verdicts_ai": vd_ai,
+            "verdicts_fallback": vd_fallback,
+            "alerts_total": s.query(AlertRow).count(),
+            "alerts_24h": al_24h,
+            "alert_status": alert_status,
+            "exceptions": ex_count,
+            "db_size_mb": round(db_size / 1024 / 1024, 1),
+            "employees": s.query(EventRow.employee_id).distinct().count(),
+            "detect": pipeline.detection_status(),
+            "syslog": syslog_recv.status(),
+        }
+    finally:
+        s.close()
+
+
 @app.post("/api/update")
 def update_code():
     """远程拉取最新代码并重启（git pull + 同步 + 重启）。"""
