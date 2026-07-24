@@ -192,7 +192,7 @@ function Dashboard({go}){
   };
   useEffect(()=>{ load(); },[]);
   useEffect(()=>{
-    if(vs.length&&pie.current){ const cnt={}; vs.filter(v=>v.intent!=='normal_work').forEach(v=>cnt[v.intent]=(cnt[v.intent]||0)+1); const c=echarts.init(pie.current);
+    if(al.length&&pie.current){ const cnt={}; al.forEach(v=>cnt[v.scenario]=(cnt[v.scenario]||0)+1); const c=echarts.init(pie.current);
       c.setOption({tooltip:{trigger:'item'},legend:{bottom:0,textStyle:{color:'#6b7280',fontSize:11}},
         color:['#fa8c16','#1677ff','#13c2c2','#722ed1','#ff4d4f'],
         series:[{type:'pie',radius:['42%','70%'],label:{color:'#4b5563'},data:Object.entries(cnt).map(([k,v])=>({name:INTENT[k]||k,value:v}))}]});}
