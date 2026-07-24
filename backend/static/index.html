@@ -154,6 +154,7 @@ function App(){
           <Space>
             <Upload showUploadList={false} beforeUpload={uploadLog}><Button type="primary">导入日志</Button></Upload>
             <Button onClick={()=>{ POST('/api/run'); pollDetect(); }}>重新研判</Button>
+            <Button href="/api/export/alerts" target="_blank">导出告警</Button>
           </Space>
         </Header>
         <Content style={{margin:16}}>

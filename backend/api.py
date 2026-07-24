@@ -10,7 +10,7 @@ from fastapi import Body, FastAPI, File, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import desc, func
 
-from db import (AlertRow, EventRow, FeedbackRow, ProfileRow, Session, VerdictRow, init_db)
+from db import (AlertRow, EventRow, ExceptionRow, FeedbackRow, ProfileRow, Session, VerdictRow, init_db)
 import pipeline
 import profiles
 import dicts
@@ -173,6 +173,36 @@ def detect_status():
     return pipeline.detection_status()
 
 
+@app.get("/api/exceptions")
+def list_exceptions():
+    """查询豁免列表（已确认正常的用户行为）。"""
+    from datetime import datetime
+    s = Session()
+    try:
+        rows = s.query(ExceptionRow).filter(
+            (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > datetime.utcnow())
+        ).all()
+        return [{"id": r.id, "employee": r.employee_id, "signal_type": r.signal_type,
+                 "reason": r.reason, "expires_at": r.expires_at.isoformat() if r.expires_at else None}
+                for r in rows]
+    finally:
+        s.close()
+
+
+@app.delete("/api/exceptions/{eid}")
+def delete_exception(eid: int):
+    """删除豁免（恢复告警）。"""
+    s = Session()
+    try:
+        r = s.get(ExceptionRow, eid)
+        if r:
+            s.delete(r)
+            s.commit()
+        return {"ok": True}
+    finally:
+        s.close()
+
+
 @app.post("/api/rejudge")
 def rejudge():
     """清空旧研判 + 重置水位，全量重研判（修复模型/prompt 后重跑）。"""
@@ -288,6 +318,30 @@ def syslog_stop():
 @app.get("/api/syslog/status")
 def syslog_status():
     return syslog_recv.status()
+
+
+@app.get("/api/export/alerts")
+def export_alerts():
+    """导出告警为CSV（安全运营报告用）。"""
+    import csv as _csv
+    import io as _io
+    from fastapi.responses import StreamingResponse
+    s = Session()
+    try:
+        rows = s.query(AlertRow).order_by(desc(AlertRow.risk_score)).all()
+        output = _io.StringIO()
+        output.write("﻿")
+        w = _csv.writer(output)
+        w.writerow(["用户", "场景", "严重度", "风险分", "状态", "时间", "说明"])
+        SCN = {"job_seeking":"求职离职","data_exfiltration":"数据外发","baseline_deviation":"行为偏离","policy_violation":"违规"}
+        for r in rows:
+            w.writerow([r.employee_id, SCN.get(r.scenario, r.scenario or ""), r.severity,
+                        r.risk_score, r.status, r.window_start.isoformat() if r.window_start else "", r.summary])
+        output.seek(0)
+        return StreamingResponse(iter([output.getvalue()]), media_type="text/csv",
+                                headers={"Content-Disposition": "attachment; filename=alerts.csv"})
+    finally:
+        s.close()
 
 
 # ---------------- 托管前端（放最后，避免拦截 /api）----------------
