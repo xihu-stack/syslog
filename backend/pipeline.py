@@ -246,6 +246,38 @@ def start_detection(risk_threshold: int = 50) -> dict:
     return detection_status()
 
 
+def auto_close_alerts():
+    """自动关闭低风险/过期的告警（不影响基线和研判，只是清理运营视图）。
+    - baseline_deviation + risk<50 → 立即关闭（噪音）
+    - baseline_deviation + risk 50-65 + 超过3天 → 关闭（冷启动过期）
+    - 其他 → 不动（需人工处理）
+    """
+    from datetime import datetime, timedelta
+    init_db()
+    s = Session()
+    try:
+        now = datetime.utcnow()
+        cutoff_3d = now - timedelta(days=3)
+        # 立即关闭：偏离类 + 低分
+        n1 = s.query(AlertRow).filter(
+            AlertRow.scenario == "baseline_deviation",
+            AlertRow.risk_score < 50,
+            AlertRow.status == "NEW"
+        ).update({AlertRow.status: "CLOSED"}, synchronize_session=False)
+        # 3天后关闭：偏离类 + 中分 + 超时
+        n2 = s.query(AlertRow).filter(
+            AlertRow.scenario == "baseline_deviation",
+            AlertRow.risk_score >= 50,
+            AlertRow.risk_score < 66,
+            AlertRow.status == "NEW",
+            AlertRow.created_at < cutoff_3d
+        ).update({AlertRow.status: "CLOSED"}, synchronize_session=False)
+        s.commit()
+        return n1 + n2
+    finally:
+        s.close()
+
+
 def cleanup_old_events(days: int = 90) -> int:
     """清理超过保留期的事件（告警/研判记录保留）。返回删除条数。"""
     from datetime import datetime, timedelta

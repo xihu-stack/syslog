@@ -44,10 +44,11 @@ def _flush_loop():
     global _flush_timer, _flush_count
     _flush_events()
     _flush_count += 1
-    if _flush_count % 120 == 0:  # 约1小时清理一次（默认90天前的事件）
+    if _flush_count % 120 == 0:  # 约1小时维护一次
         try:
             import pipeline
             pipeline.cleanup_old_events(int(__import__("dicts").get_setting("retention_days", "90")))
+            pipeline.auto_close_alerts()
         except Exception:
             pass
     if _state["enabled"]:
