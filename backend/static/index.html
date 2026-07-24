@@ -259,21 +259,11 @@ function Alerts({goProfile}){
   useEffect(()=>{ load(); },[]);
   const doConfirm=(e,vid)=>{ e.stopPropagation(); POST('/api/verdicts/'+vid+'/confirm').then(()=>{ message.success('已确认'); load(); }); };
   const doFP=(e,vid,intent,emp)=>{ e.stopPropagation();
-    let reason='误报', days=0;
     Modal.confirm({
       title:'确认误报 — '+emp,
-      content:React.createElement('div',null,
-        React.createElement('p',{style:{marginBottom:8}},'原因：'),
-        React.createElement(Select,{defaultValue:'误报',style:{width:'100%',marginBottom:8},onChange:v=>reason=v,options:[
-          {value:'岗位需要',label:'岗位需要（永久豁免）'},
-          {value:'工作需要',label:'工作需要（90天有效）'},
-          {value:'时间正常',label:'时间正常（永久）'},
-          {value:'误报',label:'一般误报'},
-        ]}),
-        React.createElement('p',{style:{marginBottom:4,fontSize:12,color:'#999'},'行为类型：'+(INTENT[intent]||intent)+'，豁免后该用户同类行为不再告警')
-      ),
+      content:'行为类型：'+(INTENT[intent]||intent)+'\n确认后该用户同类行为将不再告警（豁免）。',
       okText:'确认误报', cancelText:'取消', okType:'danger',
-      onOk:()=>POST('/api/verdicts/'+vid+'/false_positive?reason='+encodeURIComponent(reason)+'&signal_type='+intent+'&expires_days='+(reason==='工作需要'?'90':'0')).then(()=>{ message.success('已标记误报'); load(); })
+      onOk:()=>POST('/api/verdicts/'+vid+'/false_positive?reason=岗位需要&signal_type='+intent+'&expires_days=0').then(()=>{ message.success('已标记误报并豁免'); load(); })
     });
   };
   return (<div>
