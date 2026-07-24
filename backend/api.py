@@ -429,6 +429,10 @@ def system_stats():
             },
             "alerts": {
                 "today": al_today, "total": al_total, "status": alert_status,
+                "list": [{
+                    "employee": r.employee_id, "scenario": r.scenario,
+                    "risk_score": r.risk_score, "status": r.status, "summary": r.summary,
+                } for r in s.query(AlertRow).order_by(desc(AlertRow.risk_score), desc(AlertRow.created_at)).limit(50).all()],
             },
             "exceptions": ex_count,
             "db_size_mb": round(db_size / 1024 / 1024, 1),
