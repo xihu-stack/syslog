@@ -71,5 +71,5 @@ def aggregate(events, bucket_minutes: int = 10) -> list:
         out.append(CanonicalEvent(
             occurred_at=bucket, employee_id=emp, device_id=s.device_id,
             category="WEB", action="VISIT", target_type="URL",
-            target_value=domain, count=rec["count"], raw=raw))
+            target_value=domain, count=rec["count"], source=getattr(s,'source',''), raw=raw))
     return out

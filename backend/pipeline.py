@@ -216,7 +216,8 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
 
 # ---- 单飞异步研判：同一时刻只跑一个；后台线程执行，前端轮询进度 ----
 _detect_lock = threading.Lock()
-_detect_status = {"running": False, "total": 0, "done": 0, "judged": 0, "alerts": 0, "error": None}
+_detect_status = {"running": False, "total": 0, "done": 0, "judged": 0, "alerts": 0, "error": None,
+                  "last_finished": None, "last_judged": 0, "last_alerts": 0}
 
 
 def detection_status() -> dict:
@@ -236,7 +237,9 @@ def start_detection(risk_threshold: int = 50) -> dict:
                 _detect_status["total" if kind == "total" else "done"] = val
 
             judged, alerts = run_detection(risk_threshold, on_progress=_prog)
-            _detect_status.update(running=False, judged=judged, alerts=alerts)
+            _detect_status.update(running=False, judged=judged, alerts=alerts,
+                                  last_finished=datetime.utcnow().isoformat(),
+                                  last_judged=judged, last_alerts=alerts)
         except Exception as e:
             _detect_status.update(running=False, error=str(e))
         finally:
