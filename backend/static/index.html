@@ -182,20 +182,26 @@ function App(){
 }
 
 function Dashboard({go}){
-  const [st,setSt]=useState({}); const [vs,setVs]=useState([]); const [al,setAl]=useState([]);
+  const [st,setSt]=useState({}); const [vs,setVs]=useState([]); const [al,setAl]=useState([]); const [sys,setSys]=useState({});
   const pie=useRef(),bar=useRef(),trend=useRef();
-  const load=async()=>{ setSt(await GET('/api/stats')); setVs(await GET('/api/verdicts?limit=300')); setAl(await GET('/api/alerts?limit=50')); };
+  const load=async()=>{
+    setSt(await GET('/api/stats'));
+    setVs(await GET('/api/verdicts?limit=300'));
+    setAl(await GET('/api/alerts?limit=50'));
+    setSys(await GET('/api/system/stats'));
+  };
   useEffect(()=>{ load(); },[]);
   useEffect(()=>{
     if(vs.length&&pie.current){ const cnt={}; vs.filter(v=>v.intent!=='normal_work').forEach(v=>cnt[v.intent]=(cnt[v.intent]||0)+1); const c=echarts.init(pie.current);
       c.setOption({tooltip:{trigger:'item'},legend:{bottom:0,textStyle:{color:'#6b7280',fontSize:11}},
-        color:['#1677ff','#13c2c2','#fa8c16','#722ed1','#ff4d4f'],
+        color:['#fa8c16','#1677ff','#13c2c2','#722ed1','#ff4d4f'],
         series:[{type:'pie',radius:['42%','70%'],label:{color:'#4b5563'},data:Object.entries(cnt).map(([k,v])=>({name:INTENT[k]||k,value:v}))}]});}
     if(vs.length&&bar.current){ const er={}; vs.forEach(v=>er[v.employee]=Math.max(er[v.employee]||0,v.risk_score));
       const top=Object.entries(er).sort((a,b)=>b[1]-a[1]).slice(0,10); const c=echarts.init(bar.current);
-      c.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>{return p[0].name+'：'+p[0].value+'分';}},grid:{left:200,right:60},xAxis:{type:'value',max:100,axisLine:{lineStyle:{color:'#d0d7e3'}},axisLabel:{color:'#9aa3b2'}},
-        yAxis:{type:'category',data:top.map(x=>x[0]).reverse(),axisLabel:{color:'#6b7280',fontSize:12,formatter:v=>v.length>8?v.slice(0,7)+'…':v},axisLine:{lineStyle:{color:'#d0d7e3'}}},
-        series:[{type:'bar',data:top.map(x=>x[1]).reverse(),itemStyle:{color:'#1677ff',borderRadius:[0,4,4,0]},label:{show:true,position:'right',color:'#1677ff',formatter:'{c}分'}}]});}
+      const barColors=top.map(x=>{const v=x[1];return v>=86?'#ff4d4f':v>=61?'#fa8c16':v>=31?'#faad14':'#52c41a';}).reverse();
+      c.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0].name+'：'+p[0].value+'分'},grid:{left:220,right:60},xAxis:{type:'value',max:100,axisLine:{lineStyle:{color:'#d0d7e3'}},axisLabel:{color:'#9aa3b2'}},
+        yAxis:{type:'category',data:top.map(x=>x[0]).reverse(),axisLabel:{color:'#6b7280',fontSize:13,width:200,overflow:'truncate',ellipsis:'…'},axisLine:{lineStyle:{color:'#d0d7e3'}}},
+        series:[{type:'bar',data:top.map(x=>x[1]).reverse(),itemStyle:{color:function(p){return barColors[p.dataIndex];},borderRadius:[0,4,4,0]},label:{show:true,position:'right',color:'#6b7280',formatter:'{c}分'}}]});}
     if(vs.length&&trend.current){
       const bk={}; vs.forEach(v=>{const t=new Date(v.window_start); if(isNaN(t))return; const k=Math.floor(t.getTime()/600000)*600000; bk[k]=Math.max(bk[k]||0,v.risk_score||0);});
       const ts=Object.keys(bk).sort((a,b)=>+a-+b);
@@ -205,31 +211,38 @@ function Dashboard({go}){
         yAxis:{type:'value',max:100,axisLabel:{color:'#9aa3b2'}},
         series:[{type:'line',data:ts.map(t=>bk[t]),smooth:true,areaStyle:{color:'#1677ff22'},lineStyle:{color:'#1677ff'},itemStyle:{color:'#ff4d4f',borderColor:'#fff'}}]});}
   },[vs]);
-  const tile=(val,lbl,cls,goKey)=>(<Col span={6}><div className={'tile '+(cls||'')} onClick={()=>go(goKey)}><div className="v num">{val}</div><div className="l">{lbl}</div><div className="arr">查看 ▸</div></div></Col>);
+  const SRC={"sangfor":"深信服","ipguard":"IP-Guard","":"未知"};
+  const srcData=Object.entries(sys.sources||{});
   return (<div>
     <Row gutter={16}>
-      {tile(st.events||0,'历史日志事件','','computers')}
-      {tile(st.employees||0,'用户','','computers')}
-      {tile(st.verdicts||0,'研判窗口','','alerts')}
-      {tile(st.alerts||0,'风险告警','alert','alerts')}
+      {(()=>{const v=st.events||0,lbl='日志事件';return <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{v}</div><div className="l">{lbl}</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日 {sys.events_24h||0}</div></div></Col>;})()}
+      {(()=>{const v=st.employees||0;return <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{v}</div><div className="l">用户</div></div></Col>;})()}
+      {(()=>{const v=st.verdicts||0;return <Col span={6}><div className="tile" onClick={()=>go('alerts')}><div className="v num">{v}</div><div className="l">研判窗口</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>AI {sys.verdicts_ai||0} / 兜底 {sys.verdicts_fallback||0}</div></div></Col>;})()}
+      {(()=>{const v=st.alerts||0;return <Col span={6}><div className="tile alert" onClick={()=>go('alerts')}><div className="v num">{v}</div><div className="l">风险告警</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日 {sys.alerts_24h||0} / 待处理 {(sys.alert_status||{}).NEW||0}</div></div></Col>;})()}
     </Row>
-    <div style={{margin:'14px 2px'}}><Legend/></div>
-    {(st.alerts>0&&st.verdicts>0&&(st.alerts/st.verdicts>0.12))&&<Alert type="warning" message="基线建设中（冷启动期）— 告警偏多属正常，积累数据后误报显著下降" style={{marginBottom:12}} showIcon/>}
+    <Row gutter={16} style={{marginTop:12}}>
+      {srcData.map(([k,v])=>(
+        <Col key={k}><Card className="card" size="small" style={{padding:'4px 12px'}}><Statistic title={SRC[k]||k} value={v} valueStyle={{fontSize:16}}/></Card></Col>
+      ))}
+      <Col><Card className="card" size="small" style={{padding:'4px 12px'}}><Statistic title="数据库" value={sys.db_size_mb||0} suffix="MB" valueStyle={{fontSize:16}}/></Card></Col>
+    </Row>
+    <div style={{margin:'12px 2px'}}><Legend/></div>
+    {(st.alerts>0&&st.verdicts>0&&(st.alerts/st.verdicts>0.15))&&<Alert type="warning" message="基线建设中（冷启动期）— 告警偏多属正常" style={{marginBottom:12}} showIcon/>}
     <Row gutter={16}>
-      <Col span={10}><Card className="card" title="风险意图分布" size="small"><div ref={pie} style={{height:260}}></div></Card></Col>
-      <Col span={14}><Card className="card" title="高风险用户 TOP10" size="small"><div ref={bar} style={{height:260}}></div></Card></Col>
+      <Col span={10}><Card className="card" title="风险意图分布" size="small"><div ref={pie} style={{height:240}}></div></Card></Col>
+      <Col span={14}><Card className="card" title="高风险用户 TOP10" size="small"><div ref={bar} style={{height:240}}></div></Card></Col>
     </Row>
-    <Card className="card" title="风险趋势（按10分钟峰值）" size="small" style={{marginTop:16}}><div ref={trend} style={{height:180}}></div></Card>
+    <Card className="card" title="风险趋势（按10分钟峰值）" size="small" style={{marginTop:16}}><div ref={trend} style={{height:160}}></div></Card>
     {(()=>{
       const ag={};(al||[]).forEach(a=>{if(!ag[a.employee])ag[a.employee]={key:a.employee,employee:a.employee,scenarios:[],maxRisk:0,summary:'',status:a.status};const g=ag[a.employee];const sc=INTENT[a.scenario]||a.scenario;if(!g.scenarios.includes(sc))g.scenarios.push(sc);if((a.risk_score||0)>g.maxRisk){g.maxRisk=a.risk_score;g.summary=a.summary;}});
       const ga=Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);
-      return <Card className="card" style={{marginTop:16}} title={'最新告警（按用户合并，共'+ga.length+'人）'} size="small">
+      return <Card className="card" style={{marginTop:16}} title={'最新告警（'+ga.length+'人）'} size="small">
         {ga.length? <Table size="small" rowKey="key" pagination={{pageSize:10}} dataSource={ga}
-          columns={[{title:'用户',dataIndex:'employee',width:120},
+          columns={[{title:'用户',dataIndex:'employee',width:110},
             {title:'风险场景',dataIndex:'scenarios',render:v=><Space wrap size={[4,4]}>{v.map(s=><Tag color="blue" key={s}>{s}</Tag>)}</Space>},
-            {title:'风险',dataIndex:'maxRisk',width:100,render:v=><RiskBadge s={v}/>},
-            {title:'状态',dataIndex:'status',width:80,render:v=><StatusTag s={v}/>},
-            {title:'说明',dataIndex:'summary',ellipsis:true}]}/> : <Empty description="暂无告警（数据良性时属正常）" style={{padding:20}}/>}
+            {title:'风险',dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
+            {title:'状态',dataIndex:'status',width:70,render:v=><StatusTag s={v}/>},
+            {title:'说明',dataIndex:'summary',render:v=><Tooltip title={v}><span style={{display:'inline-block',maxWidth:250,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',verticalAlign:'bottom'}}>{v}</span></Tooltip>}]}/> : <Empty description="暂无告警" style={{padding:20}}/>}
       </Card>;
     })()}
   </div>);
