@@ -47,10 +47,10 @@ const DEV = {none:'无', minor:'轻微', major:'重大', severe:'严重', unknow
 const STATUS_MAP = {NEW:{c:'#1677ff',t:'待处理'}, TRIAGING:{c:'#faad14',t:'处理中'}, CONFIRMED:{c:'#ff4d4f',t:'已确认'}, FP:{c:'#bfbfbf',t:'误报'}, CLOSED:{c:'#52c41a',t:'已关闭'}};
 const STATUS_OPTS = [{label:'待处理',value:'NEW'},{label:'处理中',value:'TRIAGING'},{label:'已确认',value:'CONFIRMED'},{label:'误报',value:'FP'},{label:'已关闭',value:'CLOSED'}];
 const fmt = s => (s||'').replace('T',' ').slice(0,16);
-const GET = u=>fetch(u).then(r=>r.json());
-const POST=(u,o)=>fetch(u,{method:'POST',...o}).then(r=>r.json());
-const PUTJ=(u,b)=>fetch(u,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json());
-const DEL=(u)=>fetch(u,{method:'DELETE'}).then(r=>r.json());
+const GET = u=>fetch(u).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('GET '+u,e);return {};});
+const POST=(u,o)=>fetch(u,{method:'POST',...o}).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('POST '+u,e);message.error('请求失败');return {};});
+const PUTJ=(u,b)=>fetch(u,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('PUT '+u,e);message.error('保存失败');return {};});
+const DEL=(u)=>fetch(u,{method:'DELETE'}).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('DEL '+u,e);message.error('删除失败');return {};});
 
 function RiskBadge({s}){ const v=LVL(s); return <span className="risk" style={{background:v.c+'1a',color:v.c,border:'1px solid '+v.c+'66'}}>{s==null?'-':s} {v.l}</span>; }
 function StatusTag({s}){ const v=STATUS_MAP[s]||{c:'#999',t:s}; return <span className="st-tag" style={{background:v.c+'1a',color:v.c}}>{v.t}</span>; }
