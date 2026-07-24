@@ -154,7 +154,11 @@ def deviation(window, baseline, global_domains=None) -> list:
 
 
 def should_trigger(window, dev, baseline) -> bool:
-    """基线感知触发：无基线 / 有偏离 / 写操作 / 外发通道 / 绝对风险 → 调 AI；常规行为 → 跳过。"""
+    """基线感知触发：无基线 / 有偏离 / 写操作 / 外发通道 / 绝对风险 / 网页搜索 → 调 AI；常规行为 → 跳过。"""
+    # WEB / SEARCH 事件本身就应该研判（基线只用于 AI 参考上下文，不作为跳过条件）
+    for e in window:
+        if e.category in ("WEB", "SEARCH"):
+            return True
     if not baseline or baseline.get("sample_count", 0) < 3:
         return True
     if dev:
