@@ -121,7 +121,11 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
             lines.append(f"{t} [{src}] [{e.action}] {e.target_value}（通道={(e.raw or {}).get('channel')}, 应用={(e.raw or {}).get('application')}）")
     if n_other > 12:
         lines.append(f"…及另外 {n_other - 12} 条文档/搜索")
-    return "\n".join(lines) if lines else "(无行为)"
+    raw = "\n".join(lines) if lines else "(无行为)"
+    # 硬截断：超过 1500 字（约 2000 tokens）则截断（留空间给 system prompt + 输出）
+    if len(raw) > 1500:
+        raw = raw[:1500] + "\n…（行为过多已截断）"
+    return raw
 
 
 def deviation(window, baseline, global_domains=None) -> list:
