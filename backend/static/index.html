@@ -249,20 +249,57 @@ function Dashboard({go}){
 }
 
 function Computers({goProfile}){
-  const [rows,setRows]=useState([]); const [uq,setUq]=useState('');
+  const [rows,setRows]=useState([]); const [uq,setUq]=useState(''); const [riskFilter,setRiskFilter]=useState('all');
   const load=async()=> setRows(await GET('/api/computers'));
   useEffect(()=>{ load(); },[]);
+  const summary={
+    total: rows.length,
+    alert: rows.filter(r=>(r.alert_count||0)>0).length,
+    high: rows.filter(r=>(r.max_risk||0)>=61).length,
+    clean: rows.filter(r=>(r.alert_count||0)===0).length,
+  };
+  const filtered=rows.filter(r=>{
+    if(uq&&!(r.computer||'').toLowerCase().includes(uq.toLowerCase()))return false;
+    if(riskFilter==='alert'&&!(r.alert_count>0))return false;
+    if(riskFilter==='high'&&(r.max_risk||0)<61)return false;
+    if(riskFilter==='clean'&&(r.alert_count>0))return false;
+    return true;
+  });
   return (<div>
-    <div className="sec-title">点击用户查看完整画像（风险趋势/活跃时段/基线/研判历史）</div>
+    <Row gutter={12} style={{marginBottom:12}}>
+      <Col span={6}><Card className="card" size="small"><Statistic title="总用户" value={summary.total}/></Card></Col>
+      <Col span={6}><Card className="card" size="small"><Statistic title="有告警" value={summary.alert} valueStyle={{color:'#fa8c16'}}/></Card></Col>
+      <Col span={6}><Card className="card" size="small"><Statistic title="高危(61+)" value={summary.high} valueStyle={{color:'#ff4d4f'}}/></Card></Col>
+      <Col span={6}><Card className="card" size="small"><Statistic title="正常" value={summary.clean} valueStyle={{color:'#52c41a'}}/></Card></Col>
+    </Row>
     <Card className="card" size="small">
-      <Input.Search placeholder="搜索用户名" allowClear style={{width:220,marginBottom:8}} onChange={e=>setUq(e.target.value)} />
-      <Table size="small" rowKey="computer" pagination={{pageSize:14}} dataSource={rows.filter(r=>!uq||(r.computer||'').toLowerCase().includes(uq.toLowerCase()))} onRow={r=>({onClick:()=>goProfile(r.computer)})}
+      <Space style={{marginBottom:8}}>
+        <Input.Search placeholder="搜索用户名" allowClear style={{width:180}} onChange={e=>setUq(e.target.value)} />
+        <Select defaultValue="all" style={{width:110}} onChange={setRiskFilter}>
+          <Select.Option value="all">全部</Select.Option>
+          <Select.Option value="alert">有告警</Select.Option>
+          <Select.Option value="high">高危61+</Select.Option>
+          <Select.Option value="clean">无告警</Select.Option>
+        </Select>
+      </Space>
+      <Table size="small" rowKey="computer" pagination={{pageSize:14}}
+        dataSource={filtered}
+        onRow={r=>({onClick:()=>goProfile(r.computer)})}
+        rowClassName={r=>(r.max_risk||0)>=61?'':(r.alert_count>0?'':'')
+        }
         columns={[
-          {title:'用户',dataIndex:'computer',width:160},
-          {title:'历史事件',dataIndex:'event_count',width:90,render:v=><span className="num">{v}</span>},
-          {title:'告警数',dataIndex:'alert_count',width:70,render:v=>v>0?<Tag color="red">{v}</Tag>:<span className="num">{v}</span>},
-          {title:'最高风险',dataIndex:'max_risk',width:120,render:v=><RiskBadge s={v}/>},
-          {title:'最近活动',dataIndex:'last_seen',render:fmt}]}/>
+          {title:'用户',dataIndex:'computer',width:130,
+            render:(v,r)=>{
+              const rk=r.max_risk||0;
+              return (<a onClick={()=>goProfile(v)} style={{cursor:'pointer',fontWeight:rk>=61?700:400,color:rk>=61?'#ff4d4f':rk>=31?'#fa8c16':'inherit'}}>{v}</a>);
+            }},
+          {title:'风险',dataIndex:'max_risk',width:90,render:v=><RiskBadge s={v}/>},
+          {title:'告警',dataIndex:'alert_count',width:60,
+            render:v=>v>0?<Tag color="red" style={{cursor:'pointer'}}>{v}条</Tag>:<span style={{color:'#d9d9d9'}}>—</span>},
+          {title:'事件',dataIndex:'event_count',width:70,render:v=><span className="num" style={{color:'#6b7280'}}>{v}</span>},
+          {title:'最近活动',dataIndex:'last_seen',width:130,render:fmt},
+          {title:'',width:50,render:()=><span style={{color:'#bcc6d6',fontSize:11}}>▸</span>}
+        ]}/>
     </Card>
   </div>);
 }
