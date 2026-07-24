@@ -88,7 +88,7 @@ def trigger(window: list[CanonicalEvent]) -> bool:
         if e.category == "DOC":
             if e.action in WRITE_ACTIONS:
                 return True
-            ch = e.raw.get("channel")
+            ch = (e.raw or {}).get("channel")
             if ch and ch != "LOCAL":
                 return True
         elif e.category in ("WEB", "SEARCH"):
@@ -200,13 +200,13 @@ def _fallback_verdict(window: list[CanonicalEvent], err: str) -> dict:
     score = 0
     channels = set()
     for e in window:
-        ch = e.raw.get("channel")
+        ch = (e.raw or {}).get("channel")
         if e.category == "DOC" and e.action in ("UPLOAD", "SEND", "COPY") and ch and ch != "LOCAL":
             score = max(score, 70); channels.add(ch)
         if e.category == "DOC" and is_sensitive(e.target_value) and e.action in WRITE_ACTIONS:
             score = max(score, 60)
-        if e.category == "WEB" and e.raw.get("domain_class") in ("netdisk", "personal_email"):
-            score = max(score, 55); channels.add(e.raw.get("domain_class"))
+        if e.category == "WEB" and (e.raw or {}).get("domain_class") in ("netdisk", "personal_email"):
+            score = max(score, 55); channels.add((e.raw or {}).get("domain_class"))
         if e.category == "SEARCH" and _search_risky(e.target_value):
             score = max(score, 50)
     return {
