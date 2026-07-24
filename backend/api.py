@@ -249,6 +249,43 @@ def update_alert_status(alert_id: int, status: str = "TRIAGING"):
         s.close()
 
 
+@app.post("/api/verdicts/{vid}/confirm")
+def verdict_confirm(vid: int):
+    """通过研判ID确认告警（自动找到对应alert）。"""
+    s = Session()
+    try:
+        a = s.query(AlertRow).filter_by(verdict_id=vid).first()
+        if not a:
+            return {"ok": False, "error": "未找到对应告警"}
+        a.status = "CONFIRMED"
+        s.commit()
+        return {"ok": True}
+    finally:
+        s.close()
+
+
+@app.post("/api/verdicts/{vid}/false_positive")
+def verdict_false_positive(vid: int, reason: str = "误报", signal_type: str = "", expires_days: int = 0):
+    """通过研判ID标记误报 + 创建豁免。"""
+    from datetime import datetime, timedelta
+    from db import ExceptionRow
+    s = Session()
+    try:
+        a = s.query(AlertRow).filter_by(verdict_id=vid).first()
+        if not a:
+            return {"ok": False, "error": "未找到对应告警"}
+        a.status = "FP"
+        s.add(FeedbackRow(alert_id=a.id, label="FP", reason=reason))
+        if signal_type:
+            exp = datetime.utcnow() + timedelta(days=expires_days) if expires_days > 0 else None
+            s.add(ExceptionRow(employee_id=a.employee_id, signal_type=signal_type,
+                               reason=reason, expires_at=exp))
+        s.commit()
+        return {"ok": True}
+    finally:
+        s.close()
+
+
 # ---------------- 字典配置（后台可增删改）----------------
 @app.get("/api/dicts")
 def get_dicts():

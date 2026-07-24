@@ -257,8 +257,25 @@ function Alerts({goProfile}){
   const [rows,setRows]=useState([]); const [showAll,setShowAll]=useState(false); const [q,setQ]=useState(''); const [lvl,setLvl]=useState('all');
   const load=async()=> setRows(await GET('/api/verdicts?limit=500'));
   useEffect(()=>{ load(); },[]);
-  const doConfirm=(e,vid)=>{ e.stopPropagation(); PUTJ('/api/alerts/'+vid+'/status?status=CONFIRMED').then(()=>{ message.success('已确认'); load(); }); };
-  const doFP=(e,vid,intent)=>{ e.stopPropagation(); Modal.confirm({ title:'确认误报', content:'该用户同类行为将不再告警', okText:'确认', cancelText:'取消', onOk:()=>POST('/api/feedback?alert_id='+vid+'&label=FP&signal_type='+intent+'&reason=误报').then(()=>{ message.success('已标记误报'); load(); }) }); };
+  const doConfirm=(e,vid)=>{ e.stopPropagation(); POST('/api/verdicts/'+vid+'/confirm').then(()=>{ message.success('已确认'); load(); }); };
+  const doFP=(e,vid,intent,emp)=>{ e.stopPropagation();
+    let reason='误报', days=0;
+    Modal.confirm({
+      title:'确认误报 — '+emp,
+      content:React.createElement('div',null,
+        React.createElement('p',{style:{marginBottom:8}},'原因：'),
+        React.createElement(Select,{defaultValue:'误报',style:{width:'100%',marginBottom:8},onChange:v=>reason=v,options:[
+          {value:'岗位需要',label:'岗位需要（永久豁免）'},
+          {value:'工作需要',label:'工作需要（90天有效）'},
+          {value:'时间正常',label:'时间正常（永久）'},
+          {value:'误报',label:'一般误报'},
+        ]}),
+        React.createElement('p',{style:{marginBottom:4,fontSize:12,color:'#999'},'行为类型：'+(INTENT[intent]||intent)+'，豁免后该用户同类行为不再告警')
+      ),
+      okText:'确认误报', cancelText:'取消', okType:'danger',
+      onOk:()=>POST('/api/verdicts/'+vid+'/false_positive?reason='+encodeURIComponent(reason)+'&signal_type='+intent+'&expires_days='+(reason==='工作需要'?'90':'0')).then(()=>{ message.success('已标记误报'); load(); })
+    });
+  };
   return (<div>
     <div className="sec-title" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
       <span>告警管理 · 按用户合并 · 点击查看画像</span>
@@ -304,7 +321,7 @@ function Alerts({goProfile}){
           {title:'说明',dataIndex:'summary',render:v=><Tooltip title={v}><span style={{display:'inline-block',maxWidth:300,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',verticalAlign:'bottom'}}>{v}</span></Tooltip>},
           {title:'操作',width:120,render:(_,r)=>(<Space size={4}>
             <Button size="small" type="primary" ghost onClick={(e)=>doConfirm(e,r.verdict_id)}>确认</Button>
-            <Button size="small" danger ghost onClick={(e)=>doFP(e,r.verdict_id,r.intent)}>误报</Button>
+            <Button size="small" danger ghost onClick={(e)=>doFP(e,r.verdict_id,r.intent,r.employee)}>误报</Button>
           </Space>)}]}/>
     </Card>
   </div>);
