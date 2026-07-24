@@ -259,8 +259,8 @@ function Alerts({goProfile}){
   const load=async()=> setRows(await GET('/api/alerts?limit=100'));
   useEffect(()=>{ load(); },[]);
   const doConfirm=(e,vid)=>{ e.stopPropagation(); POST('/api/verdicts/'+vid+'/confirm').then(()=>{ message.success('已确认'); load(); }); };
-  const [fpModal,setFpModal]=useState({open:false,vid:0,intent:'',emp:'',reason:'岗位需要'});
-  const doFP=(e,vid,intent,emp)=>{ e.stopPropagation(); setFpModal({open:true,vid,intent,emp,reason:'岗位需要'}); };
+  const [fpModal,setFpModal]=useState({open:false,vid:0,intent:'',emp:'',reason:'岗位需要',allScenarios:[]});
+  const doFP=(e,r)=>{ e.stopPropagation(); setFpModal({open:true,vid:r.verdict_id,intent:r.intent,emp:r.employee,reason:'岗位需要',allScenarios:r.scenarios||[{label:r.intent}]}); };
   const submitFP=()=>{
     POST('/api/verdicts/'+fpModal.vid+'/false_positive?reason='+encodeURIComponent(fpModal.reason)+'&signal_type='+fpModal.intent+'&expires_days='+(fpModal.reason==='临时项目'?'30':'0')).then(()=>{ message.success('已标记误报，后续同类不再告警'); setFpModal({...fpModal,open:false}); load(); });
   };
@@ -309,30 +309,39 @@ function Alerts({goProfile}){
           {title:'说明',dataIndex:'summary',render:v=><Tooltip title={v}><span style={{display:'inline-block',maxWidth:300,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',verticalAlign:'bottom'}}>{v}</span></Tooltip>},
           {title:'操作',width:120,render:(_,r)=>(<Space size={4}>
             <Button size="small" type="primary" ghost onClick={(e)=>doConfirm(e,r.verdict_id)}>确认</Button>
-            <Button size="small" danger ghost onClick={(e)=>doFP(e,r.verdict_id,r.intent,r.employee)}>误报</Button>
+            <Button size="small" danger ghost onClick={(e)=>doFP(e,r)}>误报</Button>
           </Space>)}]}/>
     </Card>
     <Modal open={fpModal.open} title={'确认误报 — '+fpModal.emp} okText="确认误报" cancelText="取消" okType="danger"
       onCancel={()=>setFpModal({...fpModal,open:false})} onOk={submitFP}>
       <div style={{marginBottom:12}}>
-        <Typography.Text strong>行为类型：</Typography.Text>
-        <Tag color="blue">{INTENT[fpModal.intent]||fpModal.intent}</Tag>
+        <Typography.Text strong>该用户的风险场景：</Typography.Text>
+        <div style={{marginTop:6}}>
+          {fpModal.allScenarios.map(s=>(
+            <Tag key={s.label} color={s.label===(INTENT[fpModal.intent]||fpModal.intent)?"blue":"default"}
+              style={{cursor:'pointer',marginBottom:4}}
+              onClick={()=>setFpModal({...fpModal,intent:Object.keys(INTENT).find(k=>INTENT[k]===s.label)||s.label})}>
+              {s.label}{s.label===(INTENT[fpModal.intent]||fpModal.intent)?" ✓":""}
+            </Tag>
+          ))}
+        </div>
+        <Typography.Text type="secondary" style={{fontSize:12}}>点击选择要豁免的场景（其他场景仍正常告警）</Typography.Text>
       </div>
       <div style={{marginBottom:8}}>
-        <Typography.Text>误报原因（将作为身份标签，AI后续会参考）：</Typography.Text>
+        <Typography.Text>误报原因（身份标签，AI后续会参考）：</Typography.Text>
       </div>
       <Select value={fpModal.reason} onChange={v=>setFpModal({...fpModal,reason:v})} style={{width:'100%'}}>
-        <Select.Option value="HR岗位">HR岗位 — 招聘网站访问属正常工作（永久豁免）</Select.Option>
-        <Select.Option value="财务岗位">财务岗位 — 银行/财务网站访问属正常</Select.Option>
-        <Select.Option value="运维岗位">运维岗位 — 远程控制/服务器访问属正常</Select.Option>
+        <Select.Option value="HR岗位">HR岗位 — 招聘网站访问属正常（永久）</Select.Option>
+        <Select.Option value="财务岗位">财务岗位 — 银行/财务网站属正常</Select.Option>
+        <Select.Option value="运维岗位">运维岗位 — 远程控制/服务器属正常</Select.Option>
         <Select.Option value="销售岗位">销售岗位 — U盘拷文件给客户属正常</Select.Option>
-        <Select.Option value="工作需要">工作需要（90天有效，需复核）</Select.Option>
+        <Select.Option value="工作需要">工作需要（90天有效）</Select.Option>
         <Select.Option value="时间正常">时间正常 — 夜班/跨时区（永久）</Select.Option>
         <Select.Option value="临时项目">临时项目（30天有效）</Select.Option>
         <Select.Option value="误报">一般误报（不创建豁免）</Select.Option>
       </Select>
       <Alert type="info" showIcon style={{marginTop:12}}
-        message="选择原因后，该用户的这类行为将不再告警。AI 后续研判时会看到此标签（如'HR岗位'），自动降低同类风险评分。" />
+        message={"将豁免「"+(INTENT[fpModal.intent]||fpModal.intent)+"」场景，其他场景仍正常监控。AI会记住此标签。"} />
     </Modal>
   </div>);
 }
