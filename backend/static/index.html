@@ -308,7 +308,8 @@ function Dashboard({go}){
       <Col span={4}><Card className="card" size="small" style={{padding:'6px 8px'}}><Statistic title="豁免用户" value={sys.exceptions||0} valueStyle={{fontSize:16,color:'#52c41a'}}/><div style={{fontSize:10,color:'#9aa3b2'}}>已排除误报</div></Card></Col>
     </Row>
     <div style={{margin:'12px 2px'}}><Legend/></div>
-    {(st.alerts>0&&st.verdicts>0&&(st.alerts/st.verdicts>0.15))&&<Alert type="warning" message="基线建设中（冷启动期）— 告警偏多属正常，随时间推移会趋于稳定" style={{marginBottom:12}} showIcon/>}
+    {(()=>{const crit=(al||[]).filter(a=>a.risk_score>=86).length; return crit>0&&<Alert type="error" message={<span>⚠️ 严重告警 <b>{crit}</b> 人需要立即关注！</span>} style={{marginBottom:8}} showIcon/>;})()}
+    {(st.alerts>0&&st.verdicts>0&&(st.alerts/st.verdicts>0.15))&&<Alert type="warning" message="基线建设中（冷启动期）— 告警偏多属正常，随时间推移会趋于稳定" style={{marginBottom:8}} showIcon/>}
     <Row gutter={16}>
       <Col span={10}><Card className="card" title="风险意图分布" size="small"><div ref={pie} style={{height:240}}></div></Card></Col>
       <Col span={14}><Card className="card" title="高风险用户 TOP10" size="small"><div ref={bar} style={{height:240}}></div></Card></Col>
