@@ -74,7 +74,7 @@ def stats():
             "verdicts": s.query(VerdictRow).count(),
             "alerts": s.query(AlertRow).count(),
             "alerts_open": s.query(AlertRow).filter(AlertRow.status != "CLOSED").count(),
-            "employees": s.query(EventRow.employee_id).distinct().count(),
+            "employees": s.query(EventRow.employee_id).filter(EventRow.occurred_at >= today_start).distinct().count(),
         }
     finally:
         s.close()
@@ -391,14 +391,22 @@ def system_stats():
         ev_week = sum(src_week.values())
         ev_total = s.query(EventRow).count()
 
-        # 研判量（今日/总量）
+        # 研判量（今日/昨日/总量）
         vd_today = s.query(VerdictRow).filter(VerdictRow.created_at >= today_start).count()
+        vd_yesterday = s.query(VerdictRow).filter(
+            VerdictRow.created_at >= yesterday_start,
+            VerdictRow.created_at < today_start
+        ).count()
         vd_total = s.query(VerdictRow).count()
         vd_ai = s.query(VerdictRow).filter(VerdictRow.ai_participated == 1).count()
         vd_fallback = s.query(VerdictRow).filter(VerdictRow.ai_participated == 0).count()
 
-        # 告警（今日/总量）
+        # 告警（今日/昨日/总量）
         al_today = s.query(AlertRow).filter(AlertRow.created_at >= today_start).count()
+        al_yesterday = s.query(AlertRow).filter(
+            AlertRow.created_at >= yesterday_start,
+            AlertRow.created_at < today_start
+        ).count()
         al_total = s.query(AlertRow).count()
         st_rows = s.query(AlertRow.status, _f.count(AlertRow.id)).group_by(AlertRow.status).all()
         alert_status = {r[0]: r[1] for r in st_rows}
@@ -420,15 +428,19 @@ def system_stats():
             "events": {
                 "today": ev_today, "yesterday": ev_yesterday, "week": ev_week, "total": ev_total,
                 "web_ratio": round(web_total / max(ev_total, 1) * 100, 1),
+                "emp_yesterday": s.query(EventRow.employee_id).filter(
+                    EventRow.occurred_at >= yesterday_start,
+                    EventRow.occurred_at < today_start
+                ).distinct().count(),
             },
             "sources": {
                 "today": src_today, "yesterday": src_yesterday, "week": src_week, "total": src_total,
             },
             "verdicts": {
-                "today": vd_today, "total": vd_total, "ai": vd_ai, "fallback": vd_fallback,
+                "today": vd_today, "yesterday": vd_yesterday, "total": vd_total, "ai": vd_ai, "fallback": vd_fallback,
             },
             "alerts": {
-                "today": al_today, "total": al_total, "status": alert_status,
+                "today": al_today, "yesterday": al_yesterday, "total": al_total, "status": alert_status,
                 "list": [{
                     "employee": r.employee_id, "scenario": r.scenario,
                     "risk_score": r.risk_score, "status": r.status, "summary": r.summary,
@@ -436,7 +448,7 @@ def system_stats():
             },
             "exceptions": ex_count,
             "db_size_mb": round(db_size / 1024 / 1024, 1),
-            "employees": s.query(EventRow.employee_id).distinct().count(),
+            "employees": s.query(EventRow.employee_id).filter(EventRow.occurred_at >= today_start).distinct().count(),
             "detect": pipeline.detection_status(),
             "syslog": syslog_recv.status(),
         }
