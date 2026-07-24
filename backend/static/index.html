@@ -305,7 +305,7 @@ function Alerts({goProfile}){
           {title:'操作',width:120,render:(_,r)=>(<Space size={4}>
             <Button size="small" type="primary" ghost onClick={(e)=>doConfirm(e,r.verdict_id)}>确认</Button>
             <Button size="small" danger ghost onClick={(e)=>doFP(e,r.verdict_id,r.intent)}>误报</Button>
-          </Space>)}]}
+          </Space>)}]}/>
     </Card>
   </div>);
 }
