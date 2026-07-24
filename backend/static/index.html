@@ -192,9 +192,9 @@ function Dashboard({go}){
         series:[{type:'pie',radius:['42%','70%'],label:{color:'#4b5563'},data:Object.entries(cnt).map(([k,v])=>({name:INTENT[k]||k,value:v}))}]});}
     if(vs.length&&bar.current){ const er={}; vs.forEach(v=>er[v.employee]=Math.max(er[v.employee]||0,v.risk_score));
       const top=Object.entries(er).sort((a,b)=>b[1]-a[1]).slice(0,10); const c=echarts.init(bar.current);
-      c.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{left:170,right:50},xAxis:{type:'value',max:100,axisLine:{lineStyle:{color:'#d0d7e3'}},axisLabel:{color:'#9aa3b2'}},
-        yAxis:{type:'category',data:top.map(x=>x[0]).reverse(),axisLabel:{color:'#6b7280',fontSize:11},axisLine:{lineStyle:{color:'#d0d7e3'}}},
-        series:[{type:'bar',data:top.map(x=>x[1]).reverse(),itemStyle:{color:'#1677ff',borderRadius:[0,4,4,0]},label:{show:true,position:'right',color:'#1677ff'}}]});}
+      c.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>{return p[0].name+'：'+p[0].value+'分';}},grid:{left:200,right:60},xAxis:{type:'value',max:100,axisLine:{lineStyle:{color:'#d0d7e3'}},axisLabel:{color:'#9aa3b2'}},
+        yAxis:{type:'category',data:top.map(x=>x[0]).reverse(),axisLabel:{color:'#6b7280',fontSize:12,formatter:v=>v.length>8?v.slice(0,7)+'…':v},axisLine:{lineStyle:{color:'#d0d7e3'}}},
+        series:[{type:'bar',data:top.map(x=>x[1]).reverse(),itemStyle:{color:'#1677ff',borderRadius:[0,4,4,0]},label:{show:true,position:'right',color:'#1677ff',formatter:'{c}分'}}]});}
     if(vs.length&&trend.current){
       const bk={}; vs.forEach(v=>{const t=new Date(v.window_start); if(isNaN(t))return; const k=Math.floor(t.getTime()/600000)*600000; bk[k]=Math.max(bk[k]||0,v.risk_score||0);});
       const ts=Object.keys(bk).sort((a,b)=>+a-+b);
