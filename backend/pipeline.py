@@ -170,10 +170,11 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         # 查该用户是否有豁免（已确认正常的行为），传给 AI 作为上下文
         exempt = None
         try:
+            from datetime import datetime as _dt
             es = Session()
             exs = es.query(ExceptionRow).filter(
                 ExceptionRow.employee_id == emp,
-                (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > datetime.utcnow())
+                (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > _dt.utcnow())
             ).all()
             es.close()
             if exs:
