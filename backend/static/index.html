@@ -257,6 +257,8 @@ function Alerts({goProfile}){
   const [rows,setRows]=useState([]); const [showAll,setShowAll]=useState(false); const [q,setQ]=useState(''); const [lvl,setLvl]=useState('all');
   const load=async()=> setRows(await GET('/api/verdicts?limit=500'));
   useEffect(()=>{ load(); },[]);
+  const doConfirm=(e,vid)=>{ e.stopPropagation(); PUTJ('/api/alerts/'+vid+'/status?status=CONFIRMED').then(()=>{ message.success('已确认'); load(); }); };
+  const doFP=(e,vid,intent)=>{ e.stopPropagation(); Modal.confirm({ title:'确认误报', content:'该用户同类行为将不再告警', okText:'确认', cancelText:'取消', onOk:()=>POST('/api/feedback?alert_id='+vid+'&label=FP&signal_type='+intent+'&reason=误报').then(()=>{ message.success('已标记误报'); load(); }) }); };
   return (<div>
     <div className="sec-title" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
       <span>告警管理 · 按用户合并 · 点击查看画像</span>
@@ -300,10 +302,10 @@ function Alerts({goProfile}){
           {title:'次数',dataIndex:'count',width:50,render:v=><span className="num">{v}</span>},
           {title:'风险',dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
           {title:'说明',dataIndex:'summary',render:v=><Tooltip title={v}><span style={{display:'inline-block',maxWidth:300,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',verticalAlign:'bottom'}}>{v}</span></Tooltip>},
-          {title:'操作',width:120,render:(_,r)=><Space size={4}>
-            <Button size="small" type="primary" ghost onClick={(e)=>{e.stopPropagation();PUTJ('/api/alerts/'+r.verdict_id+'/status?status=CONFIRMED').then(()=>{message.success('已确认');load();});}}>确认</Button>
-            <Button size="small" danger ghost onClick={(e)=>{e.stopPropagation();Modal.confirm({title:'确认误报',content:'该用户同类行为将不再告警',okText:'确认',cancelText:'取消',onOk:()=>{POST('/api/feedback?alert_id='+r.verdict_id+'&label=FP&signal_type='+r.intent+'&reason=误报').then(()=>{message.success('已标记误报');load();});}});}}>误报</Button>
-          </Space>}]}
+          {title:'操作',width:120,render:(_,r)=>(<Space size={4}>
+            <Button size="small" type="primary" ghost onClick={(e)=>doConfirm(e,r.verdict_id)}>确认</Button>
+            <Button size="small" danger ghost onClick={(e)=>doFP(e,r.verdict_id,r.intent)}>误报</Button>
+          </Space>)}]}
     </Card>
   </div>);
 }
