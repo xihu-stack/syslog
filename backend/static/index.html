@@ -45,10 +45,12 @@ const LVL = s => (s==null)?{c:'#9aa3b2',l:'-'} : s>=86?{c:'#ff4d4f',l:'严重'} 
 const INTENT = {data_exfiltration:'数据外发', job_seeking:'求职离职', baseline_deviation:'行为偏离', policy_violation:'违规', normal_work:'正常', unknown:'未知'};
 const DEV = {none:'无', minor:'轻微', major:'重大', severe:'严重', unknown:'未知'};
 const STATUS_MAP = {NEW:{c:'#1677ff',t:'待处理'}, TRIAGING:{c:'#faad14',t:'处理中'}, CONFIRMED:{c:'#ff4d4f',t:'已确认'}, FP:{c:'#bfbfbf',t:'误报'}, CLOSED:{c:'#52c41a',t:'已关闭'}};
+const STATUS_OPTS = [{label:'待处理',value:'NEW'},{label:'处理中',value:'TRIAGING'},{label:'已确认',value:'CONFIRMED'},{label:'误报',value:'FP'},{label:'已关闭',value:'CLOSED'}];
 const fmt = s => (s||'').replace('T',' ').slice(0,16);
 const GET = u=>fetch(u).then(r=>r.json());
 const POST=(u,o)=>fetch(u,{method:'POST',...o}).then(r=>r.json());
 const PUTJ=(u,b)=>fetch(u,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json());
+const DEL=(u)=>fetch(u,{method:'DELETE'}).then(r=>r.json());
 
 function RiskBadge({s}){ const v=LVL(s); return <span className="risk" style={{background:v.c+'1a',color:v.c,border:'1px solid '+v.c+'66'}}>{s==null?'-':s} {v.l}</span>; }
 function StatusTag({s}){ const v=STATUS_MAP[s]||{c:'#999',t:s}; return <span className="st-tag" style={{background:v.c+'1a',color:v.c}}>{v.t}</span>; }
@@ -132,11 +134,19 @@ function App(){
   const [key,setKey]=useState('dashboard'); const [profileUser,setProfileUser]=useState(null);
   const pollDetect=()=>{
     const tick=()=>fetch('/api/detect/status').then(r=>r.json()).then(s=>{
-      if(s.running){ message.loading({content:'研判中 '+s.done+'/'+s.total,key:'det',duration:0}); setTimeout(tick,2000); }
-      else { message.success({content:'研判完成：'+s.judged+' 窗口，告警 '+s.alerts,key:'det',duration:2}); setTimeout(()=>location.reload(),700); }
+      if(s.running){
+        const pct = s.total ? Math.round(s.done/s.total*100) : 0;
+        message.loading({content:'研判中 '+s.done+'/'+s.total+' ('+pct+'%)',key:'det',duration:0});
+        setTimeout(tick,3000);
+      } else {
+        message.success({content:'研判完成：'+s.judged+' 窗口，告警 '+s.alerts,key:'det',duration:3});
+        setTimeout(()=>location.reload(),1000);
+      }
     });
     tick();
   };
+  // 页面加载时自动检测是否有正在运行的研判
+  useEffect(()=>{ fetch('/api/detect/status').then(r=>r.json()).then(s=>{ if(s.running&&s.total>0) pollDetect(); }); },[]);
   const uploadLog=f=>{ const fd=new FormData(); fd.append('file',f);
     message.loading({content:'导入中…',key:'up',duration:0});
     fetch('/api/ingest',{method:'POST',body:fd}).then(r=>r.json()).then(r=>{ message.success({content:'已导入 '+r.imported+' 条，开始研判…',key:'up',duration:2}); pollDetect(); }); return false; };
@@ -182,7 +192,7 @@ function Dashboard({go}){
         series:[{type:'pie',radius:['42%','70%'],label:{color:'#4b5563'},data:Object.entries(cnt).map(([k,v])=>({name:INTENT[k]||k,value:v}))}]});}
     if(vs.length&&bar.current){ const er={}; vs.forEach(v=>er[v.employee]=Math.max(er[v.employee]||0,v.risk_score));
       const top=Object.entries(er).sort((a,b)=>b[1]-a[1]).slice(0,10); const c=echarts.init(bar.current);
-      c.setOption({tooltip:{},grid:{left:130,right:34},xAxis:{type:'value',max:100,axisLine:{lineStyle:{color:'#d0d7e3'}},axisLabel:{color:'#9aa3b2'}},
+      c.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{left:170,right:50},xAxis:{type:'value',max:100,axisLine:{lineStyle:{color:'#d0d7e3'}},axisLabel:{color:'#9aa3b2'}},
         yAxis:{type:'category',data:top.map(x=>x[0]).reverse(),axisLabel:{color:'#6b7280',fontSize:11},axisLine:{lineStyle:{color:'#d0d7e3'}}},
         series:[{type:'bar',data:top.map(x=>x[1]).reverse(),itemStyle:{color:'#1677ff',borderRadius:[0,4,4,0]},label:{show:true,position:'right',color:'#1677ff'}}]});}
     if(vs.length&&trend.current){
@@ -275,23 +285,25 @@ function Alerts({goProfile}){
         });
         const ag={};
         filtered.forEach(v=>{
-          if(!ag[v.employee])ag[v.employee]={key:v.employee,employee:v.employee,scenarios:[],maxRisk:0,count:0,latest:v.window_start,summary:''};
+          if(!ag[v.employee])ag[v.employee]={key:v.employee,employee:v.employee,scenarios:[],maxRisk:0,count:0,latest:v.window_start,summary:'',verdict_id:v.verdict_id,intent:v.intent};
           const g=ag[v.employee];
           const sc=INTENT[v.intent]||v.intent;
           if(!g.scenarios.find(s=>s.label===sc))g.scenarios.push({label:sc,risk:v.risk_score});
-          if((v.risk_score||0)>g.maxRisk){g.maxRisk=v.risk_score;g.summary=v.explanation;}
+          if((v.risk_score||0)>g.maxRisk){g.maxRisk=v.risk_score;g.summary=v.explanation;g.verdict_id=v.verdict_id;g.intent=v.intent;}
           g.count++; if(v.window_start>g.latest)g.latest=v.window_start;
         });
         return Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);
       })()}
-        onRow={r=>({onClick:()=>goProfile(r.employee)})}
         columns={[
-          {title:'用户',dataIndex:'employee',width:110},
+          {title:'用户',dataIndex:'employee',width:100,render:v=><a onClick={(e)=>{e.stopPropagation();goProfile(v);}} style={{cursor:'pointer'}}>{v}</a>},
           {title:'风险场景',dataIndex:'scenarios',render:v=><Space wrap size={[4,4]}>{v.map(s=><Tag color="blue" key={s.label}>{s.label}</Tag>)}</Space>},
-          {title:'告警次数',dataIndex:'count',width:70,render:v=><span className="num">{v}</span>},
-          {title:'最高风险',dataIndex:'maxRisk',width:100,render:v=><RiskBadge s={v}/>},
-          {title:'最近时间',dataIndex:'latest',width:130,render:fmt},
-          {title:'说明',dataIndex:'summary',ellipsis:true}]}/>
+          {title:'次数',dataIndex:'count',width:50,render:v=><span className="num">{v}</span>},
+          {title:'风险',dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
+          {title:'说明',dataIndex:'summary',render:v=><Tooltip title={v}><span style={{display:'inline-block',maxWidth:300,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',verticalAlign:'bottom'}}>{v}</span></Tooltip>},
+          {title:'操作',width:120,render:(_,r)=><Space size={4}>
+            <Button size="small" type="primary" ghost onClick={(e)=>{e.stopPropagation();PUTJ('/api/alerts/'+r.verdict_id+'/status?status=CONFIRMED').then(()=>{message.success('已确认');load();});}}>确认</Button>
+            <Button size="small" danger ghost onClick={(e)=>{e.stopPropagation();Modal.confirm({title:'确认误报',content:'该用户同类行为将不再告警',okText:'确认',cancelText:'取消',onOk:()=>{POST('/api/feedback?alert_id='+r.verdict_id+'&label=FP&signal_type='+r.intent+'&reason=误报').then(()=>{message.success('已标记误报');load();});}});}}>误报</Button>
+          </Space>}]}
     </Card>
   </div>);
 }
