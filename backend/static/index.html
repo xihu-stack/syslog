@@ -247,53 +247,51 @@ function Alerts({goProfile}){
   const [rows,setRows]=useState([]); const [showAll,setShowAll]=useState(false); const [q,setQ]=useState(''); const [lvl,setLvl]=useState('all');
   const load=async()=> setRows(await GET('/api/verdicts?limit=500'));
   useEffect(()=>{ load(); },[]);
-  const changeStatus=async(id,status)=>{
-    await PUTJ('/api/alerts/'+id+'/status?status='+status);
-    message.success('状态已更新');
-    load();
-  };
-  const markFP=async(v)=>{
-    Modal.confirm({
-      title:'确认误报', content:'确认此告警为误报？该用户同类行为将不再告警（豁免）。',
-      okText:'确认误报', cancelText:'取消', okType:'danger',
-      onOk:async()=>{
-        await POST('/api/feedback?alert_id='+v.verdict_id+'&label=FP&signal_type='+v.intent+'&reason=误报&expires_days=0');
-        message.success('已标记误报并创建豁免');
-        load();
-      }
-    });
-  };
   return (<div>
     <div className="sec-title" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-      <span>研判记录 · 点击用户查看画像</span>
+      <span>告警管理 · 按用户合并 · 点击查看画像</span>
       <Space><Legend/>
-        <label style={{fontSize:12,color:'#6b7280',cursor:'pointer',userSelect:'none'}}><input type="checkbox" checked={showAll} onChange={e=>setShowAll(e.target.checked)} style={{marginRight:4,cursor:'pointer'}}/>显示正常</label>
+        <label style={{fontSize:12,color:'#6b7280',cursor:'pointer',userSelect:'none'}}><input type="checkbox" checked={showAll} onChange={e=>setShowAll(e.target.checked)} style={{marginRight:4,cursor:'pointer'}}/>显示全部</label>
       </Space>
     </div>
     <Card className="card" size="small">
       <Space style={{marginBottom:8}}>
-        <Input.Search placeholder="搜索用户/关键词" allowClear style={{width:200}} onChange={e=>setQ(e.target.value)} />
+        <Input.Search placeholder="搜索用户" allowClear style={{width:180}} onChange={e=>setQ(e.target.value)} />
         <Select defaultValue="all" style={{width:120}} onChange={setLvl}>
           <Select.Option value="all">全部风险</Select.Option>
-          <Select.Option value="high">高危61+</Select.Option>
+          <Select.Option value="crit">严重86+</Select.Option>
+          <Select.Option value="high">高危61-85</Select.Option>
           <Select.Option value="mid">关注31-60</Select.Option>
         </Select>
       </Space>
-      <Table size="small" rowKey="id" pagination={{pageSize:14}} dataSource={rows.filter(v=>{
-        if(!showAll&&v.intent==='normal_work')return false;
-        if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase())&&!(v.explanation||'').toLowerCase().includes(q.toLowerCase()))return false;
-        if(lvl==='high'&&v.risk_score<61)return false;
-        if(lvl==='mid'&&(v.risk_score<31||v.risk_score>60))return false;
-        return true;
-      })}
+      <Table size="small" rowKey="key" pagination={{pageSize:14}} dataSource={(()=>{
+        const filtered=rows.filter(v=>{
+          if(!showAll&&v.intent==='normal_work')return false;
+          if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;
+          if(lvl==='crit'&&v.risk_score<86)return false;
+          if(lvl==='high'&&(v.risk_score<61||v.risk_score>85))return false;
+          if(lvl==='mid'&&(v.risk_score<31||v.risk_score>60))return false;
+          return true;
+        });
+        const ag={};
+        filtered.forEach(v=>{
+          if(!ag[v.employee])ag[v.employee]={key:v.employee,employee:v.employee,scenarios:[],maxRisk:0,count:0,latest:v.window_start,summary:''};
+          const g=ag[v.employee];
+          const sc=INTENT[v.intent]||v.intent;
+          if(!g.scenarios.find(s=>s.label===sc))g.scenarios.push({label:sc,risk:v.risk_score});
+          if((v.risk_score||0)>g.maxRisk){g.maxRisk=v.risk_score;g.summary=v.explanation;}
+          g.count++; if(v.window_start>g.latest)g.latest=v.window_start;
+        });
+        return Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);
+      })()}
         onRow={r=>({onClick:()=>goProfile(r.employee)})}
         columns={[
-          {title:'时间',dataIndex:'window_start',width:130,render:fmt},
-          {title:'用户',dataIndex:'employee',width:120},
-          {title:'意图',dataIndex:'intent',width:90,render:v=><Tag color="blue">{INTENT[v]||v}</Tag>},
-          {title:'偏离',dataIndex:'deviation',width:70,render:v=><Tag>{DEV[v]||v}</Tag>},
-          {title:'风险',dataIndex:'risk_score',width:110,render:v=><RiskBadge s={v}/>},
-          {title:'解释',dataIndex:'explanation',ellipsis:true}]}/>
+          {title:'用户',dataIndex:'employee',width:110},
+          {title:'风险场景',dataIndex:'scenarios',render:v=><Space wrap size={[4,4]}>{v.map(s=><Tag color="blue" key={s.label}>{s.label}</Tag>)}</Space>},
+          {title:'告警次数',dataIndex:'count',width:70,render:v=><span className="num">{v}</span>},
+          {title:'最高风险',dataIndex:'maxRisk',width:100,render:v=><RiskBadge s={v}/>},
+          {title:'最近时间',dataIndex:'latest',width:130,render:fmt},
+          {title:'说明',dataIndex:'summary',ellipsis:true}]}/>
     </Card>
   </div>);
 }
