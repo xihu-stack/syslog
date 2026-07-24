@@ -29,15 +29,15 @@ WINDOW_GAP = timedelta(minutes=60)
 
 SYSTEM_PROMPT = (
     "你是企业员工终端行为分析助手，识别数据泄露、离职等风险。\n"
-    "输入：某员工一段时间窗口内的行为序列（可能附历史基线摘要）。\n"
+    "输入：某员工一段时间窗口内的行为序列（可能附历史基线摘要和已知正常行为）。\n"
     "判断：意图、对【该员工个人基线】的偏离程度、风险分(0-100)、一句中文解释。\n"
     "信号：文档外发(U盘/网盘/个人邮箱/浏览器上传)、规避(改名/压缩/加密)、"
     "求职(招聘网站、搜简历/跳槽/待遇)、偏离基线(时段/量/通道/对象)、高危搜索(绕过DLP/数据恢复/匿名邮箱)。\n"
     "判分原则：上班时间正常办公（本地读写、正常网页、常规搜索）= normal_work，低分；"
     "外发通道、敏感对象、规避、招聘、凌晨深夜、超量 才提分。\n"
-    "冷启动（基线暂无/样本不足）时：域名陌生本身不是风险，上班时间浏览新网站=normal_work(0-30分)。"
-    "只有招聘(猎聘/智联/boss/51job)、网盘(百度网盘/迅雷)、个人邮箱(QQ/163/Gmail)、"
-    "远程控制(todesk/teamviewer/向日葵)、凌晨深夜(22-6点)、超量(>10倍日常)才提分。纯新域名无以上信号=最多30分。\n"
+    "**重要：如果基线摘要中注明该用户有'已知正常行为'（如HR岗位需要访问招聘网站），"
+    "则该类行为应判为 normal_work，低分。**\n"
+    "冷启动时：纯新域名浏览无招聘/网盘/远程控制等信号=最多30分。\n"
     "请基于常识自行判断网址是否为网盘/个人邮箱/招聘网站、文件名是否敏感，不依赖固定词表。\n"
     "只输出 JSON：intent(data_exfiltration|job_seeking|baseline_deviation|policy_violation|normal_work), "
     "deviation(none|minor|major|severe), risk_score(0-100整数), explanation(一句中文), "
@@ -161,11 +161,12 @@ def should_trigger(window, dev, baseline) -> bool:
     return False
 
 
-def analyze_window(window: list[CanonicalEvent], profile=None, dev=None) -> dict:
+def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exemptions=None) -> dict:
     profile_txt = f"\n历史基线摘要：{profile}" if profile else "\n历史基线摘要：（暂无，按通用可疑度判断）"
     dev_txt = f"\n偏离信号：{', '.join(dev)}" if dev else ""
+    exempt_txt = f"\n已知正常行为（豁免）：{exemptions}" if exemptions else ""
     user = (f"员工：{window[0].employee_id}（设备：{window[0].device_id}）\n"
-            f"行为序列：\n{_fmt_window(window)}{profile_txt}{dev_txt}\n\n请输出 JSON。")
+            f"行为序列：\n{_fmt_window(window)}{profile_txt}{dev_txt}{exempt_txt}\n\n请输出 JSON。")
     try:
         raw = llm_client.chat(
             [{"role": "system", "content": SYSTEM_PROMPT},

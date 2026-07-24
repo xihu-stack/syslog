@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import re
 import sys
 import threading
 
@@ -14,6 +15,9 @@ from web_aggregator import aggregate
 import dicts
 import detector
 import profiles
+
+INTENT_MAP = {"job_seeking": "求职离职", "data_exfiltration": "数据外发",
+              "baseline_deviation": "行为偏离", "policy_violation": "违规", "normal_work": "正常"}
 
 
 def _alert_count() -> int:
@@ -94,6 +98,8 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
     try:
         wm = int(dicts.get_setting("last_judged_event_id", "0") or "0")
         new_rows = rs.query(EventRow).filter(EventRow.id > wm).order_by(EventRow.occurred_at).all()
+        # 过滤访客（纯数字手机号/guest）——不是正式员工
+        new_rows = [r for r in new_rows if not re.match(r'^\d{8,}$', r.employee_id or '')]
         if not new_rows:
             return 0, _alert_count()
         new_events = [CanonicalEvent(
@@ -161,7 +167,20 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
     def _judge(item):
         emp, w, baseline, dev = item
         summary = profiles.summarize_for_llm(baseline) if baseline.get("sample_count", 0) >= 3 else None
-        v = detector.analyze_window(w, summary, dev)
+        # 查该用户是否有豁免（已确认正常的行为），传给 AI 作为上下文
+        exempt = None
+        try:
+            es = Session()
+            exs = es.query(ExceptionRow).filter(
+                ExceptionRow.employee_id == emp,
+                (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > datetime.utcnow())
+            ).all()
+            es.close()
+            if exs:
+                exempt = "; ".join(f"{INTENT_MAP.get(e.signal_type, e.signal_type)}({e.reason})" for e in exs)
+        except Exception:
+            pass
+        v = detector.analyze_window(w, summary, dev, exempt)
         return (emp, w[0].device_id, w[0].occurred_at, w[-1].occurred_at, [e.event_hash() for e in w], v)
 
     done_count = 0

@@ -128,6 +128,18 @@ class ExceptionRow(Base):
 def init_db() -> None:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     Base.metadata.create_all(engine)
+    # 兼容旧库：自动补 source 列（如果缺）
+    try:
+        with engine.connect() as conn:
+            conn.execute(__import__("sqlalchemy").text("SELECT source FROM events LIMIT 1"))
+    except Exception:
+        try:
+            with engine.connect() as conn:
+                conn.execute(__import__("sqlalchemy").text("ALTER TABLE events ADD COLUMN source VARCHAR DEFAULT ''"))
+                conn.commit()
+            print("DB: 已自动补 source 列")
+        except Exception:
+            pass
 
 
 def upsert_event(session, ev) -> bool:
