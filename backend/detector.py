@@ -182,7 +182,7 @@ def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exempti
         raw = llm_client.chat(
             [{"role": "system", "content": SYSTEM_PROMPT},
              {"role": "user", "content": user}],
-            max_tokens=500, timeout=120,
+            max_tokens=800, timeout=120,
         )
         v = llm_client.extract_json(raw)
         v.setdefault("explanation", raw[:120])

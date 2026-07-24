@@ -89,10 +89,14 @@ def extract_json(text: str) -> dict:
     out: dict = {}
     for key, pat in [("intent", r'"intent"\s*:\s*"([^"]+)"'),
                      ("deviation", r'"deviation"\s*:\s*"([^"]+)"'),
-                     ("explanation", r'"explanation"\s*:\s*"([^"]+)"')]:
+                     ("explanation", r'"explanation"\s*:\s*"([^"]+)"'),
+                     ("channels", r'"channels"\s*:\s*\[([^\]]+)\]')]:
         m = re.search(pat, t)
         if m:
-            out[key] = m.group(1)
+            if key == "channels":
+                out[key] = [x.strip().strip('"').strip("'") for x in m.group(1).split(",") if x.strip()]
+            else:
+                out[key] = m.group(1)
     m = re.search(r'"risk_score"\s*:\s*(\d+)', t)
     if m:
         out["risk_score"] = int(m.group(1))
