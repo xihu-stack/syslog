@@ -187,14 +187,16 @@ function Dashboard({go}){
   const load=async()=>{
     setSt(await GET('/api/stats'));
     setVs(await GET('/api/verdicts?limit=300'));
-    setAl(await GET('/api/alerts?limit=50'));
+    setAl(await GET('/api/alerts?limit=300'));  // 饼图需要更多数据
     setSys(await GET('/api/system/stats'));
   };
   useEffect(()=>{ load(); },[]);
   useEffect(()=>{
-    if(al.length&&pie.current){ const cnt={}; al.forEach(v=>cnt[v.scenario]=(cnt[v.scenario]||0)+1); const c=echarts.init(pie.current);
+    // 饼图数据：优先用 alerts，其次用 verdicts
+    const pieData = al.length ? al : vs;
+    if(pieData.length&&pie.current){ const cnt={}; pieData.forEach(v=>{const s=v.scenario||v.intent||'unknown';cnt[s]=(cnt[s]||0)+1;}); const c=echarts.init(pie.current);
       c.setOption({tooltip:{trigger:'item'},legend:{bottom:0,textStyle:{color:'#6b7280',fontSize:11}},
-        color:['#fa8c16','#1677ff','#13c2c2','#722ed1','#ff4d4f'],
+        color:['#ff4d4f','#fa8c16','#faad14','#1677ff','#52c41a'],
         series:[{type:'pie',radius:['42%','70%'],label:{color:'#4b5563'},data:Object.entries(cnt).map(([k,v])=>({name:INTENT[k]||k,value:v}))}]});}
     if(vs.length&&bar.current){ const er={}; vs.forEach(v=>er[v.employee]=Math.max(er[v.employee]||0,v.risk_score));
       const top=Object.entries(er).sort((a,b)=>b[1]-a[1]).slice(0,10); const c=echarts.init(bar.current);
@@ -223,16 +225,15 @@ function Dashboard({go}){
   const srcData=Object.entries(sys.sources||{});
   return (<div>
     <Row gutter={16}>
-      {(()=>{const v=st.events||0,lbl='日志事件';return <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{v}</div><div className="l">{lbl}</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日 {sys.events_24h||0}</div></div></Col>;})()}
+      {(()=>{const v=st.events||0,lbl='日志事件';return <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{v}</div><div className="l">{lbl}</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日 {(sys.events||{}).today||0}</div></div></Col>;})()}
       {(()=>{const v=st.employees||0;return <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{v}</div><div className="l">用户</div></div></Col>;})()}
-      {(()=>{const v=st.verdicts||0;return <Col span={6}><div className="tile" onClick={()=>go('alerts')}><div className="v num">{v}</div><div className="l">研判窗口</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>AI {sys.verdicts_ai||0} / 兜底 {sys.verdicts_fallback||0}</div></div></Col>;})()}
-      {(()=>{const v=st.alerts||0;return <Col span={6}><div className="tile alert" onClick={()=>go('alerts')}><div className="v num">{v}</div><div className="l">风险告警</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日 {sys.alerts_24h||0} / 待处理 {(sys.alert_status||{}).NEW||0}</div></div></Col>;})()}
+      {(()=>{const v=st.verdicts||0;return <Col span={6}><div className="tile" onClick={()=>go('alerts')}><div className="v num">{v}</div><div className="l">研判窗口</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>AI {(sys.verdicts||{}).ai||0} / 兜底 {(sys.verdicts||{}).fallback||0}</div></div></Col>;})()}
+      {(()=>{const v=st.alerts||0;return <Col span={6}><div className="tile alert" onClick={()=>go('alerts')}><div className="v num">{v}</div><div className="l">风险告警</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日 {(sys.alerts||{}).today||0} / 待处理 {((sys.alerts||{}).status||{}).NEW||0}</div></div></Col>;})()}
     </Row>
     <Row gutter={16} style={{marginTop:12}}>
-      {srcData.map(([k,v])=>(
-        <Col key={k}><Card className="card" size="small" style={{padding:'4px 12px'}}><Statistic title={SRC[k]||k} value={v} valueStyle={{fontSize:16}}/></Card></Col>
-      ))}
-      <Col><Card className="card" size="small" style={{padding:'4px 12px'}}><Statistic title="数据库" value={sys.db_size_mb||0} suffix="MB" valueStyle={{fontSize:16}}/></Card></Col>
+      <Col span={6}><Card className="card" size="small" style={{padding:'4px 12px'}}><Statistic title="深信服" value={(sys.sources||{}).total?(sys.sources.total.sangfor||0):0} valueStyle={{fontSize:16}}/></Card></Col>
+      <Col span={6}><Card className="card" size="small" style={{padding:'4px 12px'}}><Statistic title="IP-Guard" value={(sys.sources||{}).total?(sys.sources.total.ipguard||0):0} valueStyle={{fontSize:16}}/></Card></Col>
+      <Col span={6}><Card className="card" size="small" style={{padding:'4px 12px'}}><Statistic title="数据库" value={sys.db_size_mb||0} suffix="MB" valueStyle={{fontSize:16}}/></Card></Col>
     </Row>
     <div style={{margin:'12px 2px'}}><Legend/></div>
     {(st.alerts>0&&st.verdicts>0&&(st.alerts/st.verdicts>0.15))&&<Alert type="warning" message="基线建设中（冷启动期）— 告警偏多属正常" style={{marginBottom:12}} showIcon/>}
