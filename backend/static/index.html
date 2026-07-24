@@ -251,6 +251,7 @@ function App(){
 function Dashboard({go}){
   const [st,setSt]=useState({}); const [vs,setVs]=useState([]); const [al,setAl]=useState([]); const [sys,setSys]=useState({});
   const pie=useRef(),bar=useRef(),trend=useRef();
+  const pieChart=useRef(null),barChart=useRef(null),trendChart=useRef(null);
   const load=async()=>{
     setSt(await GET('/api/stats'));
     setVs(await GET('/api/verdicts?limit=300'));
@@ -261,17 +262,17 @@ function Dashboard({go}){
   useEffect(()=>{
     // 饼图数据：优先用 alerts，其次用 verdicts（sysAl 是 sys.alerts 对象，不能和 useState 的 al 混淆）
     const pieData = al.length ? al : vs;
-    if(pieData.length&&pie.current){ const cnt={}; pieData.forEach(v=>{const s=v.scenario||v.intent||'unknown';cnt[s]=(cnt[s]||0)+1;}); if(!Object.keys(cnt).length){ pie.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无告警分布</div>'; } else { const c=echarts.init(pie.current);
+    if(pie.current){ if(pieChart.current){pieChart.current.dispose();pieChart.current=null;} if(pieData.length){ const cnt={}; pieData.forEach(v=>{const s=v.scenario||v.intent||'unknown';cnt[s]=(cnt[s]||0)+1;}); if(!Object.keys(cnt).length){ pie.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无告警分布</div>'; } else { const c=echarts.init(pie.current); pieChart.current=c;
       c.setOption({tooltip:{trigger:'item'},legend:{bottom:0,textStyle:{color:'#6b7280',fontSize:11}},
         color:['#ff4d4f','#fa8c16','#faad14','#1677ff','#52c41a'],
-        series:[{type:'pie',radius:['42%','70%'],label:{color:'#4b5563'},data:Object.entries(cnt).map(([k,v])=>({name:INTENT[k]||k,value:v}))}]});}}
-    if(vs.length&&bar.current){ const er={}; vs.forEach(v=>er[v.employee]=Math.max(er[v.employee]||0,v.risk_score));
-      const top=Object.entries(er).sort((a,b)=>b[1]-a[1]).slice(0,10); if(!top.length){ bar.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无高风险用户</div>'; } else { const c=echarts.init(bar.current);
+        series:[{type:'pie',radius:['42%','70%'],label:{color:'#4b5563'},data:Object.entries(cnt).map(([k,v])=>({name:INTENT[k]||k,value:v}))}]});}} else { pie.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无告警分布</div>'; }}
+    if(bar.current){ if(barChart.current){barChart.current.dispose();barChart.current=null;} if(vs.length){ const er={}; vs.forEach(v=>er[v.employee]=Math.max(er[v.employee]||0,v.risk_score));
+      const top=Object.entries(er).sort((a,b)=>b[1]-a[1]).slice(0,10); if(!top.length){ bar.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无高风险用户</div>'; } else { const c=echarts.init(bar.current); barChart.current=c;
       const barColors=top.map(x=>{const v=x[1];return v>=86?'#ff4d4f':v>=61?'#fa8c16':v>=31?'#faad14':'#52c41a';}).reverse();
       c.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0].name+'：'+p[0].value+'分'},grid:{left:220,right:60},xAxis:{type:'value',max:100,axisLine:{lineStyle:{color:'#d0d7e3'}},axisLabel:{color:'#9aa3b2'}},
         yAxis:{type:'category',data:top.map(x=>x[0]).reverse(),axisLabel:{color:'#6b7280',fontSize:13,width:200,overflow:'truncate',ellipsis:'…'},axisLine:{lineStyle:{color:'#d0d7e3'}}},
-        series:[{type:'bar',data:top.map(x=>x[1]).reverse(),itemStyle:{color:function(p){return barColors[p.dataIndex];},borderRadius:[0,4,4,0]},label:{show:true,position:'right',color:'#6b7280',formatter:'{c}分'}}]});}}
-    if(vs.length&&trend.current){
+        series:[{type:'bar',data:top.map(x=>x[1]).reverse(),itemStyle:{color:function(p){return barColors[p.dataIndex];},borderRadius:[0,4,4,0]},label:{show:true,position:'right',color:'#6b7280',formatter:'{c}分'}}]});}} else { bar.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无高风险用户</div>'; }}
+    if(trend.current){ if(trendChart.current){trendChart.current.dispose();trendChart.current=null;} if(vs.length){
       const bk={};
       vs.forEach(v=>{
         const t=new Date(v.window_start); if(isNaN(t))return;
@@ -285,11 +286,11 @@ function Dashboard({go}){
       const vals=ts.map(t=>bk[t].size);
       if(!vals.length){ trend.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:40px">暂无风险趋势数据</div>'; return; }
       const maxY=Math.max(...vals,1);
-      const c=echarts.init(trend.current);
+      const c=echarts.init(trend.current); trendChart.current=c;
       c.setOption({tooltip:{trigger:'axis'},grid:{left:40,right:20,top:20,bottom:40},
         xAxis:{type:'category',data:ts.map(t=>{const d=new Date(+t);return (d.getMonth()+1)+'/'+d.getDate()+' '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');}),axisLabel:{color:'#9aa3b2',fontSize:9,rotate:30}},
         yAxis:{type:'value',max:maxY+1,axisLabel:{color:'#9aa3b2'}},
-        series:[{type:'bar',data:vals,areaStyle:{color:'#1677ff22'},itemStyle:{color:'#1677ff',borderColor:'#fff'},name:'风险用户数'}]});}
+        series:[{type:'bar',data:vals,areaStyle:{color:'#1677ff22'},itemStyle:{color:'#1677ff',borderColor:'#fff'},name:'风险用户数'}]});} else { trend.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:40px">暂无风险趋势数据</div>'; }}
   },[vs, al]);
   const SRC={"sangfor":"深信服","ipguard":"IP-Guard","":"未知"};
   const ev=(sys.events||{}), vd=(sys.verdicts||{}), sysAl=(sys.alerts||{}), src=(sys.sources||{});
