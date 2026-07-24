@@ -320,6 +320,31 @@ def syslog_status():
     return syslog_recv.status()
 
 
+@app.post("/api/update")
+def update_code():
+    """远程拉取最新代码并重启（git pull + 同步 + 重启）。"""
+    import subprocess, shutil
+    try:
+        r = subprocess.run(["git", "pull"], capture_output=True, text=True, timeout=60, cwd="/project")
+        if r.returncode != 0:
+            return {"ok": False, "error": r.stderr[:500]}
+        # 同步更新后的代码到运行目录
+        for item in os.listdir("/project/backend"):
+            if item in ("data", "__pycache__"):
+                continue
+            src = "/project/backend/" + item
+            dst = "/app/" + item
+            if os.path.isdir(src):
+                shutil.rmtree(dst, ignore_errors=True)
+                shutil.copytree(src, dst)
+            else:
+                shutil.copy2(src, dst)
+        # 退出进程，Docker restart 策略自动重启加载新代码
+        os._exit(0)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300]}
+
+
 @app.get("/api/export/alerts")
 def export_alerts():
     """导出告警为CSV（安全运营报告用）。"""

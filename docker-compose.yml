@@ -3,10 +3,11 @@ services:
   app:
     build: .
     container_name: ipguard-ai
-    network_mode: host          # 直接用宿主网络（UDP syslog 最可靠，不走 Docker 端口映射）
+    network_mode: host
     volumes:
       - ./backend/data:/app/data
+      - .:/project          # 挂载git仓库，支持远程 git pull 更新
     restart: unless-stopped
     environment:
       - PYTHONIOENCODING=utf-8
-      - PORT=18000              # Web 端口（浏览器访问 18000）
+      - PORT=18000
