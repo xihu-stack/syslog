@@ -92,6 +92,7 @@ def trigger(window: list[CanonicalEvent]) -> bool:
 
 def _fmt_window(window: list[CanonicalEvent]) -> str:
     """格式化窗口给 LLM：网页按域名聚合计数(取Top15)、文档/搜索按时间(最多12条)，整体限长避免超上下文。"""
+    SRC = {"ipguard":"IP-Guard","sangfor":"深信服","":"未知"}
     web = defaultdict(int)
     others = []
     for e in window:
@@ -107,10 +108,11 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
     n_other = len(others)
     for e in others[:12]:
         t = e.occurred_at.strftime("%m-%d %H:%M")
+        src = SRC.get(getattr(e,'source',''),'')
         if e.category == "SEARCH":
-            lines.append(f"{t} [搜索] \"{e.target_value}\"")
+            lines.append(f"{t} [{src}] [搜索] \"{e.target_value}\"")
         else:
-            lines.append(f"{t} [{e.action}] {e.target_value}（通道={(e.raw or {}).get('channel')}, 应用={(e.raw or {}).get('application')}）")
+            lines.append(f"{t} [{src}] [{e.action}] {e.target_value}（通道={(e.raw or {}).get('channel')}, 应用={(e.raw or {}).get('application')}）")
     if n_other > 12:
         lines.append(f"…及另外 {n_other - 12} 条文档/搜索")
     return "\n".join(lines) if lines else "(无行为)"

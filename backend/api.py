@@ -37,6 +37,7 @@ def _event_dict(e: EventRow) -> dict:
         "employee": e.employee_id, "device": e.device_id,
         "category": e.category, "action": e.action,
         "target_value": e.target_value, "size_bytes": e.size_bytes,
+        "source": e.source or "",
         "channel": (e.raw or {}).get("channel"),
         "application": (e.raw or {}).get("application"),
     }

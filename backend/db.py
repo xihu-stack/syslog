@@ -44,6 +44,7 @@ class EventRow(Base):
     target_value = Column(String)
     size_bytes = Column(Integer, default=0)
     count = Column(Integer, default=1)
+    source = Column(String, default="")  # ipguard / sangfor
     raw = Column(JSON)
 
 

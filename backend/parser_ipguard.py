@@ -11,6 +11,13 @@ from urllib.parse import urlparse
 from models import CanonicalEvent, Category, DOC_ACTION_MAP
 import dicts
 
+# IP-Guard 计算机名前缀模式（如 HLX-BJ- / HLX-SZ-），提取纯姓名用于跨源合并
+import re as _re
+def _extract_name(computer):
+    """从 IP-Guard 计算机名提取纯姓名：HLX-BJ-孙翔宇 → 孙翔宇"""
+    m = _re.match(r'^[A-Z]+-[A-Z]+-(.+)$', computer or '')
+    return m.group(1) if m else (computer or '')
+
 
 # ---------------- 通用工具 ----------------
 
@@ -130,7 +137,8 @@ def parse_doc_log_sheet(ws) -> list[CanonicalEvent]:
         disk = str(g("disk_type") or "").strip()
         events.append(CanonicalEvent(
             occurred_at=excel_serial_to_dt(g("time")),
-            employee_id=computer,  # 按计算机名识别用户（名称内嵌姓名，更稳定）
+            employee_id=_extract_name(computer),  # 提取纯姓名，跨源合并
+            source="ipguard",
             device_id=computer, category=Category.DOC.value,
             action=DOC_ACTION_MAP.get(op_type, "UNKNOWN"), target_type="FILE",
             target_value=str(g("source_file") or "").strip(),
@@ -162,7 +170,8 @@ def parse_web_log_sheet(ws) -> list[CanonicalEvent]:
         domain = url_domain(url)
         events.append(CanonicalEvent(
             occurred_at=excel_serial_to_dt(g("time")),
-            employee_id=computer,  # 按计算机名识别用户（名称内嵌姓名，更稳定）
+            employee_id=_extract_name(computer),  # 提取纯姓名，跨源合并
+            source="ipguard",
             device_id=computer, category=Category.WEB.value,
             action="VISIT", target_type="URL", target_value=url,
             raw={"title": str(g("title") or "").strip(), "url": url, "domain": domain,
@@ -190,7 +199,8 @@ def parse_search_log_sheet(ws) -> list[CanonicalEvent]:
         computer = str(g("computer") or "").strip()
         events.append(CanonicalEvent(
             occurred_at=excel_serial_to_dt(g("time")),
-            employee_id=computer,  # 按计算机名识别用户（名称内嵌姓名，更稳定）
+            employee_id=_extract_name(computer),  # 提取纯姓名，跨源合并
+            source="ipguard",
             device_id=computer, category=Category.SEARCH.value,
             action="SEARCH", target_type="URL", target_value=kw,
             raw={"keyword": kw,

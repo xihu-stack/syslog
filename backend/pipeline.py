@@ -46,7 +46,7 @@ def ingest_file(path: str) -> int:
             s.add(EventRow(event_hash=h, occurred_at=e.occurred_at, employee_id=e.employee_id,
                            device_id=e.device_id, category=e.category, action=e.action,
                            target_type=e.target_type, target_value=e.target_value,
-                           size_bytes=e.size_bytes, count=e.count, raw=e.raw))
+                           size_bytes=e.size_bytes, count=e.count, source=getattr(e,'source',''), raw=e.raw))
             added += 1
         s.commit()
         return added
@@ -74,7 +74,7 @@ def ingest_events(events) -> int:
             s.add(EventRow(event_hash=h, occurred_at=e.occurred_at, employee_id=e.employee_id,
                            device_id=e.device_id, category=e.category, action=e.action,
                            target_type=e.target_type, target_value=e.target_value,
-                           size_bytes=e.size_bytes, count=e.count, raw=e.raw))
+                           size_bytes=e.size_bytes, count=e.count, source=e.source, raw=e.raw))
             added += 1
         s.commit()
         return added
@@ -100,7 +100,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
             occurred_at=r.occurred_at, employee_id=r.employee_id, device_id=r.device_id,
             category=r.category, action=r.action, target_type=r.target_type or "FILE",
             target_value=r.target_value or "", size_bytes=r.size_bytes or 0, count=r.count or 1,
-            raw=r.raw or {}) for r in new_rows]
+            source=r.source or "", raw=r.raw or {}) for r in new_rows]
         max_id = max(r.id for r in new_rows)
         to_judge = []
         for emp, wins in detector.build_windows(new_events).items():

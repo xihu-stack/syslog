@@ -61,6 +61,7 @@ def _emit(row, hdr):
         employee_id=user or g("src_ip") or "unknown",
         device_id=g("src_ip"),
         category="WEB", action="VISIT", target_type="URL", target_value=url, count=1,
+        source="sangfor",
         raw={"domain": domain, "category": g("category"), "group": g("group"),
              "terminal": g("terminal"), "src_ip": g("src_ip"), "dst_ip": g("dst_ip"),
              "title": g("title"), "access": g("access"), "decrypt": g("decrypt")})
@@ -122,6 +123,7 @@ def parse_sangfor_syslog(raw_msg: str):
         employee_id=user or fields.get("host_ip", ""),
         device_id=fields.get("host_ip", ""),
         category="WEB", action="VISIT", target_type="URL", target_value=url, count=1,
+        source="sangfor",
         raw={"domain": domain, "category": category, "group": fields.get("group", ""),
              "src_ip": fields.get("host_ip", ""), "dst_ip": fields.get("dst_ip", ""),
              "app": fields.get("app", ""), "serv": fields.get("serv", ""),

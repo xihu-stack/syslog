@@ -56,6 +56,7 @@ class CanonicalEvent:
     target_value: str              # 文件名 / URL / 设备名
     size_bytes: int = 0            # 字节数（批量量纲）
     count: int = 1                 # 数量（批量量纲）
+    source: str = ""               # 数据来源：ipguard / sangfor
     raw: dict = field(default_factory=dict)  # 原始字段兜底（路径/磁盘/应用/标题等）
 
     def event_hash(self) -> str:
