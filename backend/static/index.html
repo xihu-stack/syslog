@@ -259,13 +259,10 @@ function Alerts({goProfile}){
   const load=async()=> setRows(await GET('/api/alerts?limit=100'));
   useEffect(()=>{ load(); },[]);
   const doConfirm=(e,vid)=>{ e.stopPropagation(); POST('/api/verdicts/'+vid+'/confirm').then(()=>{ message.success('已确认'); load(); }); };
-  const doFP=(e,vid,intent,emp)=>{ e.stopPropagation();
-    Modal.confirm({
-      title:'确认误报 — '+emp,
-      content:'行为类型：'+(INTENT[intent]||intent)+'\n确认后该用户同类行为将不再告警（豁免）。',
-      okText:'确认误报', cancelText:'取消', okType:'danger',
-      onOk:()=>POST('/api/verdicts/'+vid+'/false_positive?reason=岗位需要&signal_type='+intent+'&expires_days=0').then(()=>{ message.success('已标记误报并豁免'); load(); })
-    });
+  const [fpModal,setFpModal]=useState({open:false,vid:0,intent:'',emp:'',reason:'岗位需要'});
+  const doFP=(e,vid,intent,emp)=>{ e.stopPropagation(); setFpModal({open:true,vid,intent,emp,reason:'岗位需要'}); };
+  const submitFP=()=>{
+    POST('/api/verdicts/'+fpModal.vid+'/false_positive?reason='+encodeURIComponent(fpModal.reason)+'&signal_type='+fpModal.intent+'&expires_days='+(fpModal.reason==='临时项目'?'30':'0')).then(()=>{ message.success('已标记误报，后续同类不再告警'); setFpModal({...fpModal,open:false}); load(); });
   };
   return (<div>
     <div className="sec-title" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -315,6 +312,28 @@ function Alerts({goProfile}){
             <Button size="small" danger ghost onClick={(e)=>doFP(e,r.verdict_id,r.intent,r.employee)}>误报</Button>
           </Space>)}]}/>
     </Card>
+    <Modal open={fpModal.open} title={'确认误报 — '+fpModal.emp} okText="确认误报" cancelText="取消" okType="danger"
+      onCancel={()=>setFpModal({...fpModal,open:false})} onOk={submitFP}>
+      <div style={{marginBottom:12}}>
+        <Typography.Text strong>行为类型：</Typography.Text>
+        <Tag color="blue">{INTENT[fpModal.intent]||fpModal.intent}</Tag>
+      </div>
+      <div style={{marginBottom:8}}>
+        <Typography.Text>误报原因（将作为身份标签，AI后续会参考）：</Typography.Text>
+      </div>
+      <Select value={fpModal.reason} onChange={v=>setFpModal({...fpModal,reason:v})} style={{width:'100%'}}>
+        <Select.Option value="HR岗位">HR岗位 — 招聘网站访问属正常工作（永久豁免）</Select.Option>
+        <Select.Option value="财务岗位">财务岗位 — 银行/财务网站访问属正常</Select.Option>
+        <Select.Option value="运维岗位">运维岗位 — 远程控制/服务器访问属正常</Select.Option>
+        <Select.Option value="销售岗位">销售岗位 — U盘拷文件给客户属正常</Select.Option>
+        <Select.Option value="工作需要">工作需要（90天有效，需复核）</Select.Option>
+        <Select.Option value="时间正常">时间正常 — 夜班/跨时区（永久）</Select.Option>
+        <Select.Option value="临时项目">临时项目（30天有效）</Select.Option>
+        <Select.Option value="误报">一般误报（不创建豁免）</Select.Option>
+      </Select>
+      <Alert type="info" showIcon style={{marginTop:12}}
+        message="选择原因后，该用户的这类行为将不再告警。AI 后续研判时会看到此标签（如'HR岗位'），自动降低同类风险评分。" />
+    </Modal>
   </div>);
 }
 
