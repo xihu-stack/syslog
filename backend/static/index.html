@@ -251,14 +251,15 @@ function App(){
 }
 
 function Dashboard({go}){
-  const [st,setSt]=useState({}); const [vs,setVs]=useState([]); const [al,setAl]=useState([]); const [sys,setSys]=useState({});
-  const pie=useRef(),bar=useRef(),trend=useRef();
-  const pieChart=useRef(null),barChart=useRef(null),trendChart=useRef(null);
+  const [st,setSt]=useState({}); const [vs,setVs]=useState([]); const [al,setAl]=useState([]); const [sys,setSys]=useState({}); const [cats,setCats]=useState({});
+  const pie=useRef(),bar=useRef(),trend=useRef(),catBar=useRef();
+  const pieChart=useRef(null),barChart=useRef(null),trendChart=useRef(null),catChart=useRef(null);
   const load=async()=>{
     setSt(await GET('/api/stats'));
     setVs(await GET('/api/verdicts?limit=300'));
     setAl(await GET('/api/alerts?limit=300'));  // 饼图需要更多数据
     setSys(await GET('/api/system/stats'));
+    setCats(await GET('/api/category_stats'));
   };
   useEffect(()=>{ load(); },[]);
   useEffect(()=>{
@@ -294,6 +295,23 @@ function Dashboard({go}){
         yAxis:{type:'value',max:maxY+1,axisLabel:{color:'#9aa3b2'}},
         series:[{type:'bar',data:vals,areaStyle:{color:'#1677ff22'},itemStyle:{color:'#1677ff',borderColor:'#fff'},name:'风险用户数'}]});} else { trend.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:40px">暂无风险趋势数据</div>'; }}
   },[vs, al]);
+  useEffect(()=>{
+    const ct=cats.today||{};
+    if(Object.keys(ct).length&&catBar.current){
+      if(catChart.current){catChart.current.dispose();catChart.current=null;}
+      const top=Object.entries(ct).sort((a,b)=>b[1]-a[1]).slice(0,12);
+      const c=echarts.init(catBar.current); catChart.current=c;
+      const RISK_CAT={'IT行业':'#1677ff','新闻门户':'#52c41a','IT相关':'#13c2c2','搜索引擎':'#722ed1',
+        '银行网站':'#fa8c16','网上聊天':'#eb2f96','未识别应用':'#bfbfbf','其他网页邮件[HTTPS':'#faad14',
+        'IP站点':'#8c8c8c','网上银行':'#fa8c16','广告':'#f5222d','软件':'#87d068'};
+      c.setOption({tooltip:{trigger:'axis'},grid:{left:120,right:20,top:10,bottom:30},
+        xAxis:{type:'value',axisLabel:{color:'#9aa3b2'}},
+        yAxis:{type:'category',data:top.map(x=>x[0]).reverse(),axisLabel:{color:'#6b7280',fontSize:10,width:110,overflow:'truncate'}},
+        series:[{type:'bar',data:top.map(x=>x[1]).reverse(),
+          itemStyle:{color:top.map(x=>RISK_CAT[x[0]]||'#1677ff'),borderRadius:[0,4,4,0]},
+          label:{show:true,position:'right',color:'#9aa3b2',formatter:'{c}'}}]});
+    }
+  },[cats]);
   const SRC={"sangfor":"深信服","ipguard":"IP-Guard","":"未知"};
   const ev=(sys.events||{}), vd=(sys.verdicts||{}), sysAl=(sys.alerts||{}), src=(sys.sources||{});
   return (<div>
@@ -318,6 +336,7 @@ function Dashboard({go}){
       <Col span={14}><Card className="card" title="高风险用户 TOP10" size="small"><div ref={bar} style={{height:240}}></div></Card></Col>
     </Row>
     <Card className="card" title="风险用户数趋势（按10分钟，风险≥50的人数）" size="small" style={{marginTop:16}}><div ref={trend} style={{height:160}}></div></Card>
+    <Card className="card" title="今日网站分类 TOP12（深信服上网行为分类）" size="small" style={{marginTop:16}}><div ref={catBar} style={{height:220}}></div></Card>
     {(()=>{
       const ag={};(sysAl.list||[]).forEach(a=>{if(!ag[a.employee])ag[a.employee]={key:a.employee,employee:a.employee,scenarios:[],maxRisk:0,summary:'',status:a.status};const g=ag[a.employee];const sc=INTENT[a.scenario]||a.scenario;if(!g.scenarios.includes(sc))g.scenarios.push(sc);if((a.risk_score||0)>g.maxRisk){g.maxRisk=a.risk_score;g.summary=a.summary;}});
       const ga=Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);

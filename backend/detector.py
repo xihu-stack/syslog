@@ -16,8 +16,19 @@ import dicts
 from models import CanonicalEvent
 
 # 绝对风险模式：永远触发（不被基线"正常化"）
-ABSOLUTE_RISK = ["招聘", "求职", "网盘", "远程控制", "个人邮箱", "todesk", "teamviewer",
-                 "向日葵", "anydesk", "pan.baidu", "aliyundrive", "dropbox", "115.com"]
+ABSOLUTE_RISK = [
+    # 网盘/云盘
+    "pan.baidu", "aliyundrive", "dropbox", "115.com", "weiyun", "onedrive.live",
+    # 个人通讯/社交通道
+    "weixin.qq", "wechat.com", "wx.qq.com",
+    # 远程控制
+    "todesk", "teamviewer", "向日葵", "anydesk",
+    # 招聘求职
+    "51job", "zhaopin.com", "boss直聘", "lagou.com", "zhilian", "智联招聘",
+    "猎聘", "领英", "linkedin", "job51", "job.liepin",
+    # 个人邮箱
+    "163.com", "126.com", "qq.com", "sina.com", "sohu.com", "hotmail", "gmail",
+]
 
 # 写类 / 外发类动作（文档侧）
 WRITE_ACTIONS = {
@@ -31,19 +42,23 @@ SYSTEM_PROMPT = (
     "你是企业员工终端行为分析助手，识别数据泄露、离职等风险。\n"
     "输入：某员工一段时间窗口内的行为序列（可能附历史基线摘要和已知正常行为）。\n"
     "判断：意图、对【该员工个人基线】的偏离程度、风险分(0-100)、一句中文解释。\n\n"
-    "【风险分层标准——必须严格遵守】\n"
+    "【高风险域名——遇到以下任何一种，直接从对应档位起步】\n"
+    "• 网盘/云盘：pan.baidu / aliyundrive / dropbox / 115.com / onedrive.live.com / 115.com / weiyun → 起步60分\n"
+    "• 个人邮箱/社交：mail.qq.com / wx.qq.com / weixin.qq.com / wechat.com / personal mail → 起步50分\n"
+    "• 远程控制：todesk / teamviewer / 向日葵 / anydesk → 工作时间50分，凌晨75+分\n"
+    "• 招聘求职：51job / zhaopin.com / boss直聘 / lagou / zhilian → 非HR岗位起步60分，凌晨起步75分\n\n"
+    "【风险分层标准】\n"
     "90-100 严重(CRITICAL)：文档外发到U盘/网盘/个人邮箱 + 敏感文件 + 凌晨/规避\n"
-    "75-89  高危(HIGH)：todesk等远程控制 + 凌晨(0-6点) + 招聘网站 + 拷敏感文档\n"
-    "50-74  关注(MEDIUM)：工作时间访问招聘网站(非HR)、个人邮箱、大量新域名\n"
-    "30-49  低风险(LOW)：冷启动偏离、非工作时段但无具体风险信号\n"
-    "0-29   正常：上班时间正常办公\n\n"
+    "75-89  高危(HIGH)：凌晨(0-6点)+任何上述高风险域名；todesk等远程控制+凌晨；非HR岗位访问招聘网站+凌晨\n"
+    "50-74  关注(MEDIUM)：工作时间访问网盘(60分)/个人邮箱(50分)；非HR工作时间访问招聘网站(60分)；大量新域名(5+个不同陌生域名)\n"
+    "30-49  低风险(LOW)：仅冷启动（无基线用户）且无任何高风险域名+无具体风险信号 → 30分\n"
+    "0-29   正常：上班时间访问常规网站(微软办公/新闻/搜索引擎/企业内网) → 10-20分\n\n"
     "【关键判分规则】\n"
-    "1. 远程控制(todesk/teamviewer)：仅访问认证页面/后台连接=可能是软件自启动(开机挂着)，"
-    "工作时间=50分；凌晨+大量其他异常=75+分；凌晨但只有todesk=60分(可能是自启动)\n"
-    "2. 招聘网站：HR岗位(已知正常)=20分normal_work；非HR工作时间=60分；非HR凌晨=75分\n"
-    "3. 文档操作(U盘/打印/外发)：敏感文件+外发通道=85+；常规文件+外发=60；本地读写=20\n"
-    "4. 冷启动(无基线)：纯新域名浏览无具体信号=最多30分；不要因陌生就打高分\n"
-    "5. 凌晨(0-6点)：仅时间异常无其他信号=40分；叠加招聘/远程/外发=75+分\n\n"
+    "1. 有基线用户访问陌生域名：若非上述高风险域名+无其他异常=30分；若有高风险域名=按域名类型从起步分\n"
+    "2. 冷启动用户（无基线）：纯新域名浏览无具体信号=30分；有高风险域名=从起步分\n"
+    "3. 凌晨(0-6点)：仅时间异常无其他信号=40分；叠加任何高风险域名=75+分\n"
+    "4. 文档外发：U盘/网盘/邮件发送+敏感文件=85+；常规文件+外发=60\n"
+    "5. 判断 intent 时：网盘访问→data_exfiltration；招聘网站→job_seeking；大量新陌生域名+偏离基线→baseline_deviation；正常办公→normal_work\n\n"
     "如果基线摘要中有'已知正常行为(豁免)'，同类行为判normal_work(0-20分)。\n"
     "只输出 JSON：intent(data_exfiltration|job_seeking|baseline_deviation|policy_violation|normal_work), "
     "deviation(none|minor|major|severe), risk_score(0-100整数), explanation(一句中文), "
@@ -97,18 +112,23 @@ def trigger(window: list[CanonicalEvent]) -> bool:
 
 
 def _fmt_window(window: list[CanonicalEvent]) -> str:
-    """格式化窗口给 LLM：网页按域名聚合计数(取Top15)、文档/搜索按时间(最多12条)，整体限长避免超上下文。"""
+    """格式化窗口给 LLM：网页按域名聚合计数(取Top15)含分类标签、文档/搜索按时间(最多12条)，整体限长避免超上下文。"""
     SRC = {"ipguard":"IP-Guard","sangfor":"深信服","":"未知"}
-    web = defaultdict(int)
+    web = defaultdict(lambda: {"count": 0, "cat": ""})
     others = []
     for e in window:
         if e.category == "WEB":
-            web[(e.raw or {}).get("domain") or e.target_value] += (e.count or 1)
+            d = (e.raw or {}).get("domain") or e.target_value
+            cat = (e.raw or {}).get("app") or (e.raw or {}).get("category") or ""
+            web[d]["count"] += (e.count or 1)
+            if cat and not web[d]["cat"]:
+                web[d]["cat"] = cat
         else:
             others.append(e)
     lines = []
-    for d, c in sorted(web.items(), key=lambda x: -x[1])[:15]:
-        lines.append(f"[访问网页] {d} ×{c}")
+    for d, info in sorted(web.items(), key=lambda x: -x[1]["count"])[:15]:
+        cat_tag = f"[{info['cat']}]" if info["cat"] else ""
+        lines.append(f"[访问网页] {d} ×{info['count']} {cat_tag}")
     if len(web) > 15:
         lines.append(f"…及另外 {len(web) - 15} 个域名")
     n_other = len(others)

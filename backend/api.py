@@ -456,6 +456,31 @@ def system_stats():
         s.close()
 
 
+@app.get("/api/category_stats")
+def category_stats():
+    """今日/昨日网站分类（深信服 app 字段）分布。"""
+    from datetime import datetime, timedelta
+    s = Session()
+    try:
+        now = datetime.utcnow()
+        today_start = (now - timedelta(hours=now.hour, minutes=now.minute, seconds=now.second, microseconds=now.microsecond))
+        yesterday_start = today_start - timedelta(days=1)
+
+        def cat_count(since, until=None):
+            q = s.query(EventRow.raw.op('->>')('app'), _f.count(EventRow.id)).filter(
+                EventRow.category == 'WEB', EventRow.occurred_at >= since)
+            if until:
+                q = q.filter(EventRow.occurred_at < until)
+            rows = q.group_by(EventRow.raw.op('->>')('app')).all()
+            return {r[0] or "未识别": r[1] for r in rows if r[0]}
+
+        today = cat_count(today_start)
+        yesterday = cat_count(yesterday_start, today_start)
+        return {"today": today, "yesterday": yesterday}
+    finally:
+        s.close()
+
+
 @app.post("/api/update")
 def update_code():
     """远程拉取最新代码并重启（git pull + 同步 + 重启）。"""
