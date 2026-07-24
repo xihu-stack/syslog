@@ -333,8 +333,8 @@ function Dashboard({go}){
 
 function Computers({goProfile}){
   const [rows,setRows]=useState([]); const [uq,setUq]=useState(''); const [riskFilter,setRiskFilter]=useState('all');
-  const [lastUpd,setLastUpd]=useState(null);
-  const load=async()=>{setRows(await GET('/api/computers'));setLastUpd(new Date());};
+  const [lastUpd,setLastUpd]=useState(null); const [loading,setLoading]=useState(true);
+  const load=async()=>{const r=await GET('/api/computers');setRows(r);setLastUpd(new Date());setLoading(false);};
   useEffect(()=>{ load(); const t=setInterval(load,15000); return ()=>clearInterval(t); },[]);
   const summary={
     total: rows.length,
@@ -367,7 +367,7 @@ function Computers({goProfile}){
         </Select>
         <span style={{fontSize:11,color:'#9aa3b2'}}>每15秒自动刷新 {lastUpd&&'· '+lastUpd.toLocaleTimeString()}</span>
       </Space>
-      <Table size="small" rowKey="computer" pagination={{pageSize:14}}
+      <Table size="small" rowKey="computer" pagination={{pageSize:14}} loading={loading}
         dataSource={filtered}
         rowClassName={r=>{
           const risk=(r.max_risk||0);
@@ -397,8 +397,8 @@ function Computers({goProfile}){
 function Alerts({goProfile}){
   const [rows,setRows]=useState([]); const [showAll,setShowAll]=useState(false); const [q,setQ]=useState(''); const [lvl,setLvl]=useState('all');
   const [scenario,setScenario]=useState('all');
-  const [lastUpd,setLastUpd]=useState(null);
-  const load=async()=>{setRows(await GET('/api/alerts?limit=200'));setLastUpd(new Date());};
+  const [lastUpd,setLastUpd]=useState(null); const [loading,setLoading]=useState(true);
+  const load=async()=>{const r=await GET('/api/alerts?limit=200');setRows(r);setLastUpd(new Date());setLoading(false);};
   useEffect(()=>{ load(); const t=setInterval(load,15000); return ()=>clearInterval(t); },[]);
   const doConfirm=(e,vid)=>{ e.stopPropagation(); POST('/api/verdicts/'+vid+'/confirm').then(()=>{ message.success('已确认'); load(); }); };
   const [fpModal,setFpModal]=useState({open:false,vid:0,intent:'',emp:'',reason:'岗位需要',allScenarios:[]});
@@ -427,7 +427,7 @@ function Alerts({goProfile}){
           {SCENARIOS.map(s=><Select.Option key={s.value} value={s.value}>{s.label}</Select.Option>)}
         </Select>
       </Space>
-      <Table size="small" rowKey="key" pagination={{pageSize:14}} dataSource={(()=>{
+      <Table size="small" rowKey="key" pagination={{pageSize:14}} loading={loading} dataSource={(()=>{
         const filtered=rows.filter(v=>{
           if(!showAll&&v.status!=='NEW')return false;
           if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;
