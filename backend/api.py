@@ -315,6 +315,7 @@ def get_config():
         "qwen": {"model": dicts.get_setting("llm_qwen_model") or os.environ.get("LLM_QWEN_MODEL", "Qwen3-32B"),
                  "key_masked": mask(qk), "has_key": bool(qk)},
         "deepseek": {"model": dicts.get_setting("llm_deepseek_model") or os.environ.get("LLM_DEEPSEEK_MODEL", "deepseek"),
+                     "base_url": dicts.get_setting("llm_deepseek_base_url") or "",
                      "key_masked": mask(dk), "has_key": bool(dk)},
         "syslog_enabled": dicts.get_setting("syslog_enabled", "0"),
         "syslog_host": dicts.get_setting("syslog_host", "0.0.0.0"),
@@ -326,7 +327,7 @@ def get_config():
 @app.put("/api/config")
 def set_config(body: dict = Body(...)):
     for k in ("llm_base_url", "llm_active", "llm_qwen_model", "llm_deepseek_model",
-              "syslog_enabled", "syslog_host", "syslog_port", "notify_webhook"):
+              "llm_deepseek_base_url", "syslog_enabled", "syslog_host", "syslog_port", "notify_webhook"):
         if body.get(k) is not None:
             dicts.set_setting(k, str(body[k]))
     if body.get("qwen_key"):
@@ -376,7 +377,7 @@ def system_stats():
             return {r[0] or "sangfor": r[1] for r in rows}
 
         src_today = src_count(today_start)
-        src_yesterday = src_count(yesterday_start).keys() and {k: v for k, v in src_count(yesterday_start).items()} or {}
+        src_yesterday = {k: v for k, v in src_count(yesterday_start).items()} if src_count(yesterday_start) else {}
         src_week = src_count(week_start)
         src_total = src_count(datetime(2000, 1, 1))
 

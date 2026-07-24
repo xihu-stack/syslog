@@ -152,7 +152,7 @@ def upsert_event(session, ev) -> bool:
         event_hash=h, occurred_at=ev.occurred_at, employee_id=ev.employee_id,
         device_id=ev.device_id, category=ev.category, action=ev.action,
         target_type=ev.target_type, target_value=ev.target_value,
-        size_bytes=ev.size_bytes, count=ev.count, raw=ev.raw,
+        size_bytes=ev.size_bytes, count=ev.count, source=getattr(ev, 'source', ''), raw=ev.raw,
     ))
     return True
 

@@ -32,18 +32,25 @@ MODEL = os.environ.get("LLM_MODEL", "Qwen3-32B")
 
 
 def _candidates():
-    """返回 [(base, key, model)...]：活动模型优先，另一个作兜底。配置来自 DB>.env>默认。"""
-    base = (dicts.get_setting("llm_base_url") or os.environ.get("LLM_BASE_URL")
-            or "http://10.4.128.18:4000/v1").rstrip("/")
+    """返回 [(base, key, model)...]：活动模型优先，另一个作兜底。配置来自 DB>.env>默认。
+    DeepSeek 需要单独的 base_url（若配置了），否则用默认 Qwen 地址。"""
+    # 主地址（Qwen）
+    main_base = (dicts.get_setting("llm_base_url") or os.environ.get("LLM_BASE_URL")
+                 or "http://10.4.128.18:4000/v1").rstrip("/")
     active = (dicts.get_setting("llm_active") or "qwen").lower()
     qwen_key = dicts.get_setting("llm_qwen_key") or os.environ.get("LLM_QWEN_KEY") \
         or os.environ.get("LLM_API_KEY") or ""
     qwen_model = dicts.get_setting("llm_qwen_model") or os.environ.get("LLM_QWEN_MODEL") or "Qwen3-32B"
     ds_key = dicts.get_setting("llm_deepseek_key") or os.environ.get("LLM_DEEPSEEK_KEY") or ""
     ds_model = dicts.get_setting("llm_deepseek_model") or os.environ.get("LLM_DEEPSEEK_MODEL") or "deepseek"
-    pairs = {"qwen": (qwen_key, qwen_model), "deepseek": (ds_key, ds_model)}
+    ds_base = (dicts.get_setting("llm_deepseek_base_url") or os.environ.get("LLM_DEEPSEEK_BASE_URL")
+               or main_base).rstrip("/")
+    pairs = {
+        "qwen": (main_base, qwen_key, qwen_model),
+        "deepseek": (ds_base, ds_key, ds_model),
+    }
     order = [active] + [m for m in ("qwen", "deepseek") if m != active]
-    return [(base, pairs[m][0], pairs[m][1]) for m in order if pairs[m][0]]
+    return [(pairs[m][0], pairs[m][1], pairs[m][2]) for m in order if pairs[m][1]]
 
 
 def chat(messages, model=None, temperature=0.1, max_tokens=1000, timeout=120):
