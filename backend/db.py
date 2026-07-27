@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 from datetime import datetime
 
-from sqlalchemy import (JSON, Column, DateTime, Integer, String, Text, create_engine, event)
+from sqlalchemy import (JSON, Column, DateTime, Integer, String, Text, cast, create_engine, event)
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "ipguard.db")
@@ -162,6 +162,16 @@ def severity_of(score: int) -> str:
     if score >= 61: return "HIGH"
     if score >= 31: return "MEDIUM"
     return "LOW"
+
+
+def json_field(col, key: str):
+    """安全取 JSON 列的文本字段。
+
+    raw 是 JSON 列，raw.op('->>')(key) 的表达式类型仍被当作 JSON，
+    导致 SQLAlchemy 对 ->> 返回的纯文本（如域名 "baidu.com"）再套 json.loads 而报错。
+    cast 成 String 后不再触发 JSON 反序列化处理器。
+    """
+    return cast(col.op('->>')(key), String)
 
 
 if __name__ == "__main__":

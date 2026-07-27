@@ -8,7 +8,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 from statistics import median
 
-from db import EventRow, ProfileRow, Session
+from db import EventRow, ProfileRow, Session, json_field
 import dicts  # 敏感词表改为从字典配置读取
 
 LOOKBACK_DAYS = 30
@@ -31,13 +31,14 @@ def global_common_domains(session, min_users_ratio=0.3, min_count=5):
         return set()
     threshold = max(2, int(total_users * min_users_ratio))
     # 统计每个域名被多少不同用户访问
+    dom = json_field(EventRow.raw, 'domain')
     rows = session.query(
-        EventRow.raw.op('->>')('domain'),
+        dom,
         _f.count(_f.distinct(EventRow.employee_id))
     ).filter(
         EventRow.category == 'WEB',
-        EventRow.raw.op('->>')('domain').isnot(None)
-    ).group_by(EventRow.raw.op('->>')('domain')).all()
+        dom.isnot(None)
+    ).group_by(dom).all()
     return {r[0] for r in rows if r[0] and r[1] >= threshold}
 
 

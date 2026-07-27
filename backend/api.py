@@ -10,7 +10,7 @@ from fastapi import Body, FastAPI, File, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import desc, func
 
-from db import (AlertRow, EventRow, ExceptionRow, FeedbackRow, ProfileRow, Session, VerdictRow, init_db)
+from db import (AlertRow, EventRow, ExceptionRow, FeedbackRow, ProfileRow, Session, VerdictRow, init_db, json_field)
 import pipeline
 import profiles
 import dicts
@@ -467,11 +467,12 @@ def category_stats():
         yesterday_start = today_start - timedelta(days=1)
 
         def cat_count(since, until=None):
-            q = s.query(EventRow.raw.op('->>')('app'), func.count(EventRow.id)).filter(
+            app = json_field(EventRow.raw, 'app')
+            q = s.query(app, func.count(EventRow.id)).filter(
                 EventRow.category == 'WEB', EventRow.occurred_at >= since)
             if until:
                 q = q.filter(EventRow.occurred_at < until)
-            rows = q.group_by(EventRow.raw.op('->>')('app')).all()
+            rows = q.group_by(app).all()
             return {r[0] or "未识别": r[1] for r in rows if r[0]}
 
         today = cat_count(today_start)
