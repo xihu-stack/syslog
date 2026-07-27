@@ -46,6 +46,12 @@
   .row-high{box-shadow:inset 3px 0 0 var(--warn);}
   .row-mid{box-shadow:inset 3px 0 0 #fbbf24;background:#fffdf5;}
   .sec-fade{color:var(--ink3);}
+  .flowbar{display:flex;align-items:center;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 8px;margin-bottom:16px;box-shadow:0 1px 3px rgba(15,23,42,.04);}
+  .flow-item{flex:1;min-width:84px;text-align:center;padding:0 4px;}
+  .flow-item .fv{font-size:24px;font-weight:700;color:var(--ink);letter-spacing:-.5px;line-height:1.1;}
+  .flow-item .fl{font-size:11px;color:var(--ink3);margin-top:5px;letter-spacing:.5px;}
+  .flow-arrow{color:var(--ink3);opacity:.4;font-size:16px;}
+  .flow-tail{margin-left:auto;padding-left:16px;border-left:1px solid var(--line);font-size:12px;color:var(--ink3);white-space:nowrap;}
 </style>
 </head>
 <body>
@@ -278,7 +284,7 @@ function Dashboard({go}){
     setSys(await GET('/api/system/stats'));
     setCats(await GET('/api/category_stats'));
   };
-  useEffect(()=>{ load(); },[]);
+  useEffect(()=>{ load(); const t=setInterval(load,15000); return ()=>clearInterval(t); },[]);
   useEffect(()=>{
     // 饼图数据：优先用 alerts，其次用 verdicts（sysAl 是 sys.alerts 对象，不能和 useState 的 al 混淆）
     const pieData = al.length ? al : vs;
@@ -331,7 +337,21 @@ function Dashboard({go}){
   },[cats]);
   const SRC={"sangfor":"深信服","ipguard":"IP-Guard","":"未知"};
   const ev=(sys.events||{}), vd=(sys.verdicts||{}), sysAl=(sys.alerts||{}), src=(sys.sources||{});
+  const ago=ts=>{if(!ts)return '-';const d=Math.floor((Date.now()/1000-ts)/60);if(d<1)return '刚刚';if(d<60)return d+'分钟前';const h=Math.floor(d/60);return h<24?h+'小时前':Math.floor(h/24)+'天前';};
+  const sl=sys.syslog||{};
   return (<div>
+    <div className="flowbar">
+      <div className="flow-item"><div className="fv num">{sl.count||0}</div><div className="fl">实时接收</div></div>
+      <div className="flow-arrow">›</div>
+      <div className="flow-item"><div className="fv num">{sl.ingested||0}</div><div className="fl">已入库</div></div>
+      <div className="flow-arrow">›</div>
+      <div className="flow-item"><div className="fv num">{ev.today||0}</div><div className="fl">今日日志</div></div>
+      <div className="flow-arrow">›</div>
+      <div className="flow-item"><div className="fv num">{vd.ai||0}</div><div className="fl">过 AI 研判</div></div>
+      <div className="flow-arrow">›</div>
+      <div className="flow-item"><div className="fv num" style={{color:'#ef4444'}}>{sysAl.today||0}</div><div className="fl">今日告警</div></div>
+      <div className="flow-tail">画像 <b style={{color:'#1677ff'}}>{ago(sys.profile_updated_ts)}</b> 更新</div>
+    </div>
     <Row gutter={16}>
       {(()=>{const v=st.events_today||0, y=ev.yesterday||0, pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{v}</div><div className="l">日志事件</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日 {v} {(y&&y<30)?(<span style={{color:'#9aa3b2'}}>·冷启动</span>):pct?(<span style={{color:pct>0?'#ff4d4f':'#52c41a'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):(y?(<span style={{color:'#9aa3b2'}}>·持平</span>):'')}{y?' / 昨日'+y:''}</div></div></Col>;})()}
       {(()=>{const v=st.employees||0, y=(ev.emp_yesterday||0), pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{v}</div><div className="l">用户</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日活跃 {v}{(y&&y<30)?(<span style={{color:'#9aa3b2'}}>·冷启动</span>):pct?(<span style={{color:pct>0?'#52c41a':'#ff4d4f'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):(y?(<span style={{color:'#9aa3b2'}}>·持平</span>):'')}</div></div></Col>;})()}

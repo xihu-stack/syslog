@@ -365,7 +365,7 @@ def syslog_status():
 @app.get("/api/system/stats")
 def system_stats():
     """系统运行状态：日志量/研判量/数据来源/告警状态/管线健康。"""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     from sqlalchemy import func as _f
     s = Session()
     try:
@@ -427,6 +427,10 @@ def system_stats():
         # 去重/降噪统计（总事件中WEB事件比例，估算降噪效果）
         web_total = s.query(EventRow).filter(EventRow.category == "WEB").count()
 
+        # 画像上次全量重建时间（as_of 存的是 utcnow naive UTC，转 epoch 供前端算"X分钟前"）
+        _lp = s.query(_f.max(ProfileRow.as_of)).scalar()
+        profile_updated_ts = int(_lp.replace(tzinfo=timezone.utc).timestamp()) if _lp else None
+
         return {
             "events": {
                 "today": ev_today, "yesterday": ev_yesterday, "week": ev_week, "total": ev_total,
@@ -454,6 +458,7 @@ def system_stats():
             "employees": s.query(EventRow.employee_id).filter(EventRow.occurred_at >= today_start).distinct().count(),
             "detect": pipeline.detection_status(),
             "syslog": syslog_recv.status(),
+            "profile_updated_ts": profile_updated_ts,
         }
     finally:
         s.close()
