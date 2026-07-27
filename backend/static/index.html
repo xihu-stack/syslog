@@ -317,10 +317,10 @@ function Dashboard({go}){
   const ev=(sys.events||{}), vd=(sys.verdicts||{}), sysAl=(sys.alerts||{}), src=(sys.sources||{});
   return (<div>
     <Row gutter={16}>
-      {(()=>{const v=st.events_today||0, y=ev.yesterday||0, pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{v}</div><div className="l">日志事件</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日 {v} {pct?(<span style={{color:pct>0?'#ff4d4f':pct<0?'#52c41a':'#9aa3b2'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):'='}{y?' / 昨日'+y:''}</div></div></Col>;})()}
-      {(()=>{const v=st.employees||0, y=(ev.emp_yesterday||0), pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{v}</div><div className="l">用户</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日活跃 {v}{pct?(<span style={{color:pct>0?'#52c41a':pct<0?'#ff4d4f':'#9aa3b2'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):'='}</div></div></Col>;})()}
-      {(()=>{const v=vd.today||0, y=(vd.yesterday||0), pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile" onClick={()=>go('alerts')}><div className="v num">{v}</div><div className="l">研判窗口</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>AI {vd.ai||0} {pct?(<span style={{color:pct>0?'#1677ff':pct<0?'#9aa3b2':'#9aa3b2'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):''}</div></div></Col>;})()}
-      {(()=>{const v=sysAl.today||0, y=sysAl.yesterday||0, pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile alert" onClick={()=>go('alerts')}><div className="v num">{v}</div><div className="l">风险告警</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日 {v}{pct?(<span style={{color:pct>0?'#ff4d4f':pct<0?'#52c41a':'#9aa3b2'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):'='} / 待处理 {(sysAl.status||{}).NEW||0}</div></div></Col>;})()}
+      {(()=>{const v=st.events_today||0, y=ev.yesterday||0, pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{v}</div><div className="l">日志事件</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日 {v} {(y&&y<30)?(<span style={{color:'#9aa3b2'}}>·冷启动</span>):pct?(<span style={{color:pct>0?'#ff4d4f':'#52c41a'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):(y?(<span style={{color:'#9aa3b2'}}>·持平</span>):'')}{y?' / 昨日'+y:''}</div></div></Col>;})()}
+      {(()=>{const v=st.employees||0, y=(ev.emp_yesterday||0), pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{v}</div><div className="l">用户</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日活跃 {v}{(y&&y<30)?(<span style={{color:'#9aa3b2'}}>·冷启动</span>):pct?(<span style={{color:pct>0?'#52c41a':'#ff4d4f'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):(y?(<span style={{color:'#9aa3b2'}}>·持平</span>):'')}</div></div></Col>;})()}
+      {(()=>{const v=vd.today||0, y=(vd.yesterday||0), pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile" onClick={()=>go('alerts')}><div className="v num">{v}</div><div className="l">研判窗口</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>AI {vd.ai||0} {(y&&y<30)?(<span style={{color:'#9aa3b2'}}>·冷启动</span>):pct?(<span style={{color:pct>0?'#1677ff':'#9aa3b2'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):(y?(<span style={{color:'#9aa3b2'}}>·持平</span>):'')}</div></div></Col>;})()}
+      {(()=>{const v=sysAl.today||0, y=sysAl.yesterday||0, pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile alert" onClick={()=>go('alerts')}><div className="v num">{v}</div><div className="l">风险告警</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日 {v}{(y&&y<30)?(<span style={{color:'#9aa3b2'}}>·冷启动</span>):pct?(<span style={{color:pct>0?'#ff4d4f':'#52c41a'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):(y?(<span style={{color:'#9aa3b2'}}>·持平</span>):'')} / 待处理 {(sysAl.status||{}).NEW||0}</div></div></Col>;})()}
     </Row>
     <Row gutter={12} style={{marginTop:12}}>
       <Col span={5}><Card className="card" size="small" style={{padding:'6px 8px'}}><Statistic title="深信服" value={(src.total||{})['sangfor']||0} valueStyle={{fontSize:16}}/><div style={{fontSize:10,color:'#9aa3b2'}}>今日 {src.today&&src.today['sangfor']||0}</div></Card></Col>
@@ -355,8 +355,8 @@ function Dashboard({go}){
 
 function Computers({goProfile}){
   const [rows,setRows]=useState([]); const [uq,setUq]=useState(''); const [riskFilter,setRiskFilter]=useState('all');
-  const [lastUpd,setLastUpd]=useState(null); const [loading,setLoading]=useState(true);
-  const load=async()=>{const r=await GETL('/api/computers');setRows(r);setLastUpd(new Date());setLoading(false);};
+  const [lastUpd,setLastUpd]=useState(null); const [loading,setLoading]=useState(true); const [excs,setExcs]=useState([]);
+  const load=async()=>{const [r,ex]=await Promise.all([GETL('/api/computers'),GET('/api/exceptions')]);setRows(r);setExcs(Array.isArray(ex)?ex:((ex&&ex.items)||[]));setLastUpd(new Date());setLoading(false);};
   useEffect(()=>{ load(); const t=setInterval(load,15000); return ()=>clearInterval(t); },[]);
   const summary={
     total: rows.length,
@@ -364,6 +364,7 @@ function Computers({goProfile}){
     high: rows.filter(r=>(r.max_risk||0)>=61).length,
     clean: rows.filter(r=>(r.alert_count||0)===0).length,
   };
+  const exMap={}; excs.forEach(e=>{const k=e.employee; if(k){(exMap[k]=exMap[k]||[]).push(INTENT[e.signal_type]||e.signal_type);}});
   const filtered=rows.filter(r=>{
     if(uq&&!(r.computer||'').toLowerCase().includes(uq.toLowerCase()))return false;
     if(riskFilter==='alert'&&!(r.alert_count>0))return false;
@@ -400,10 +401,10 @@ function Computers({goProfile}){
         }}
         onRow={r=>({onClick:()=>goProfile(r.computer),style:{cursor:'pointer'}})}
         columns={[
-          {title:'用户',dataIndex:'computer',width:130,
+          {title:'用户',dataIndex:'computer',width:150,
             render:(v,r)=>{
-              const rk=r.max_risk||0;
-              return (<a style={{fontWeight:rk>=61?700:400,color:rk>=86?'#ff4d4f':rk>=61?'#fa8c16':rk>=31?'#faad14':'inherit'}}>{v}</a>);
+              const rk=r.max_risk||0; const ex=exMap[v];
+              return (<span><a style={{fontWeight:rk>=61?700:400,color:rk>=86?'#ff4d4f':rk>=61?'#fa8c16':rk>=31?'#faad14':'inherit'}}>{v}</a>{ex&&<Tooltip title={'已豁免：'+ex.join('、')}><Tag color="default" style={{marginLeft:4,fontSize:10,lineHeight:'16px'}}>已豁免</Tag></Tooltip>}</span>);
             }},
           {title:'风险',dataIndex:'max_risk',width:90,render:v=><RiskBadge s={v}/>},
           {title:'告警',dataIndex:'alert_count',width:60,
@@ -524,7 +525,7 @@ function Monitor(){
   const ev=data.events||{}, vd=data.verdicts||{}, al=data.alerts||{}, src=data.sources||{};
   const pct = d.total ? Math.round(d.done/d.total*100) : 0;
   const st=src.total||{};
-  const todayRate=ev.total?(Math.round((ev.today||0)/ev.total*100))+'%':'-';
+  const perUser=(data.employees&&ev.today)?Math.round((ev.today||0)/data.employees):0;
   return (<div>
     <Card className="card" title="日志量统计" size="small" style={{marginBottom:16}}>
       <Table size="small" pagination={false} dataSource={[
@@ -543,7 +544,7 @@ function Monitor(){
       <Col span={6}><Card className="card"><Statistic title="AI研判(今日)" value={vd.today||0}/><div style={{fontSize:11,color:'#9aa3b2'}}>累计 {vd.total||0}</div></Card></Col>
       <Col span={6}><Card className="card"><Statistic title="AI成功" value={vd.ai||0} valueStyle={{color:'#52c41a'}}/><div style={{fontSize:11,color:'#9aa3b2'}}>兜底 {vd.fallback||0}</div></Card></Col>
       <Col span={6}><Card className="card"><Statistic title="告警(今日)" value={al.today||0} valueStyle={{color:'#fa8c16'}}/><div style={{fontSize:11,color:'#9aa3b2'}}>累计 {al.total||0}</div></Card></Col>
-      <Col span={6}><Card className="card"><Statistic title="今日占比" value={todayRate} valueStyle={{color:'#1677ff'}}/><div style={{fontSize:11,color:'#9aa3b2'}}>数据库 {data.db_size_mb||0}MB</div></Card></Col>
+      <Col span={6}><Card className="card"><Statistic title="今日人均事件" value={perUser} valueStyle={{color:'#1677ff'}}/><div style={{fontSize:11,color:'#9aa3b2'}}>今日 {ev.today||0} / 累计 {ev.total||0}</div></Card></Col>
     </Row>
     <Row gutter={16} style={{marginBottom:16}}>
       <Col span={12}><Card className="card" title="Syslog 接收" size="small">
