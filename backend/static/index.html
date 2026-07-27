@@ -288,16 +288,15 @@ function Dashboard({go}){
   useEffect(()=>{
     // 饼图数据：优先用 alerts，其次用 verdicts（sysAl 是 sys.alerts 对象，不能和 useState 的 al 混淆）
     const pieData = al.length ? al : vs;
-    if(pie.current){ if(pieChart.current){pieChart.current.dispose();pieChart.current=null;} if(pieData.length){ const cnt={}; pieData.forEach(v=>{const s=v.scenario||v.intent||'unknown';cnt[s]=(cnt[s]||0)+1;}); if(!Object.keys(cnt).length){ pie.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无告警分布</div>'; } else if(Object.keys(cnt).length===1){ const intent0=Object.keys(cnt)[0]; const byU={}; pieData.forEach(v=>{const e=v.employee||'未知';byU[e]=(byU[e]||0)+1;}); const uE=Object.entries(byU).sort((a,b)=>b[1]-a[1]); if(uE.length<=1){ pie.current.innerHTML='<div style="text-align:center;padding-top:48px"><div style="font-size:13px;color:#475569">'+(INTENT[intent0]||intent0)+'</div><div style="font-size:30px;font-weight:700;color:#ef4444;margin-top:6px">'+(uE[0]?uE[0][1]:0)+'<span style="font-size:13px;color:#94a3b8"> (100%)</span></div><div style="font-size:11px;color:#94a3b8;margin-top:8px">当前告警均为此类意图</div></div>'; } else { const c=echarts.init(pie.current); pieChart.current=c; c.setOption({tooltip:{trigger:'item',formatter:p=>p.name+'：'+p.value+'条 ('+p.percent+'%)'},title:{text:'均为'+(INTENT[intent0]||intent0),left:'center',top:0,textStyle:{color:'#94a3b8',fontSize:12,fontWeight:'normal'}},legend:{type:'scroll',orient:'vertical',right:0,top:'middle',textStyle:{color:'#6b7280',fontSize:11}},color:['#1677ff','#ef4444','#f59e0b','#16a34a','#8b5cf6','#06b6d4','#ec4899','#64748b','#0ea5e9','#facc15'],series:[{type:'pie',radius:['42%','68%'],center:['38%','55%'],label:{formatter:'{b} {c}',color:'#475569',fontSize:11},data:uE.map(([k,v])=>({name:k,value:v}))}]}); } } else { const c=echarts.init(pie.current); pieChart.current=c;
+    if(pie.current){ if(pieChart.current){pieChart.current.dispose();pieChart.current=null;} if(pieData.length){ const cnt={}; pieData.forEach(v=>{const s=v.scenario||v.intent||'unknown';cnt[s]=(cnt[s]||0)+1;}); if(!Object.keys(cnt).length){ pie.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无告警分布</div>'; } else { const c=echarts.init(pie.current); pieChart.current=c;
       c.setOption({tooltip:{trigger:'item'},legend:{bottom:0,textStyle:{color:'#6b7280',fontSize:11}},
         color:['#ff4d4f','#fa8c16','#faad14','#1677ff','#52c41a'],
         series:[{type:'pie',radius:['42%','70%'],label:{color:'#4b5563'},data:Object.entries(cnt).map(([k,v])=>({name:INTENT[k]||k,value:v}))}]});}} else { pie.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无告警分布</div>'; }}
     if(bar.current){ if(barChart.current){barChart.current.dispose();barChart.current=null;} if(vs.length){ const er={}; vs.forEach(v=>er[v.employee]=Math.max(er[v.employee]||0,v.risk_score));
-      const top=Object.entries(er).sort((a,b)=>b[1]-a[1]).slice(0,10); if(!top.length){ bar.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无高风险用户</div>'; } else { const c=echarts.init(bar.current); barChart.current=c;
-      const barColors=top.map(x=>{const v=x[1];return v>=86?'#ff4d4f':v>=61?'#fa8c16':v>=31?'#faad14':'#52c41a';}).reverse();
-      c.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0].name+'：'+p[0].value+'分'},grid:{left:300,right:60},xAxis:{type:'value',max:100,axisLine:{lineStyle:{color:'#d0d7e3'}},axisLabel:{color:'#9aa3b2'}},
-        yAxis:{type:'category',data:top.map(x=>x[0]).reverse(),axisLabel:{color:'#475569',fontSize:12,width:280,overflow:'breakAll',lineHeight:14},axisLine:{lineStyle:{color:'#d0d7e3'}}},
-        series:[{type:'bar',data:top.map(x=>x[1]).reverse(),barCategoryGap:'40%',itemStyle:{color:function(p){return barColors[p.dataIndex];},borderRadius:[0,4,4,0]},label:{show:true,position:'right',color:'#6b7280',formatter:'{c}分'}}]});}} else { bar.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无高风险用户</div>'; }}
+      const top=Object.entries(er).sort((a,b)=>b[1]-a[1]).slice(0,5); if(!top.length){ bar.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无高风险用户</div>'; } else { const c=echarts.init(bar.current); barChart.current=c;
+      c.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0].name+'：'+p[0].value+'分'},grid:{left:200,right:60},xAxis:{type:'value',max:100,axisLine:{lineStyle:{color:'#d0d7e3'}},axisLabel:{color:'#9aa3b2'}},
+        yAxis:{type:'category',data:top.map(x=>x[0]).reverse(),axisLabel:{color:'#475569',fontSize:13,interval:0},axisLine:{lineStyle:{color:'#d0d7e3'}}},
+        series:[{type:'bar',data:top.map(x=>x[1]).reverse(),barCategoryGap:'30%',itemStyle:{color:'#1677ff',borderRadius:[0,4,4,0]},label:{show:true,position:'right',color:'#6b7280',formatter:'{c}分'}}]});}} else { bar.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无高风险用户</div>'; }}
     if(trend.current){ if(trendChart.current){trendChart.current.dispose();trendChart.current=null;} if(vs.length){
       const bk={};
       vs.forEach(v=>{
@@ -345,32 +344,19 @@ function Dashboard({go}){
       <div className="flow-arrow">›</div>
       <div className="flow-item"><div className="fv num">{sl.ingested||0}</div><div className="fl">已入库</div></div>
       <div className="flow-arrow">›</div>
-      <div className="flow-item"><div className="fv num">{ev.today||0}</div><div className="fl">今日日志</div></div>
+      <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('computers')}><div className="fv num">{ev.today||0}</div><div className="fl">今日日志</div></div>
       <div className="flow-arrow">›</div>
       <div className="flow-item"><div className="fv num">{vd.ai||0}</div><div className="fl">过 AI 研判</div></div>
       <div className="flow-arrow">›</div>
-      <div className="flow-item"><div className="fv num" style={{color:'#ef4444'}}>{sysAl.today||0}</div><div className="fl">今日告警</div></div>
+      <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('alerts')}><div className="fv num" style={{color:'#ef4444'}}>{sysAl.today||0}</div><div className="fl">今日告警</div></div>
       <div className="flow-tail">画像 <b style={{color:'#1677ff'}}>{ago(sys.profile_updated_ts)}</b> 更新</div>
     </div>
-    <Row gutter={16}>
-      {(()=>{const v=st.events_today||0, y=ev.yesterday||0, pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{v}</div><div className="l">日志事件</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日 {v} {(y&&y<30)?(<span style={{color:'#9aa3b2'}}>·冷启动</span>):pct?(<span style={{color:pct>0?'#ff4d4f':'#52c41a'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):(y?(<span style={{color:'#9aa3b2'}}>·持平</span>):'')}{y?' / 昨日'+y:''}</div></div></Col>;})()}
-      {(()=>{const v=st.employees||0, y=(ev.emp_yesterday||0), pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{v}</div><div className="l">用户</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日活跃 {v}{(y&&y<30)?(<span style={{color:'#9aa3b2'}}>·冷启动</span>):pct?(<span style={{color:pct>0?'#52c41a':'#ff4d4f'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):(y?(<span style={{color:'#9aa3b2'}}>·持平</span>):'')}</div></div></Col>;})()}
-      {(()=>{const v=vd.today||0, y=(vd.yesterday||0), pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile" onClick={()=>go('alerts')}><div className="v num">{v}</div><div className="l">研判窗口</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>AI {vd.ai||0} {(y&&y<30)?(<span style={{color:'#9aa3b2'}}>·冷启动</span>):pct?(<span style={{color:pct>0?'#1677ff':'#9aa3b2'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):(y?(<span style={{color:'#9aa3b2'}}>·持平</span>):'')}</div></div></Col>;})()}
-      {(()=>{const v=sysAl.today||0, y=sysAl.yesterday||0, pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile alert" onClick={()=>go('alerts')}><div className="v num">{v}</div><div className="l">风险告警</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日 {v}{(y&&y<30)?(<span style={{color:'#9aa3b2'}}>·冷启动</span>):pct?(<span style={{color:pct>0?'#ff4d4f':'#52c41a'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):(y?(<span style={{color:'#9aa3b2'}}>·持平</span>):'')} / 待处理 {(sysAl.status||{}).NEW||0}</div></div></Col>;})()}
-    </Row>
-    <Row gutter={20} style={{marginTop:16}}>
-      <Col span={5}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title="深信服" value={(src.total||{})['sangfor']||0} valueStyle={{fontSize:18}}/><div style={{fontSize:11,color:'#94a3b8',marginTop:2}}>今日 {src.today&&src.today['sangfor']||0}</div></Card></Col>
-      <Col span={5}><Card className="card" size="small" style={{padding:'10px 14px'}}>{((src.total||{})['ipguard']||0)>0?(<><Statistic title="IP-Guard" value={(src.total||{})['ipguard']||0} valueStyle={{fontSize:18}}/><div style={{fontSize:11,color:'#94a3b8',marginTop:2}}>今日 {src.today&&src.today['ipguard']||0}</div></>):(<><div style={{fontSize:12,color:'#94a3b8'}}>IP-Guard</div><div style={{fontSize:14,color:'#cbd5e1',marginTop:6}}>未接入</div></>)}</Card></Col>
-      <Col span={5}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title="已处理告警" value={((sysAl.status||{}).CONFIRMED||0)+(sysAl.status||{}).CLOSED||0} valueStyle={{fontSize:18}}/><div style={{fontSize:11,color:'#94a3b8',marginTop:2}}>误报 {(sysAl.status||{}).FP||0}</div></Card></Col>
-      <Col span={5}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title="数据库" value={sys.db_size_mb||0} suffix="MB" valueStyle={{fontSize:18}}/><div style={{fontSize:11,color:'#94a3b8',marginTop:2}}>WEB占比 {ev.web_ratio||0}%</div></Card></Col>
-      <Col span={4}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title="豁免用户" value={sys.exceptions||0} valueStyle={{fontSize:18}}/><div style={{fontSize:11,color:'#94a3b8',marginTop:2}}>已排除误报</div></Card></Col>
-    </Row>
     <div style={{margin:'12px 2px'}}><Legend/></div>
     {(()=>{const crit=(sysAl.list||[]).filter(a=>a.risk_score>=86).length; return crit>0&&<Alert type="error" message={<span>⚠️ 严重告警 <b>{crit}</b> 人需要立即关注！</span>} style={{marginBottom:8}} showIcon/>;})()}
     {(st.alerts>0&&st.verdicts>0&&(st.alerts/st.verdicts>0.15))&&<Alert type="warning" message="基线建设中（冷启动期）— 告警偏多属正常，随时间推移会趋于稳定" style={{marginBottom:8}} showIcon/>}
     <Row gutter={16}>
       <Col span={10}><Card className="card" title="风险意图分布" size="small"><div ref={pie} style={{height:240}}></div></Card></Col>
-      <Col span={14}><Card className="card" title="高风险用户 TOP10" size="small"><div ref={bar} style={{height:280}}></div></Card></Col>
+      <Col span={14}><Card className="card" title="高风险用户 TOP5" size="small"><div ref={bar} style={{height:200}}></div></Card></Col>
     </Row>
     <Card className="card" title="风险用户数趋势（按10分钟，风险≥50的人数）" size="small" style={{marginTop:16}}><div ref={trend} style={{height:160}}></div></Card>
     <Card className="card" title="今日网站分类 TOP12（深信服上网行为分类）" size="small" style={{marginTop:16}}><div ref={catBar} style={{height:220}}></div></Card>
