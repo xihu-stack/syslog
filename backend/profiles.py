@@ -8,14 +8,14 @@ from collections import Counter
 from datetime import datetime, timedelta
 from statistics import median
 
-from db import EventRow, ProfileRow, Session, json_field
+from db import EventRow, ProfileRow, Session, bj_now, json_field
 import dicts  # 敏感词表改为从字典配置读取
 
 LOOKBACK_DAYS = 30
 
 
 def _events_for(session, emp):
-    since = datetime.utcnow() - timedelta(days=LOOKBACK_DAYS)
+    since = bj_now() - timedelta(days=LOOKBACK_DAYS)
     return (session.query(EventRow)
             .filter(EventRow.employee_id == emp, EventRow.occurred_at >= since)
             .all())
@@ -86,19 +86,36 @@ def baseline_for(session, employee_id: str, cutoff) -> dict:
     return compute_profile(rows)
 
 
-def summarize_for_llm(p: dict) -> str:
-    """把画像压缩成一句给 LLM 看的基线摘要。"""
+def summarize_for_llm(p: dict):
+    """把画像压缩成【结构化基线】给 LLM。
+
+    返回 None 表示冷启动（样本不足）—— 由调用方决定如何喂全局基线。
+    结构化输出：样本量/置信度 + 常规时段 + 日均量 + 常用域名集（让 AI 判断当前域名是否陌生）。
+    """
     if not p or p.get("sample_count", 0) < 3:
-        return "（样本不足，按通用可疑度判断）"
-    ch = "/".join(p["channels_used"]) or "?"
-    kw = ",".join(p["usual_keywords"][:6]) or "无"
+        return None
+    n = p["sample_count"]
+    tier = "成熟" if n >= 50 else "较薄"
     hrs = p["active_hours_top"]
-    hrange = f"{min(hrs)}-{max(hrs)}" if hrs else "?"
-    wc = p.get("web_classes", {})
-    web_txt = ("；网页偏好 " + "/".join(f"{k}:{v}" for k, v in wc.items())) if wc else ""
-    return (f"活跃时段约 {hrange} 点；日均活动 ~{p['daily_doc_op_median']}"
-            f"(峰值 {p['daily_doc_op_max']})；常用通道 {ch}{web_txt}；常接触关键词[{kw}]；"
-            f"是否用过USB={'是' if 'USB' in p['channels_used'] else '否'}")
+    hrange = f"{min(hrs)}-{max(hrs)}点" if hrs else "未知"
+    doms = p.get("common_domains", [])[:8]
+    dom_txt = "、".join(doms) if doms else "无明显常用域名"
+    ch = "/".join(p.get("channels_used", [])) or "未记录"
+    return (f"【个人基线·{tier}(样本{n})】常规活跃时段 {hrange}；"
+            f"日均活动~{p.get('daily_doc_op_median', 0)}(峰值{p.get('daily_doc_op_max', 0)})；"
+            f"常用通道 {ch}；常用域名：{dom_txt}。"
+            f"判断要点：当前窗口出现【不在常用集内】的【高危类别】域名=异常；仅域名多不异常。")
+
+
+def global_summary(session) -> str:
+    """全局参照（每轮研判算一次，喂给所有窗口的 AI）：让 AI 区分'普遍行为' vs '个人异常'。
+
+    冷启动用户没有个人基线时，以此作为参照系，避免 AI 因'陌生'误判。"""
+    total_users = session.query(EventRow.employee_id).distinct().count()
+    return (f"【全局参照】全公司约 {total_users or '?'} 名员工。"
+            f"上班时段(8-20点)普遍访问搜索引擎/银行/IT/新闻/政府等正常行业网站，属常规办公；"
+            f"高危类别(远程控制/网盘/个人邮箱/招聘/微信传输) 全局仅极少数人使用，出现即需重点关注。"
+            f"仅'陌生域名数量多'不构成风险（几乎每人每天上百个新域名）。")
 
 
 def build_profiles() -> int:

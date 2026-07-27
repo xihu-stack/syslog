@@ -10,7 +10,7 @@ from fastapi import Body, FastAPI, File, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import desc, func
 
-from db import (AlertRow, EventRow, ExceptionRow, FeedbackRow, ProfileRow, Session, VerdictRow, init_db, json_field)
+from db import (AlertRow, EventRow, ExceptionRow, FeedbackRow, ProfileRow, Session, VerdictRow, bj_now, init_db, json_field)
 import pipeline
 import profiles
 import dicts
@@ -66,7 +66,7 @@ def stats():
     from datetime import datetime, timedelta
     s = Session()
     try:
-        now = datetime.utcnow()
+        now = bj_now()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         return {
             "events": s.query(EventRow).count(),
@@ -122,7 +122,7 @@ def employee(emp: str):
         return {
             "employee": emp,
             "profile": p.payload if p else None,
-            "profile_summary": profiles.summarize_for_llm(p.payload) if p else "无画像",
+            "profile_summary": (profiles.summarize_for_llm(p.payload) if p else None) or "样本不足，按通用可疑度判断",
             "events": [_event_dict(e) for e in evs],
             "verdicts": [{"window_start": v.window_start.isoformat() if v.window_start else None,
                           "intent": v.intent, "risk_score": v.risk_score,
@@ -369,7 +369,7 @@ def system_stats():
     from sqlalchemy import func as _f
     s = Session()
     try:
-        now = datetime.utcnow()
+        now = bj_now()
         today_start = (now - timedelta(hours=now.hour, minutes=now.minute, seconds=now.second, microseconds=now.microsecond))
         yesterday_start = today_start - timedelta(days=1)
         week_start = today_start - timedelta(days=7)
@@ -462,7 +462,7 @@ def category_stats():
     from datetime import datetime, timedelta
     s = Session()
     try:
-        now = datetime.utcnow()
+        now = bj_now()
         today_start = (now - timedelta(hours=now.hour, minutes=now.minute, seconds=now.second, microseconds=now.microsecond))
         yesterday_start = today_start - timedelta(days=1)
 

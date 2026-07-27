@@ -168,7 +168,8 @@ def deviation(window, baseline, global_domains=None) -> list:
     gdom = global_domains or set()
     hrs = set(baseline.get("active_hours_top", []))
     wh = {e.occurred_at.hour for e in window}
-    if wh and (min(wh) < 8 or max(wh) > 20) and not wh.issubset(hrs):
+    # 与 should_trigger._is_off_hours 对齐：凌晨0-6 / 深夜22+；且不在该员工常规时段
+    if wh and (min(wh) < 7 or max(wh) >= 22) and not wh.issubset(hrs):
         flags.append("off_hours")
     med = baseline.get("daily_doc_op_median", 0)
     if med and len(window) > max(5, med * 3):
@@ -225,12 +226,18 @@ def should_trigger(window, dev, baseline) -> bool:
     return False
 
 
-def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exemptions=None) -> dict:
-    profile_txt = f"\n历史基线摘要：{profile}" if profile else "\n历史基线摘要：（暂无，按通用可疑度判断）"
+def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exemptions=None, global_ctx=None) -> dict:
+    if profile:
+        profile_txt = f"\n{profile}"
+    else:
+        # 冷启动：无个人基线——明确告诉 AI 不要因"个人偏离/陌生"加分，按全局参照+高危信号判断
+        profile_txt = ("\n【个人基线】新用户/冷启动，无个人基线。"
+                       "不要因'陌生/偏离基线'加分；仅凭【全局参照】+高危域名+凌晨时段判分。")
     dev_txt = f"\n偏离信号：{', '.join(dev)}" if dev else ""
     exempt_txt = f"\n已知正常行为（豁免）：{exemptions}" if exemptions else ""
+    g_txt = f"\n{global_ctx}" if global_ctx else ""
     user = (f"员工：{window[0].employee_id}（设备：{window[0].device_id}）\n"
-            f"行为序列：\n{_fmt_window(window)}{profile_txt}{dev_txt}{exempt_txt}\n\n请输出 JSON。")
+            f"行为序列：\n{_fmt_window(window)}{g_txt}{profile_txt}{dev_txt}{exempt_txt}\n\n请输出 JSON。")
     try:
         raw = llm_client.chat(
             [{"role": "system", "content": SYSTEM_PROMPT},
@@ -258,8 +265,15 @@ def _fallback_verdict(window: list[CanonicalEvent], err: str) -> dict:
             score = max(score, 70); channels.add(ch)
         if e.category == "DOC" and is_sensitive(e.target_value) and e.action in WRITE_ACTIONS:
             score = max(score, 60)
-        if e.category == "WEB" and (e.raw or {}).get("domain_class") in ("netdisk", "personal_email"):
-            score = max(score, 55); channels.add((e.raw or {}).get("domain_class"))
+        if e.category == "WEB":
+            rc = dicts.risk_class((e.raw or {}).get("domain") or e.target_value)
+            if rc:
+                # 网盘/个人邮箱/远程控制/微信传输 → 兜底中危（LLM 不可用时）
+                score = max(score, 60 if rc in ("远程控制", "网盘/云盘") else 55)
+                ch_map = {"远程控制": "remote_control", "网盘/云盘": "netdisk",
+                          "个人邮箱": "personal_email", "微信传输": "upload"}
+                if rc in ch_map:
+                    channels.add(ch_map[rc])
         if e.category == "SEARCH" and _search_risky(e.target_value):
             score = max(score, 50)
     return {

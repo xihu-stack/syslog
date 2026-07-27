@@ -6,13 +6,22 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import (JSON, Column, DateTime, Integer, String, Text, cast, create_engine, event)
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "ipguard.db")
 DB_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DB_PATH}")
+
+# 事件 occurred_at 来自深信服 record_time，是北京时间（naive）。
+# 与之比较的"今日/近N天"边界必须用北京当地日期，否则前端"今日"数字会偏 8 小时。
+BJ_TZ = timezone(timedelta(hours=8))
+
+
+def bj_now() -> datetime:
+    """北京时间（naive datetime），用于和 occurred_at 比较。"""
+    return datetime.now(BJ_TZ).replace(tzinfo=None)
 
 engine = create_engine(DB_URL, echo=False, future=True)
 Session = sessionmaker(bind=engine, expire_on_commit=False)
@@ -63,7 +72,7 @@ class VerdictRow(Base):
     ai_participated = Column(Integer, default=1)
     event_hashes = Column(JSON)
     model = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=bj_now)  # 北京时间，与 occurred_at 同区，"今日"统计准确
 
 
 class AlertRow(Base):
@@ -78,7 +87,7 @@ class AlertRow(Base):
     status = Column(String, default="NEW")  # NEW/TRIAGING/CONFIRMED/FP/CLOSED
     dedup_key = Column(String, index=True)
     window_start = Column(DateTime, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=bj_now)  # 北京时间
 
 
 class ProfileRow(Base):

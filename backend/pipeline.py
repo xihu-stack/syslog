@@ -8,7 +8,7 @@ import sys
 import threading
 
 from db import (AlertRow, EventRow, ExceptionRow, Session, SettingRow, VerdictRow,
-                init_db, severity_of)
+                bj_now, init_db, severity_of)
 from models import CanonicalEvent
 from parser_ipguard import parse_ipguard_excel
 from parser_sangfor import parse_sangfor
@@ -110,6 +110,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
             source=r.source or "", raw=r.raw or {}) for r in new_rows]
         max_id = max(r.id for r in new_rows)
         gdomains = profiles.global_common_domains(rs)
+        gctx = profiles.global_summary(rs)  # 全局参照：每轮算一次，喂给所有窗口的 AI
         to_judge = []
         for emp, wins in detector.build_windows(new_events).items():
             for w in wins:
@@ -168,13 +169,14 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
     # ---- 2) LLM 并发研判（4线程并发，vLLM内部batch → 3-4倍提速）----
     def _judge(item):
         emp, w, baseline, dev = item
-        summary = profiles.summarize_for_llm(baseline) if baseline.get("sample_count", 0) >= 3 else None
+        summary = profiles.summarize_for_llm(baseline)  # 冷启动返回 None（由 analyze_window 喂全局参照）
         # 查该用户是否有豁免（已确认正常的行为），传给 AI 作为上下文
         exempt = None
         try:
             from datetime import datetime as _dt
             es = Session()
             try:
+                # expires_at 用 utcnow+days 写入，这里同源比较（不走 occurred_at 的北京时区）
                 exs = es.query(ExceptionRow).filter(
                     ExceptionRow.employee_id == emp,
                     (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > _dt.utcnow())
@@ -185,7 +187,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 exempt = "; ".join(f"{INTENT_MAP.get(e.signal_type, e.signal_type)}({e.reason})" for e in exs)
         except Exception:
             pass
-        v = detector.analyze_window(w, summary, dev, exempt)
+        v = detector.analyze_window(w, summary, dev, exempt, gctx)
         return (emp, w[0].device_id, w[0].occurred_at, w[-1].occurred_at, [e.event_hash() for e in w], v)
 
     done_count = 0
@@ -286,11 +288,11 @@ def auto_close_alerts():
 
 def cleanup_old_events(days: int = 90) -> int:
     """清理超过保留期的事件（告警/研判记录保留）。返回删除条数。"""
-    from datetime import datetime, timedelta
+    from datetime import timedelta
     init_db()
     s = Session()
     try:
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = bj_now() - timedelta(days=days)  # occurred_at 是北京时间，按本地算保留期
         n = s.query(EventRow).filter(EventRow.occurred_at < cutoff).delete(synchronize_session=False)
         s.commit()
         return n
