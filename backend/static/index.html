@@ -50,6 +50,7 @@ function debounce(fn, delay){ let t; return (...args) => { clearTimeout(t); t = 
 const STATUS_OPTS = [{label:'待处理',value:'NEW'},{label:'处理中',value:'TRIAGING'},{label:'已确认',value:'CONFIRMED'},{label:'误报',value:'FP'},{label:'已关闭',value:'CLOSED'}];
 const fmt = s => (s||'').replace('T',' ').slice(0,16);
 const GET = u=>fetch(u).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('GET '+u,e);return {};});
+const GETL = u=>fetch(u).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).then(d=>Array.isArray(d)?d:[]).catch(e=>{console.error('GETL '+u,e);return [];});
 const POST=(u,o)=>fetch(u,{method:'POST',...o}).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('POST '+u,e);message.error('请求失败');return {};});
 const PUTJ=(u,b)=>fetch(u,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('PUT '+u,e);message.error('保存失败');return {};});
 const DEL=(u)=>fetch(u,{method:'DELETE'}).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('DEL '+u,e);message.error('删除失败');return {};});
@@ -256,8 +257,8 @@ function Dashboard({go}){
   const pieChart=useRef(null),barChart=useRef(null),trendChart=useRef(null),catChart=useRef(null);
   const load=async()=>{
     setSt(await GET('/api/stats'));
-    setVs(await GET('/api/verdicts?limit=300'));
-    setAl(await GET('/api/alerts?limit=300'));  // 饼图需要更多数据
+    setVs(await GETL('/api/verdicts?limit=300'));
+    setAl(await GETL('/api/alerts?limit=300'));  // 饼图需要更多数据
     setSys(await GET('/api/system/stats'));
     setCats(await GET('/api/category_stats'));
   };
@@ -316,10 +317,10 @@ function Dashboard({go}){
   const ev=(sys.events||{}), vd=(sys.verdicts||{}), sysAl=(sys.alerts||{}), src=(sys.sources||{});
   return (<div>
     <Row gutter={16}>
-      {(()=>{const v=st.events||0, y=ev.yesterday||0, pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{v}</div><div className="l">日志事件</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日 {v} {pct?(<span style={{color:pct>0?'#ff4d4f':pct<0?'#52c41a':'#9aa3b2'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):'='}{y?' / 昨日'+y:''}</div></div></Col>;})()}
+      {(()=>{const v=st.events_today||0, y=ev.yesterday||0, pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{v}</div><div className="l">日志事件</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日 {v} {pct?(<span style={{color:pct>0?'#ff4d4f':pct<0?'#52c41a':'#9aa3b2'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):'='}{y?' / 昨日'+y:''}</div></div></Col>;})()}
       {(()=>{const v=st.employees||0, y=(ev.emp_yesterday||0), pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{v}</div><div className="l">用户</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>活跃 {v}{pct?(<span style={{color:pct>0?'#52c41a':pct<0?'#ff4d4f':'#9aa3b2'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):'='}</div></div></Col>;})()}
-      {(()=>{const v=st.verdicts||0, y=(vd.yesterday||0), pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile" onClick={()=>go('alerts')}><div className="v num">{v}</div><div className="l">研判窗口</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>AI {vd.ai||0} {pct?(<span style={{color:pct>0?'#1677ff':pct<0?'#9aa3b2':'#9aa3b2'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):''}</div></div></Col>;})()}
-      {(()=>{const v=st.alerts||0, y=sysAl.yesterday||0, pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile alert" onClick={()=>go('alerts')}><div className="v num">{v}</div><div className="l">风险告警</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日 {v}{pct?(<span style={{color:pct>0?'#ff4d4f':pct<0?'#52c41a':'#9aa3b2'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):'='} / 待处理 {(sysAl.status||{}).NEW||0}</div></div></Col>;})()}
+      {(()=>{const v=vd.today||0, y=(vd.yesterday||0), pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile" onClick={()=>go('alerts')}><div className="v num">{v}</div><div className="l">研判窗口</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>AI {vd.ai||0} {pct?(<span style={{color:pct>0?'#1677ff':pct<0?'#9aa3b2':'#9aa3b2'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):''}</div></div></Col>;})()}
+      {(()=>{const v=sysAl.today||0, y=sysAl.yesterday||0, pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile alert" onClick={()=>go('alerts')}><div className="v num">{v}</div><div className="l">风险告警</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日 {v}{pct?(<span style={{color:pct>0?'#ff4d4f':pct<0?'#52c41a':'#9aa3b2'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):'='} / 待处理 {(sysAl.status||{}).NEW||0}</div></div></Col>;})()}
     </Row>
     <Row gutter={12} style={{marginTop:12}}>
       <Col span={5}><Card className="card" size="small" style={{padding:'6px 8px'}}><Statistic title="深信服" value={(src.total||{})['sangfor']||0} valueStyle={{fontSize:16}}/><div style={{fontSize:10,color:'#9aa3b2'}}>今日 {src.today&&src.today['sangfor']||0}</div></Card></Col>
@@ -355,7 +356,7 @@ function Dashboard({go}){
 function Computers({goProfile}){
   const [rows,setRows]=useState([]); const [uq,setUq]=useState(''); const [riskFilter,setRiskFilter]=useState('all');
   const [lastUpd,setLastUpd]=useState(null); const [loading,setLoading]=useState(true);
-  const load=async()=>{const r=await GET('/api/computers');setRows(r);setLastUpd(new Date());setLoading(false);};
+  const load=async()=>{const r=await GETL('/api/computers');setRows(r);setLastUpd(new Date());setLoading(false);};
   useEffect(()=>{ load(); const t=setInterval(load,15000); return ()=>clearInterval(t); },[]);
   const summary={
     total: rows.length,
@@ -419,7 +420,7 @@ function Alerts({goProfile}){
   const [rows,setRows]=useState([]); const [showAll,setShowAll]=useState(false); const [q,setQ]=useState(''); const [lvl,setLvl]=useState('all');
   const [scenario,setScenario]=useState('all');
   const [lastUpd,setLastUpd]=useState(null); const [loading,setLoading]=useState(true);
-  const load=async()=>{const r=await GET('/api/alerts?limit=200');setRows(r);setLastUpd(new Date());setLoading(false);};
+  const load=async()=>{const r=await GETL('/api/alerts?limit=200');setRows(r);setLastUpd(new Date());setLoading(false);};
   useEffect(()=>{ load(); const t=setInterval(load,15000); return ()=>clearInterval(t); },[]);
   const doConfirm=(e,vid)=>{ e.stopPropagation(); POST('/api/verdicts/'+vid+'/confirm').then(()=>{ message.success('已确认'); load(); }); };
   const [fpModal,setFpModal]=useState({open:false,vid:0,intent:'',emp:'',reason:'岗位需要',allScenarios:[]});
@@ -600,14 +601,15 @@ function DictEditor({name,label,initial,onSave}){
   </div>);
 }
 function Config(){
-  const [cfg,setCfg]=useState({}); const [dicts,setDicts]=useState({}); const [syslog,setSyslog]=useState({}); const [saving,setSaving]=useState(false);
+  const [cfg,setCfg]=useState({}); const [dicts,setDicts]=useState({}); const [syslog,setSyslog]=useState({}); const [saving,setSaving]=useState(false); const [excs,setExcs]=useState([]);
   const [form]=Form.useForm();
-  const load=async()=>{ const c=await GET('/api/config'); setCfg(c); form.setFieldsValue({base_url:c.llm_base_url,active:c.llm_active||'qwen',qwen_model:(c.qwen||{}).model,deepseek_model:(c.deepseek||{}).model,deepseek_base_url:(c.deepseek||{}).base_url}); setDicts(await GET('/api/dicts')); setSyslog(await GET('/api/syslog/status')); };
+  const load=async()=>{ const c=await GET('/api/config'); setCfg(c); form.setFieldsValue({base_url:c.llm_base_url,active:c.llm_active||'qwen',qwen_model:(c.qwen||{}).model,deepseek_model:(c.deepseek||{}).model,deepseek_base_url:(c.deepseek||{}).base_url}); setDicts(await GET('/api/dicts')); setSyslog(await GET('/api/syslog/status')); setExcs(await GETL('/api/exceptions')); };
   useEffect(()=>{ load(); const t=setInterval(()=>GET('/api/syslog/status').then(setSyslog),5000); return ()=>clearInterval(t); },[]);
   const saveLlm=async(v)=>{ setSaving(true); const body={llm_base_url:v.base_url,llm_active:v.active,llm_qwen_model:v.qwen_model,llm_deepseek_model:v.deepseek_model,llm_deepseek_base_url:v.deepseek_base_url||''};
     if(v.qwen_key) body.qwen_key=v.qwen_key; if(v.deepseek_key) body.deepseek_key=v.deepseek_key;
     await PUTJ('/api/config',body); setSaving(false); message.success('已保存'); load(); };
   const saveDict=async(n,val)=>{ await PUTJ('/api/dicts/'+n,val); message.success('已保存'); };
+  const delExc=async(id)=>{ await DEL('/api/exceptions/'+id); message.success('已删除豁免'); load(); };
   const toggleSys=async(on)=>{ await POST('/api/syslog/'+(on?'start':'stop')); message.success(on?'已启动':'已停止'); load(); };
   const uploadLog=f=>{ const fd=new FormData(); fd.append('file',f); message.loading({content:'导入中…',key:'up',duration:0});
     fetch('/api/ingest',{method:'POST',body:fd}).then(r=>r.json()).then(r=>message.success({content:'已导入 '+r.imported+' 条',key:'up',duration:2})); return false; };
@@ -639,6 +641,17 @@ function Config(){
         {syslog.recent&&syslog.recent.length? <div style={{background:'#f6f8fb',padding:8,fontSize:12,maxHeight:110,overflow:'auto',border:'1px solid #e6ecf5',borderRadius:6}}>
           {syslog.recent.map((m,i)=><div key={i} style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><b>{m.t}</b> {m.from}: {m.msg.slice(0,80)}</div>)}</div>
           :<Typography.Text type="secondary" style={{fontSize:12}}>等待深信服推送（配好后自动接收→解析→研判）</Typography.Text>}
+      </Card>
+      <Card className="card" title={"误报复核 / 豁免管理（"+excs.length+"）"} size="small" style={{marginBottom:16}}>
+        {excs.length ? <Table size="small" rowKey="id" pagination={{pageSize:8}} dataSource={excs}
+          columns={[
+            {title:'用户',dataIndex:'employee',width:90},
+            {title:'豁免场景',dataIndex:'signal_type',width:110,render:v=><Tag color="blue">{INTENT[v]||v}</Tag>},
+            {title:'原因',dataIndex:'reason',ellipsis:true},
+            {title:'有效期',dataIndex:'expires_at',width:110,render:v=>v?v.replace('T',' ').slice(0,10):'永久'},
+            {title:'',width:70,render:(_,r)=><Button size="small" danger ghost onClick={()=>delExc(r.id)}>删除</Button>},
+          ]}/> : <Typography.Text type="secondary" style={{fontSize:12}}>暂无豁免。在"告警管理"标记误报时会自动创建（被豁免的用户同类行为不再告警）。</Typography.Text>}
+        <Alert type="info" showIcon style={{marginTop:8}} message="删除豁免后，该用户对应场景的行为会恢复告警。"/>
       </Card>
     </Col>
     <Col span={12}>

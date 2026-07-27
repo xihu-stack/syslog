@@ -376,9 +376,12 @@ def system_stats():
 
         # 按来源统计：今日/昨日/近7天/总量
         def src_count(since):
-            rows = s.query(EventRow.source, _f.count(EventRow.id)).filter(
-                EventRow.occurred_at >= since).group_by(EventRow.source).all()
-            return {r[0] or "sangfor": r[1] for r in rows}
+            # source=''（历史遗留未标来源，实为深信服上网日志）与 'sangfor' 合并为一组，
+            # 否则 r[0] or "sangfor" 会让两者落到同一 dict key、后者覆盖前者，丢掉空来源那批数。
+            src_expr = _f.coalesce(_f.nullif(EventRow.source, ""), "sangfor")
+            rows = s.query(src_expr, _f.count(EventRow.id)).filter(
+                EventRow.occurred_at >= since).group_by(src_expr).all()
+            return {r[0]: r[1] for r in rows}
 
         src_today = src_count(today_start)
         src_yesterday = src_count(yesterday_start)
@@ -480,31 +483,6 @@ def category_stats():
         return {"today": today, "yesterday": yesterday}
     finally:
         s.close()
-
-
-@app.post("/api/update")
-def update_code():
-    """远程拉取最新代码并重启（git pull + 同步 + 重启）。"""
-    import subprocess, shutil
-    try:
-        r = subprocess.run(["git", "pull"], capture_output=True, text=True, timeout=60, cwd="/project")
-        if r.returncode != 0:
-            return {"ok": False, "error": r.stderr[:500]}
-        # 同步更新后的代码到运行目录
-        for item in os.listdir("/project/backend"):
-            if item in ("data", "__pycache__"):
-                continue
-            src = "/project/backend/" + item
-            dst = "/app/" + item
-            if os.path.isdir(src):
-                shutil.rmtree(dst, ignore_errors=True)
-                shutil.copytree(src, dst)
-            else:
-                shutil.copy2(src, dst)
-        # 退出进程，Docker restart 策略自动重启加载新代码
-        os._exit(0)
-    except Exception as e:
-        return {"ok": False, "error": str(e)[:300]}
 
 
 @app.get("/api/export/alerts")

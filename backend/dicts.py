@@ -153,3 +153,25 @@ def risk_class(domain: str):
             if p and p.lower() in d:
                 return label
     return None
+
+
+# 类别 → 信号强度（仅"上网行为日志"视角；重要前提：访问 ≠ 上传）。
+# 个人邮箱/微信是全民日常行为；真正的数据外发需 IP-Guard 文档审计的"文件上传/发送"动作佐证。
+# 当前未接入 IPG，故邮箱/微信"访问"一律低分；只有远程控制(工具本身在运行)是上网日志视角的强信号。
+# 【接入 IPG 后】：在 detector 里对 low 类别叠加"DOC 上传/外发动作"即可升级为高危。
+RISK_TIER = {
+    "远程控制": "high",   # 远控工具在跑 = 强外发信号
+    "网盘/云盘": "mid",    # 可能上传，但上网日志看不到上传动作
+    "个人邮箱": "low",     # 全民日常；需 IPG 上传动作佐证才升级
+    "微信传输": "low",     # 同上
+    "招聘求职": "job",     # 求职意图（另一类风险，非外发）
+}
+
+
+def risk_tier(domain: str):
+    """域名 → 信号强度 high/mid/low/job；非高危域名返回 None。
+
+    should_trigger / 评分锚点 / 兜底 共用：high/mid 才算外发信号，
+    low(邮箱/微信)单独不触发、不加分。"""
+    rc = risk_class(domain)
+    return RISK_TIER.get(rc) if rc else None

@@ -28,22 +28,24 @@ SYSTEM_PROMPT = (
     "你是企业员工终端行为分析助手，识别数据外发、离职求职、违规等内部风险。\n"
     "输入：某员工一段时间窗口内的行为序列（可能附历史基线摘要、偏离信号、已知豁免）。\n"
     "输出 JSON：intent / deviation / risk_score(0-100整数) / explanation(一句中文) / channels。\n\n"
-    "【评分锚点——严格按此打分，保证跨样本一致】\n"
-    "• 凌晨(0-6点) + 高危域名(远程控制/网盘/个人邮箱/微信传输) → 75-85\n"
-    "• 工作时段 + 高危域名(远程控制/网盘/个人邮箱/微信传输) → 50-65\n"
-    "• 非HR岗位访问招聘网站：工作时段 55-65；凌晨 70-80\n"
-    "• 文档外发(U盘/网盘/邮件发送)+敏感文件 → 85+；常规文件外发 → 60\n"
-    "• 凌晨(0-6点) + 仅常规网站(无高危域名) → 35-45\n"
-    "• 工作时段 + 常规网站(无高危域名) → 10-25\n\n"
-    "【关键——主动抑制噪音】\n"
-    "• '访问大量陌生域名 / 新域名多' 单独【不构成风险】，最高 25 分。"
-    "陌生域名数量在纯网页浏览场景下没有意义，几乎所有人每天都会访问上百个不同域名。\n"
-    "• 只有当陌生域名中【含高危类别】(网盘/求职/远程控制/个人邮箱/微信传输)，"
-    "或【叠加凌晨时段】，才允许上 50 分。\n"
-    "• 银行/IT/新闻/搜索引擎/政府/教育/医疗 等正常行业网站 = 正常办公，不计风险。\n\n"
-    "【intent 判定】\n"
-    "远程控制/网盘/个人邮箱/微信传输 → data_exfiltration；招聘网站 → job_seeking；\n"
-    "凌晨+高危域名 → data_exfiltration；仅凌晨+常规网站 → baseline_deviation；正常办公 → normal_work。\n"
+    "【最重要前提——访问 ≠ 上传】\n"
+    "当前数据源只有'上网行为日志'，只能看到员工【访问了哪个域名】，"
+    "【看不到上传/发送了什么文件】。因此：\n"
+    "  - 个人邮箱、微信传输、网盘 的【访问】本身不是数据外发证据——全员每天都在用；\n"
+    "  - 真正的外发要靠 IP-Guard 文档审计日志的【文件上传/发送】动作佐证（当前未接入）；\n"
+    "  - 只有【远程控制类】(todesk/teamviewer/向日葵等)工具在运行，是上网日志视角的强外发信号。\n\n"
+    "【评分锚点——严格按此打分】\n"
+    "• 远程控制 + 凌晨(0-6点) → 80-90；远程控制 + 工作时段 → 50-60\n"
+    "• 网盘 + 凌晨 → 50-60；网盘 + 工作时段 → 25-35（仅访问，未见上传）\n"
+    "• 招聘网站 + 凌晨 → 70-80；招聘网站 + 工作时段 → 50-60（求职意图）\n"
+    "• 个人邮箱/微信传输 + 凌晨 → 30-40；工作时段 → 5-15（全民日常，访问≠外发）\n"
+    "• 凌晨 + 仅常规网站(无高危) → 30-40（公司夜间无人，时段异常但内容普通）\n"
+    "• 工作时段 + 常规网站 → 5-15\n\n"
+    "【夜间=真异常】公司夜间(0-6点/22点后)基本无人，且员工在家用手机不产生日志，"
+    "故日志里出现的夜间活动本身可疑——但只有叠加【远程控制/网盘】才升高危，"
+    "叠加个人邮箱/微信/常规网站只给中低分。\n\n"
+    "【intent 判定】远程控制(尤其凌晨) → data_exfiltration；招聘网站 → job_seeking；"
+    "凌晨+常规/邮箱/微信 → baseline_deviation；个人邮箱/微信访问 → normal_work（非外发证据）；正常办公 → normal_work。\n"
     "若基线摘要含'已知正常行为(豁免)'，同类行为判 normal_work。\n\n"
     "只输出 JSON：intent(data_exfiltration|job_seeking|baseline_deviation|policy_violation|normal_work), "
     "deviation(none|minor|major|severe), risk_score(0-100整数), explanation(一句中文), "
@@ -103,22 +105,33 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
                 web[d]["cat"] = cat
         else:
             others.append(e)
-    # 高危域名 vs 常规域名 分开（核心降噪：不让 todesk 被淹没在 baidu 里）
-    risky, normal = [], []
+    # 按信号强度分三档（让 AI 看清：强信号置顶 / 邮箱微信标低信号 / 常规弱化）
+    high_sig, low_sig, normal = [], [], []
     for d, info in sorted(web.items(), key=lambda x: -x[1]["count"]):
-        (risky if dicts.risk_class(d) else normal).append((d, info))
+        tier = dicts.risk_tier(d)
+        if tier in ("high", "mid", "job"):
+            high_sig.append((d, info))
+        elif tier == "low":
+            low_sig.append((d, info))
+        else:
+            normal.append((d, info))
 
     lines = []
     # 时段提示
     hours = [e.occurred_at.hour for e in window if e.category == "WEB" and e.occurred_at]
     if hours and (min(hours) < 7 or max(hours) >= 22):
-        lines.append(f"[时段] 含非工作时段访问（{min(hours)}-{max(hours)}时），需重点关注")
+        lines.append(f"[时段] 含非工作时段访问（{min(hours)}-{max(hours)}时），公司夜间无人需关注")
 
-    # 高危访问置顶 + 标注类别
-    for d, info in risky[:10]:
+    # 强信号置顶 + 标注类别（远程控制/网盘/招聘）
+    for d, info in high_sig[:10]:
         rc = dicts.risk_class(d)
         cat_tag = f"[{info['cat']}]" if info["cat"] else ""
-        lines.append(f"[⚠高危-{rc}] {d} ×{info['count']} {cat_tag}")
+        lines.append(f"[⚠{rc}] {d} ×{info['count']} {cat_tag}")
+    # 低信号(个人邮箱/微信)：标注但明确"访问≠外发"，避免被当高危
+    for d, info in low_sig[:8]:
+        rc = dicts.risk_class(d)
+        cat_tag = f"[{info['cat']}]" if info["cat"] else ""
+        lines.append(f"[{rc}-低信号·访问非外发] {d} ×{info['count']} {cat_tag}")
     # 常规访问（仅 Top15，弱化"数量"）
     for d, info in normal[:15]:
         cat_tag = f"[{info['cat']}]" if info["cat"] else ""
@@ -164,9 +177,9 @@ def deviation(window, baseline, global_domains=None) -> list:
     bdom = set(baseline.get("common_domains", [])) | gdom
     newdom = {(e.raw or {}).get("domain") for e in window if e.category == "WEB"
               and (e.raw or {}).get("domain") and (e.raw or {}).get("domain") not in bdom}
-    # 只标注【新高危域名】——普通新域名数量在纯浏览场景下是噪音主因
-    # （几乎每人每天上百个新域名），不作为偏离信号；只提示新出现的高危类别。
-    risky_new = sorted({d for d in newdom if dicts.risk_class(d)})
+    # 只标注【新出现的 high/mid/job 级域名】——普通新域名数量是纯浏览噪音主因
+    # （几乎每人每天上百个新域名）；个人邮箱/微信(low)新域名也不算偏离（全民日常）。
+    risky_new = sorted({d for d in newdom if dicts.risk_tier(d) in ("high", "mid", "job")})
     if risky_new:
         flags.append("new_risky_domain:" + ",".join(risky_new[:5]))
     return flags
@@ -176,15 +189,15 @@ def should_trigger(window, dev, baseline) -> bool:
     """调用 AI 的时机：只在命中【真实风险信号】时才研判，避免对常规浏览浪费 AI 并产生噪音告警。
 
     信号（任一即触发）：
-      - WEB 命中高危域名（远程控制/网盘/个人邮箱/招聘/微信传输）
-      - WEB/DOC 非工作时段(凌晨0-6/深夜22+)活动
+      - WEB 命中 high/mid/job 级域名（远程控制=high / 网盘=mid / 招聘=job）
+      - WEB/DOC 非工作时段(凌晨0-6/深夜22+)活动（公司夜间无人，时段本身可疑）
       - DOC 写操作 / 非本地通道(USB/外发)
       - SEARCH 含求职/高危关键词
       - 冷启动用户 + 量激增
-    常规工作时段浏览正常网站 → 跳过（这是此前 126 条"陌生域名"噪音告警的根源）。
+    注意：个人邮箱/微信(risk_tier=low)是全民日常行为，访问≠上传，【单独不触发】——
+    这是上一版 203 条"个人邮箱"data_exfiltration 噪音告警(命中84/108用户)的根源。
     """
     has_off_hours = False
-    has_risk_domain = False
     for e in window:
         if e.category == "DOC":
             if e.action in WRITE_ACTIONS:
@@ -195,12 +208,11 @@ def should_trigger(window, dev, baseline) -> bool:
         if e.category == "SEARCH" and _search_risky(e.target_value):
             return True
         if e.category == "WEB":
-            if dicts.risk_class((e.raw or {}).get("domain") or e.target_value):
-                has_risk_domain = True
+            tier = dicts.risk_tier((e.raw or {}).get("domain") or e.target_value)
+            if tier in ("high", "mid", "job"):
+                return True
             if _is_off_hours(e.occurred_at):
                 has_off_hours = True
-    if has_risk_domain:
-        return True
     if has_off_hours:
         return True
     # 冷启动用户 + 明显量激增（非纯常规浏览）
@@ -249,19 +261,21 @@ def _fallback_verdict(window: list[CanonicalEvent], err: str) -> dict:
         if e.category == "DOC" and is_sensitive(e.target_value) and e.action in WRITE_ACTIONS:
             score = max(score, 60)
         if e.category == "WEB":
-            rc = dicts.risk_class((e.raw or {}).get("domain") or e.target_value)
-            if rc:
-                # 网盘/个人邮箱/远程控制/微信传输 → 兜底中危（LLM 不可用时）
-                score = max(score, 60 if rc in ("远程控制", "网盘/云盘") else 55)
-                ch_map = {"远程控制": "remote_control", "网盘/云盘": "netdisk",
-                          "个人邮箱": "personal_email", "微信传输": "upload"}
-                if rc in ch_map:
-                    channels.add(ch_map[rc])
+            tier = dicts.risk_tier((e.raw or {}).get("domain") or e.target_value)
+            off = _is_off_hours(e.occurred_at)
+            if tier == "high":                      # 远程控制 = 强外发信号
+                score = max(score, 75 if off else 55); channels.add("remote_control")
+            elif tier == "mid":                     # 网盘（仅访问，未见上传）
+                score = max(score, 50 if off else 28); channels.add("netdisk")
+            elif tier == "job":                     # 招聘求职
+                score = max(score, 55 if off else 50)
+            elif tier == "low" and off:             # 邮箱/微信：仅凌晨给低分，工作时段 0
+                score = max(score, 30)
         if e.category == "SEARCH" and _search_risky(e.target_value):
             score = max(score, 50)
     return {
-        "intent": "data_exfiltration" if score >= 60 else ("job_seeking" if score >= 50 else "normal_work"),
-        "deviation": "major" if score >= 60 else "none",
+        "intent": "data_exfiltration" if score >= 60 else ("job_seeking" if score >= 50 else ("baseline_deviation" if score >= 30 else "normal_work")),
+        "deviation": "major" if score >= 60 else ("minor" if score >= 30 else "none"),
         "risk_score": score,
         "explanation": f"[规则兜底-LLM不可用] {err[:40]}",
         "channels": list(channels),
