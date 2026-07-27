@@ -221,6 +221,19 @@ def should_trigger(window, dev, baseline) -> bool:
     return False
 
 
+def _work_hours_cap(window) -> int | None:
+    """工作时段（不含凌晨0-6/深夜22-23）各类域名的风险分上限。
+    AI 偶尔不遵守 prompt 时段锚点（如把工作时段远程控制判到85），此处硬兜底校准。"""
+    if any(_is_off_hours(e.occurred_at) for e in window):
+        return None  # 窗口含非工作时段 → 凌晨高分保留，不夹
+    cap = 0
+    for e in window:
+        if e.category == "WEB":
+            t = dicts.risk_tier((e.raw or {}).get("domain") or e.target_value)
+            cap = max(cap, {"high": 60, "mid": 35, "job": 60}.get(t, 0))  # 远程控制/招聘60 · 网盘仅访问35
+    return cap or None
+
+
 def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exemptions=None, global_ctx=None) -> dict:
     if profile:
         profile_txt = f"\n{profile}"
@@ -246,6 +259,10 @@ def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exempti
         v.setdefault("deviation", "none")
         v.setdefault("channels", [])
         v["ai_participated"] = True
+        cap = _work_hours_cap(window)
+        if cap is not None and int(v.get("risk_score") or 0) > cap:
+            v["risk_score"] = cap
+            v["explanation"] = (v.get("explanation") or "").rstrip("。") + "（工作时段·已校准）"
         return v
     except Exception as ex:
         return _fallback_verdict(window, str(ex))

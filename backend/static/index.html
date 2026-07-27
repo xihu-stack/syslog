@@ -318,7 +318,7 @@ function Dashboard({go}){
   return (<div>
     <Row gutter={16}>
       {(()=>{const v=st.events_today||0, y=ev.yesterday||0, pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{v}</div><div className="l">日志事件</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日 {v} {pct?(<span style={{color:pct>0?'#ff4d4f':pct<0?'#52c41a':'#9aa3b2'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):'='}{y?' / 昨日'+y:''}</div></div></Col>;})()}
-      {(()=>{const v=st.employees||0, y=(ev.emp_yesterday||0), pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{v}</div><div className="l">用户</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>活跃 {v}{pct?(<span style={{color:pct>0?'#52c41a':pct<0?'#ff4d4f':'#9aa3b2'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):'='}</div></div></Col>;})()}
+      {(()=>{const v=st.employees||0, y=(ev.emp_yesterday||0), pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{v}</div><div className="l">用户</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日活跃 {v}{pct?(<span style={{color:pct>0?'#52c41a':pct<0?'#ff4d4f':'#9aa3b2'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):'='}</div></div></Col>;})()}
       {(()=>{const v=vd.today||0, y=(vd.yesterday||0), pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile" onClick={()=>go('alerts')}><div className="v num">{v}</div><div className="l">研判窗口</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>AI {vd.ai||0} {pct?(<span style={{color:pct>0?'#1677ff':pct<0?'#9aa3b2':'#9aa3b2'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):''}</div></div></Col>;})()}
       {(()=>{const v=sysAl.today||0, y=sysAl.yesterday||0, pct=y?Math.round((v-y)/y*100):0;return <Col span={6}><div className="tile alert" onClick={()=>go('alerts')}><div className="v num">{v}</div><div className="l">风险告警</div><div style={{fontSize:11,color:'#9aa3b2',marginTop:2}}>今日 {v}{pct?(<span style={{color:pct>0?'#ff4d4f':pct<0?'#52c41a':'#9aa3b2'}}> ({pct>0?'↑':'↓'}{Math.abs(pct)}%)</span>):'='} / 待处理 {(sysAl.status||{}).NEW||0}</div></div></Col>;})()}
     </Row>
@@ -449,7 +449,7 @@ function Alerts({goProfile}){
           {SCENARIOS.map(s=><Select.Option key={s.value} value={s.value}>{s.label}</Select.Option>)}
         </Select>
       </Space>
-      <Table size="small" rowKey="key" pagination={{pageSize:14}} loading={loading} dataSource={(()=>{
+      <Table size="small" rowKey="key" pagination={{pageSize:14,showTotal:t=>`共 ${t} 条`}} loading={loading} dataSource={(()=>{
         const filtered=rows.filter(v=>{
           if(!showAll&&v.status!=='NEW')return false;
           if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;
@@ -474,6 +474,7 @@ function Alerts({goProfile}){
           {title:'用户',dataIndex:'employee',width:100,render:v=><a onClick={(e)=>{e.stopPropagation();goProfile(v);}} style={{cursor:'pointer'}}>{v}</a>},
           {title:'风险场景',dataIndex:'scenarios',render:v=><Space wrap size={[4,4]}>{v.map(s=><Tag key={s.label} style={{fontSize:11}} color={s.risk>=86?'red':s.risk>=61?'orange':s.risk>=31?'gold':'blue'}>{s.label} {s.risk}</Tag>)}</Space>},
           {title:'次数',dataIndex:'count',width:50,render:v=><span className="num">{v}</span>},
+          {title:'最近告警',dataIndex:'latest',width:135,render:v=><span style={{fontSize:11,color:'#6b7280'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
           {title:'风险',dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
           {title:'说明',dataIndex:'summary',render:v=><Tooltip title={v}><span style={{display:'inline-block',maxWidth:300,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',verticalAlign:'bottom'}}>{v}</span></Tooltip>},
           {title:'操作',width:120,render:(_,r)=>(<Space size={4}>
