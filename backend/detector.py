@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import timedelta
-from typing import Optional
 
 import llm_client
 import dicts
@@ -79,22 +78,6 @@ def is_sensitive(text: str) -> bool:
 def _search_risky(kw: str) -> bool:
     terms = dicts.get("job_search_terms") + dicts.get("risk_search_terms")
     return any(t in (kw or "") for t in terms) or is_sensitive(kw)
-
-
-def trigger(window: list[CanonicalEvent]) -> bool:
-    """全自动触发门：不依赖用户关键词。
-    文档写类动作 / 非本地通道 / 任何网页访问 / 任何搜索 → 都送 AI 判断；
-    仅"纯本地只读(ACCESS/READ)"跳过（太常规）。风险识别全部交给 AI 语义判断。"""
-    for e in window:
-        if e.category == "DOC":
-            if e.action in WRITE_ACTIONS:
-                return True
-            ch = (e.raw or {}).get("channel")
-            if ch and ch != "LOCAL":
-                return True
-        elif e.category in ("WEB", "SEARCH"):
-            return True
-    return False
 
 
 def _is_off_hours(dt) -> bool:
