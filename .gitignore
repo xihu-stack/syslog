@@ -19,6 +19,7 @@ samples/
 
 # 临时文件
 .tmp_*
+backend/_*.py
 
 # OS
 .DS_Store
