@@ -67,6 +67,7 @@ def compute_profile(rows) -> dict:
                 keywords.add(k)
     daily = list(per_day.values())
     return {
+        "active_days": len(per_day),
         "active_hours_top": [h for h, _ in hours.most_common(8)],
         "daily_doc_op_median": int(median(daily)) if daily else 0,
         "daily_doc_op_max": max(daily) if daily else 0,

@@ -110,11 +110,11 @@ function ProfilePage({user, goBack}){
     <Button onClick={goBack} style={{marginBottom:12}}>← 返回</Button>
     <Typography.Title level={4} style={{marginBottom:16}}>{user} <RiskBadge s={maxRisk}/></Typography.Title>
     <Row gutter={16}>
-      <Col span={5}><Card className="card"><Statistic title="历史事件" value={evs.length}/></Card></Col>
+      <Col span={5}><Card className="card"><Statistic title="历史事件" value={p.sample_count||evs.length}/></Card></Col>
       <Col span={5}><Card className="card"><Statistic title="研判次数" value={vs.length}/></Card></Col>
       <Col span={5}><Card className="card"><Statistic title="最高风险" value={maxRisk} valueStyle={{color:LVL(maxRisk).c}}/></Card></Col>
-      <Col span={5}><Card className="card"><Statistic title="样本天数" value={p.sample_count?(Math.round(p.sample_count/evs.length*10)/10):'-'}/></Card></Col>
-      <Col span={4}><Card className="card"><Statistic title="常用通道" value={(p.channels_used||[]).join(' / ')||'-'}/></Card></Col>
+      <Col span={5}><Card className="card"><Statistic title="观察天数" value={p.active_days||new Set(evs.map(e=>(e.occurred_at||'').slice(0,10))).size}/></Card></Col>
+      <Col span={4}><Card className="card"><Statistic title="常用通道" value={(p.channels_used||[]).map(c=>({USB:'U盘',NETWORK:'网络/共享',LOCAL:'本地'}[c]||c)).join(' / ')||'-'}/></Card></Col>
     </Row>
     <Row gutter={16} style={{marginTop:16}}>
       <Col span={14}><Card className="card" title="风险趋势（点颜色=风险等级）" size="small"><div ref={trendRef} style={{height:220}}></div></Card></Col>
@@ -266,7 +266,7 @@ function Dashboard({go}){
   useEffect(()=>{
     // 饼图数据：优先用 alerts，其次用 verdicts（sysAl 是 sys.alerts 对象，不能和 useState 的 al 混淆）
     const pieData = al.length ? al : vs;
-    if(pie.current){ if(pieChart.current){pieChart.current.dispose();pieChart.current=null;} if(pieData.length){ const cnt={}; pieData.forEach(v=>{const s=v.scenario||v.intent||'unknown';cnt[s]=(cnt[s]||0)+1;}); if(!Object.keys(cnt).length){ pie.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无告警分布</div>'; } else { const c=echarts.init(pie.current); pieChart.current=c;
+    if(pie.current){ if(pieChart.current){pieChart.current.dispose();pieChart.current=null;} if(pieData.length){ const cnt={}; pieData.forEach(v=>{const s=v.scenario||v.intent||'unknown';cnt[s]=(cnt[s]||0)+1;}); if(!Object.keys(cnt).length){ pie.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无告警分布</div>'; } else if(Object.keys(cnt).length===1){ const [k,v]=Object.entries(cnt)[0]; pie.current.innerHTML='<div style="text-align:center;padding-top:48px"><div style="font-size:13px;color:#6b7280">'+(INTENT[k]||k)+'</div><div style="font-size:30px;font-weight:700;color:#ff4d4f;margin-top:6px">'+v+'<span style="font-size:13px;color:#9aa3b2"> (100%)</span></div><div style="font-size:11px;color:#9aa3b2;margin-top:8px">当前告警均为此类意图</div></div>'; } else { const c=echarts.init(pie.current); pieChart.current=c;
       c.setOption({tooltip:{trigger:'item'},legend:{bottom:0,textStyle:{color:'#6b7280',fontSize:11}},
         color:['#ff4d4f','#fa8c16','#faad14','#1677ff','#52c41a'],
         series:[{type:'pie',radius:['42%','70%'],label:{color:'#4b5563'},data:Object.entries(cnt).map(([k,v])=>({name:INTENT[k]||k,value:v}))}]});}} else { pie.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无告警分布</div>'; }}
@@ -324,7 +324,7 @@ function Dashboard({go}){
     </Row>
     <Row gutter={12} style={{marginTop:12}}>
       <Col span={5}><Card className="card" size="small" style={{padding:'6px 8px'}}><Statistic title="深信服" value={(src.total||{})['sangfor']||0} valueStyle={{fontSize:16}}/><div style={{fontSize:10,color:'#9aa3b2'}}>今日 {src.today&&src.today['sangfor']||0}</div></Card></Col>
-      <Col span={5}><Card className="card" size="small" style={{padding:'6px 8px'}}><Statistic title="IP-Guard" value={(src.total||{})['ipguard']||0} valueStyle={{fontSize:16}}/><div style={{fontSize:10,color:'#9aa3b2'}}>今日 {src.today&&src.today['ipguard']||0}</div></Card></Col>
+      <Col span={5}><Card className="card" size="small" style={{padding:'6px 8px'}}>{((src.total||{})['ipguard']||0)>0?(<><Statistic title="IP-Guard" value={(src.total||{})['ipguard']||0} valueStyle={{fontSize:16}}/><div style={{fontSize:10,color:'#9aa3b2'}}>今日 {src.today&&src.today['ipguard']||0}</div></>):(<><div style={{fontSize:12,color:'#9aa3b2'}}>IP-Guard</div><div style={{fontSize:13,color:'#bfbfbf',marginTop:6}}>未接入</div></>)}</Card></Col>
       <Col span={5}><Card className="card" size="small" style={{padding:'6px 8px'}}><Statistic title="已处理告警" value={((sysAl.status||{}).CONFIRMED||0)+(sysAl.status||{}).CLOSED||0} valueStyle={{fontSize:16,color:'#52c41a'}}/><div style={{fontSize:10,color:'#9aa3b2'}}>误报 {(sysAl.status||{}).FP||0}</div></Card></Col>
       <Col span={5}><Card className="card" size="small" style={{padding:'6px 8px'}}><Statistic title="数据库" value={sys.db_size_mb||0} suffix="MB" valueStyle={{fontSize:16}}/><div style={{fontSize:10,color:'#9aa3b2'}}>WEB占比 {ev.web_ratio||0}%</div></Card></Col>
       <Col span={4}><Card className="card" size="small" style={{padding:'6px 8px'}}><Statistic title="豁免用户" value={sys.exceptions||0} valueStyle={{fontSize:16,color:'#52c41a'}}/><div style={{fontSize:10,color:'#9aa3b2'}}>已排除误报</div></Card></Col>
@@ -341,8 +341,8 @@ function Dashboard({go}){
     {(()=>{
       const ag={};(sysAl.list||[]).forEach(a=>{if(!ag[a.employee])ag[a.employee]={key:a.employee,employee:a.employee,scenarios:[],maxRisk:0,summary:'',status:a.status};const g=ag[a.employee];const sc=INTENT[a.scenario]||a.scenario;if(!g.scenarios.includes(sc))g.scenarios.push(sc);if((a.risk_score||0)>g.maxRisk){g.maxRisk=a.risk_score;g.summary=a.summary;}});
       const ga=Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);
-      return <Card className="card" style={{marginTop:16}} title={'最新告警（'+ga.length+'人）'} size="small">
-        {ga.length? <Table size="small" rowKey="key" pagination={{pageSize:10}} dataSource={ga}
+      return <Card className="card" style={{marginTop:16}} title={'最新告警（'+ga.length+'人）'} size="small" extra={<a onClick={()=>go('alerts')} style={{fontSize:12}}>全部 →</a>}>
+        {ga.length? <Table size="small" rowKey="key" pagination={false} dataSource={ga.slice(0,5)}
           columns={[{title:'用户',dataIndex:'employee',width:110},
             {title:'风险场景',dataIndex:'scenarios',render:v=><Space wrap size={[4,4]}>{v.map(s=><Tag key={s} style={{fontSize:11}} color={'blue'}>{s}</Tag>)}</Space>},
             {title:'风险',dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
@@ -377,7 +377,7 @@ function Computers({goProfile}){
       <Col span={6}><Card className="card" size="small"><Statistic title="总用户" value={summary.total}/></Card></Col>
       <Col span={6}><Card className="card" size="small"><Statistic title="有告警" value={summary.alert} valueStyle={{color:'#fa8c16'}}/></Card></Col>
       <Col span={6}><Card className="card" size="small"><Statistic title="高危(61+)" value={summary.high} valueStyle={{color:'#ff4d4f'}}/></Card></Col>
-      <Col span={6}><Card className="card" size="small"><Statistic title="正常" value={summary.clean} valueStyle={{color:'#52c41a'}}/></Card></Col>
+      <Col span={6}><Card className="card" size="small"><Statistic title="无告警" value={summary.clean} valueStyle={{color:'#52c41a'}}/></Card></Col>
     </Row>
     <Card className="card" size="small">
       <Space style={{marginBottom:8}}>
@@ -429,7 +429,7 @@ function Alerts({goProfile}){
   const submitFP=()=>{
     POST('/api/verdicts/'+fpModal.vid+'/false_positive?reason='+encodeURIComponent(fpModal.reason)+'&signal_type='+fpModal.intent+'&expires_days='+(fpModal.reason==='临时项目'?'30':'0')).then(()=>{ message.success('已标记误报，后续同类不再告警'); setFpModal({...fpModal,open:false}); load(); });
   };
-  const SCENARIOS=[{label:'全部场景',value:'all'},{label:'数据外发',value:'data_exfiltration'},{label:'求职离职',value:'job_seeking'},{label:'行为偏离',value:'baseline_deviation'},{label:'违规',value:'policy_violation'}];
+  const scenSet=[...new Set(rows.map(r=>r.scenario).filter(Boolean))];
   return (<div>
     <div className="sec-title" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
       <span>告警管理 · 按用户合并 · 点击用户名查看画像 · <span style={{fontSize:11,color:'#9aa3b2'}}>每15秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()}</span></span>
@@ -446,9 +446,10 @@ function Alerts({goProfile}){
           <Select.Option value="high">高危61-85</Select.Option>
           <Select.Option value="mid">关注31-60</Select.Option>
         </Select>
-        <Select value={scenario} style={{width:130}} onChange={setScenario}>
-          {SCENARIOS.map(s=><Select.Option key={s.value} value={s.value}>{s.label}</Select.Option>)}
-        </Select>
+        {scenSet.length>1&&<Select value={scenario} style={{width:130}} onChange={setScenario}>
+          <Select.Option value="all">全部场景</Select.Option>
+          {scenSet.map(s=><Select.Option key={s} value={s}>{INTENT[s]||s}</Select.Option>)}
+        </Select>}
       </Space>
       <Table size="small" rowKey="key" pagination={{pageSize:14,showTotal:t=>`共 ${t} 条`}} loading={loading} dataSource={(()=>{
         const filtered=rows.filter(v=>{
