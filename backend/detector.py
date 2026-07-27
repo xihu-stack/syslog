@@ -15,20 +15,7 @@ import llm_client
 import dicts
 from models import CanonicalEvent
 
-# 绝对风险模式：永远触发（不被基线"正常化"）
-ABSOLUTE_RISK = [
-    # 网盘/云盘
-    "pan.baidu", "aliyundrive", "dropbox", "115.com", "weiyun", "onedrive.live",
-    # 个人通讯/社交通道
-    "weixin.qq", "wechat.com", "wx.qq.com",
-    # 远程控制
-    "todesk", "teamviewer", "向日葵", "anydesk",
-    # 招聘求职
-    "51job", "zhaopin.com", "boss直聘", "lagou.com", "zhilian", "智联招聘",
-    "猎聘", "领英", "linkedin", "job51", "job.liepin",
-    # 个人邮箱
-    "163.com", "126.com", "qq.com", "sina.com", "sohu.com", "hotmail", "gmail",
-]
+# 高危域名识别统一走 dicts.risk_class（可经后台字典面板增删，见 dicts.risk_patterns）
 
 # 写类 / 外发类动作（文档侧）
 WRITE_ACTIONS = {
@@ -39,30 +26,29 @@ WRITE_ACTIONS = {
 WINDOW_GAP = timedelta(minutes=60)
 
 SYSTEM_PROMPT = (
-    "你是企业员工终端行为分析助手，识别数据泄露、离职等风险。\n"
-    "输入：某员工一段时间窗口内的行为序列（可能附历史基线摘要和已知正常行为）。\n"
-    "判断：意图、对【该员工个人基线】的偏离程度、风险分(0-100)、一句中文解释。\n\n"
-    "【高风险域名——遇到以下任何一种，直接从对应档位起步】\n"
-    "• 网盘/云盘：pan.baidu / aliyundrive / dropbox / 115.com / onedrive.live.com / 115.com / weiyun → 起步60分\n"
-    "• 个人邮箱/社交：mail.qq.com / wx.qq.com / weixin.qq.com / wechat.com / personal mail → 起步50分\n"
-    "• 远程控制：todesk / teamviewer / 向日葵 / anydesk → 工作时间50分，凌晨75+分\n"
-    "• 招聘求职：51job / zhaopin.com / boss直聘 / lagou / zhilian → 非HR岗位起步60分，凌晨起步75分\n\n"
-    "【风险分层标准】\n"
-    "90-100 严重(CRITICAL)：文档外发到U盘/网盘/个人邮箱 + 敏感文件 + 凌晨/规避\n"
-    "75-89  高危(HIGH)：凌晨(0-6点)+任何上述高风险域名；todesk等远程控制+凌晨；非HR岗位访问招聘网站+凌晨\n"
-    "50-74  关注(MEDIUM)：工作时间访问网盘(60分)/个人邮箱(50分)；非HR工作时间访问招聘网站(60分)；大量新域名(5+个不同陌生域名)\n"
-    "30-49  低风险(LOW)：仅冷启动（无基线用户）且无任何高风险域名+无具体风险信号 → 30分\n"
-    "0-29   正常：上班时间访问常规网站(微软办公/新闻/搜索引擎/企业内网) → 10-20分\n\n"
-    "【关键判分规则】\n"
-    "1. 有基线用户访问陌生域名：若非上述高风险域名+无其他异常=30分；若有高风险域名=按域名类型从起步分\n"
-    "2. 冷启动用户（无基线）：纯新域名浏览无具体信号=30分；有高风险域名=从起步分\n"
-    "3. 凌晨(0-6点)：仅时间异常无其他信号=40分；叠加任何高风险域名=75+分\n"
-    "4. 文档外发：U盘/网盘/邮件发送+敏感文件=85+；常规文件+外发=60\n"
-    "5. 判断 intent 时：网盘访问→data_exfiltration；招聘网站→job_seeking；大量新陌生域名+偏离基线→baseline_deviation；正常办公→normal_work\n\n"
-    "如果基线摘要中有'已知正常行为(豁免)'，同类行为判normal_work(0-20分)。\n"
+    "你是企业员工终端行为分析助手，识别数据外发、离职求职、违规等内部风险。\n"
+    "输入：某员工一段时间窗口内的行为序列（可能附历史基线摘要、偏离信号、已知豁免）。\n"
+    "输出 JSON：intent / deviation / risk_score(0-100整数) / explanation(一句中文) / channels。\n\n"
+    "【评分锚点——严格按此打分，保证跨样本一致】\n"
+    "• 凌晨(0-6点) + 高危域名(远程控制/网盘/个人邮箱/微信传输) → 75-85\n"
+    "• 工作时段 + 高危域名(远程控制/网盘/个人邮箱/微信传输) → 50-65\n"
+    "• 非HR岗位访问招聘网站：工作时段 55-65；凌晨 70-80\n"
+    "• 文档外发(U盘/网盘/邮件发送)+敏感文件 → 85+；常规文件外发 → 60\n"
+    "• 凌晨(0-6点) + 仅常规网站(无高危域名) → 35-45\n"
+    "• 工作时段 + 常规网站(无高危域名) → 10-25\n\n"
+    "【关键——主动抑制噪音】\n"
+    "• '访问大量陌生域名 / 新域名多' 单独【不构成风险】，最高 25 分。"
+    "陌生域名数量在纯网页浏览场景下没有意义，几乎所有人每天都会访问上百个不同域名。\n"
+    "• 只有当陌生域名中【含高危类别】(网盘/求职/远程控制/个人邮箱/微信传输)，"
+    "或【叠加凌晨时段】，才允许上 50 分。\n"
+    "• 银行/IT/新闻/搜索引擎/政府/教育/医疗 等正常行业网站 = 正常办公，不计风险。\n\n"
+    "【intent 判定】\n"
+    "远程控制/网盘/个人邮箱/微信传输 → data_exfiltration；招聘网站 → job_seeking；\n"
+    "凌晨+高危域名 → data_exfiltration；仅凌晨+常规网站 → baseline_deviation；正常办公 → normal_work。\n"
+    "若基线摘要含'已知正常行为(豁免)'，同类行为判 normal_work。\n\n"
     "只输出 JSON：intent(data_exfiltration|job_seeking|baseline_deviation|policy_violation|normal_work), "
     "deviation(none|minor|major|severe), risk_score(0-100整数), explanation(一句中文), "
-    "channels(数组,取自 usb|netdisk|personal_email|upload|local)。"
+    "channels(数组,取自 usb|netdisk|personal_email|upload|local|remote_control)。"
 )
 
 
@@ -111,9 +97,18 @@ def trigger(window: list[CanonicalEvent]) -> bool:
     return False
 
 
+def _is_off_hours(dt) -> bool:
+    """非工作时段：0-6 点（凌晨）或 22-23 点（深夜）。"""
+    h = dt.hour if dt else None
+    return h is not None and (h < 7 or h >= 22)
+
+
 def _fmt_window(window: list[CanonicalEvent]) -> str:
-    """格式化窗口给 LLM：网页按域名聚合计数(取Top15)含分类标签、文档/搜索按时间(最多12条)，整体限长避免超上下文。"""
-    SRC = {"ipguard":"IP-Guard","sangfor":"深信服","":"未知"}
+    """格式化窗口给 LLM。
+
+    关键：高危域名访问单独高亮置顶、与常规浏览分开，避免被大量正常域名稀释；
+    标注非工作时段。常规域名只取 Top15 + 计数，文档/搜索按时间最多12条。整体限长。"""
+    SRC = {"ipguard": "IP-Guard", "sangfor": "深信服", "": "未知"}
     web = defaultdict(lambda: {"count": 0, "cat": ""})
     others = []
     for e in window:
@@ -125,16 +120,33 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
                 web[d]["cat"] = cat
         else:
             others.append(e)
+    # 高危域名 vs 常规域名 分开（核心降噪：不让 todesk 被淹没在 baidu 里）
+    risky, normal = [], []
+    for d, info in sorted(web.items(), key=lambda x: -x[1]["count"]):
+        (risky if dicts.risk_class(d) else normal).append((d, info))
+
     lines = []
-    for d, info in sorted(web.items(), key=lambda x: -x[1]["count"])[:15]:
+    # 时段提示
+    hours = [e.occurred_at.hour for e in window if e.category == "WEB" and e.occurred_at]
+    if hours and (min(hours) < 7 or max(hours) >= 22):
+        lines.append(f"[时段] 含非工作时段访问（{min(hours)}-{max(hours)}时），需重点关注")
+
+    # 高危访问置顶 + 标注类别
+    for d, info in risky[:10]:
+        rc = dicts.risk_class(d)
+        cat_tag = f"[{info['cat']}]" if info["cat"] else ""
+        lines.append(f"[⚠高危-{rc}] {d} ×{info['count']} {cat_tag}")
+    # 常规访问（仅 Top15，弱化"数量"）
+    for d, info in normal[:15]:
         cat_tag = f"[{info['cat']}]" if info["cat"] else ""
         lines.append(f"[访问网页] {d} ×{info['count']} {cat_tag}")
-    if len(web) > 15:
-        lines.append(f"…及另外 {len(web) - 15} 个域名")
+    if len(normal) > 15:
+        lines.append(f"…及另外 {len(normal) - 15} 个常规域名（均非高风险）")
+
     n_other = len(others)
     for e in others[:12]:
         t = e.occurred_at.strftime("%m-%d %H:%M")
-        src = SRC.get(getattr(e,'source',''),'')
+        src = SRC.get(getattr(e, 'source', ''), '')
         if e.category == "SEARCH":
             lines.append(f"{t} [{src}] [搜索] \"{e.target_value}\"")
         else:
@@ -166,33 +178,50 @@ def deviation(window, baseline, global_domains=None) -> list:
     if new_ch:
         flags.append("new_channel:" + ",".join(new_ch))
     bdom = set(baseline.get("common_domains", [])) | gdom
-    newdom = sorted({(e.raw or {}).get("domain") for e in window if e.category == "WEB"
-                     and (e.raw or {}).get("domain") and (e.raw or {}).get("domain") not in bdom})
-    if newdom:
-        flags.append("new_domain:" + ",".join(newdom[:5]))
+    newdom = {(e.raw or {}).get("domain") for e in window if e.category == "WEB"
+              and (e.raw or {}).get("domain") and (e.raw or {}).get("domain") not in bdom}
+    # 只标注【新高危域名】——普通新域名数量在纯浏览场景下是噪音主因
+    # （几乎每人每天上百个新域名），不作为偏离信号；只提示新出现的高危类别。
+    risky_new = sorted({d for d in newdom if dicts.risk_class(d)})
+    if risky_new:
+        flags.append("new_risky_domain:" + ",".join(risky_new[:5]))
     return flags
 
 
 def should_trigger(window, dev, baseline) -> bool:
-    """基线感知触发：无基线 / 有偏离 / 写操作 / 外发通道 / 绝对风险 / 网页搜索 → 调 AI；常规行为 → 跳过。"""
-    # WEB / SEARCH 事件本身就应该研判（基线只用于 AI 参考上下文，不作为跳过条件）
+    """调用 AI 的时机：只在命中【真实风险信号】时才研判，避免对常规浏览浪费 AI 并产生噪音告警。
+
+    信号（任一即触发）：
+      - WEB 命中高危域名（远程控制/网盘/个人邮箱/招聘/微信传输）
+      - WEB/DOC 非工作时段(凌晨0-6/深夜22+)活动
+      - DOC 写操作 / 非本地通道(USB/外发)
+      - SEARCH 含求职/高危关键词
+      - 冷启动用户 + 量激增
+    常规工作时段浏览正常网站 → 跳过（这是此前 126 条"陌生域名"噪音告警的根源）。
+    """
+    has_off_hours = False
+    has_risk_domain = False
     for e in window:
-        if e.category in ("WEB", "SEARCH"):
+        if e.category == "DOC":
+            if e.action in WRITE_ACTIONS:
+                return True
+            ch = (e.raw or {}).get("channel")
+            if ch and ch != "LOCAL":
+                return True
+        if e.category == "SEARCH" and _search_risky(e.target_value):
             return True
-    if not baseline or baseline.get("sample_count", 0) < 3:
+        if e.category == "WEB":
+            if dicts.risk_class((e.raw or {}).get("domain") or e.target_value):
+                has_risk_domain = True
+            if _is_off_hours(e.occurred_at):
+                has_off_hours = True
+    if has_risk_domain:
         return True
-    if dev:
+    if has_off_hours:
         return True
-    for e in window:
-        if e.category == "DOC" and e.action in WRITE_ACTIONS:
-            return True
-        ch = (e.raw or {}).get("channel")
-        if ch and ch != "LOCAL":
-            return True
-        # 绝对风险：招聘/网盘/远程控制/个人邮箱 → 永远触发（不被基线正常化）
-        cat = ((e.raw or {}).get("category") or "") + " " + ((e.raw or {}).get("domain") or "")
-        if any(p in cat.lower() for p in ABSOLUTE_RISK):
-            return True
+    # 冷启动用户 + 明显量激增（非纯常规浏览）
+    if (not baseline or baseline.get("sample_count", 0) < 3) and dev and "volume_spike" in dev:
+        return True
     return False
 
 

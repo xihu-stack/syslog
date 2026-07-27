@@ -126,3 +126,30 @@ def set_setting(key: str, value):
         s.commit()
     finally:
         s.close()
+
+
+# ---------------- 域名风险分级（触发门 / 窗口格式化 / prompt 共用）----------------
+# 注：深信服 app 字段是"行业分类"（IT/银行/新闻…），不含风险语义，
+# 真正的高危信号靠"域名"识别（todesk 被归到 IT行业 里，但域名能认出）。
+
+def risk_patterns() -> list:
+    """返回 [(中文标签, [域名子串...])]：当前生效的高风险域名模式。"""
+    return [
+        ("远程控制", ["todesk", "teamviewer", "anydesk", "向日葵", "sunlogin", "rustdesk", "vnc"]),
+        ("网盘/云盘", list(get("netdisk_domains"))),
+        ("个人邮箱", list(get("personal_email_domains"))),
+        ("招聘求职", list(get("recruitment_sites"))),
+        ("微信传输", ["weixin.qq.com", "wx.qq.com", "wechat.com", "filehelper", "weixin", "work.weixin.qq"]),
+    ]
+
+
+def risk_class(domain: str):
+    """域名 → 高风险类别中文标签（如"远程控制"/"网盘/云盘"）；非高风险返回 None。"""
+    d = (domain or "").lower()
+    if not d:
+        return None
+    for label, pats in risk_patterns():
+        for p in pats:
+            if p and p.lower() in d:
+                return label
+    return None
