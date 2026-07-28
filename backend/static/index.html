@@ -246,11 +246,11 @@ function App(){
       <Sider width={200} style={{background:'#fff',borderRight:'1px solid #e8eef7'}}>
         <div className="logo">IP-Guard<br/>行为研判中心</div>
         <Menu mode="inline" selectedKeys={[key==='profile'?'alerts':key]} onClick={e=>setKey(e.key)} style={{borderRight:'none'}}
-          items={[{key:'dashboard',label:'监控大屏'},{key:'computers',label:'用户视图'},{key:'alerts',label:'告警管理'},{key:'monitor',label:'系统监控'},{key:'config',label:'系统设置'}]}/>
+          items={[{key:'dashboard',label:'监控大屏'},{key:'computers',label:'用户视图'},{key:'alerts',label:'告警管理'},{key:'monitor',label:'系统监控'},{key:'efficiency',label:'效率监控'},{key:'config',label:'系统设置'}]}/>
       </Sider>
       <Layout>
         <Header style={{background:'#fff',borderBottom:'1px solid #e8eef7',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 20px'}}>
-          <Typography.Title level={4} style={{margin:0}}>{({dashboard:'监控大屏',computers:'用户视图',alerts:'告警管理',config:'系统设置',profile:'用户画像'})[key]}</Typography.Title>
+          <Typography.Title level={4} style={{margin:0}}>{({dashboard:'监控大屏',computers:'用户视图',alerts:'告警管理',monitor:'系统监控',efficiency:'效率监控',config:'系统设置',profile:'用户画像'})[key]}</Typography.Title>
           <Space>
             <Upload showUploadList={false} beforeUpload={uploadLog}><Button type="primary">导入日志</Button></Upload>
             <Button onClick={()=>{ POST('/api/run'); pollDetect(); }}>重新研判</Button>
@@ -263,6 +263,7 @@ function App(){
           {key==='alerts' && <Alerts goProfile={(u)=>{setProfileUser(u);setKey('profile');}}/>}
           {key==='config' && <Config/>}
           {key==='monitor' && <Monitor/>}
+          {key==='efficiency' && <Efficiency goProfile={(u)=>{setProfileUser(u);setKey('profile');}}/>}
           {key==='profile' && profileUser && <ProfilePage user={profileUser} goBack={()=>{setKey('alerts');setProfileUser(null);}}/>}
         </Content>
       </Layout>
@@ -611,6 +612,35 @@ function Monitor(){
         </div> : <div style={{color:'#9aa3b2',fontSize:12,padding:8}}>等待推送...</div>}
       </Card></Col>
     </Row>
+  </div>);
+}
+
+function Efficiency({goProfile}){
+  const [rows,setRows]=useState([]); const [loading,setLoading]=useState(true); const [lastUpd,setLastUpd]=useState(null);
+  const load=async()=>{setRows(await GETL('/api/efficiency'));setLastUpd(new Date());setLoading(false);};
+  useEffect(()=>{load();const t=setInterval(load,30000);return ()=>clearInterval(t);},[]);
+  const slackTotal=rows.reduce((s,r)=>s+(r.slack||0),0);
+  return (<div>
+    <div className="sec-title">效率监控 · 工作时段(9-18点)摸鱼统计 · <span style={{fontSize:11,color:'#94a3b8'}}>每30秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()} · 摸鱼事件共 {slackTotal}</span></div>
+    <Card className="card" size="small">
+      <Table size="small" rowKey="employee" pagination={{pageSize:20,showTotal:t=>`共 ${t} 人`}} loading={loading} dataSource={rows}
+        onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
+        columns={[
+          {title:'员工',dataIndex:'employee',width:130,render:v=><a style={{fontWeight:500}}>{v}</a>},
+          {title:'摸鱼占比',dataIndex:'pct',width:120,sorter:(a,b)=>b.pct-a.pct,defaultSortOrder:'descend',
+            render:(v,r)=><span style={{color:v>=10?'#ef4444':v>=5?'#f59e0b':'#475569',fontWeight:v>=5?700:400}}>{v}% <span style={{color:'#94a3b8',fontWeight:400,fontSize:11}}>({r.slack}/{r.total})</span></span>},
+          {title:'视频',width:64,render:(_,r)=><span style={{color:r.cats['视频']?'#1677ff':'#cbd5e1'}}>{r.cats['视频']||0}</span>},
+          {title:'社交',width:64,render:(_,r)=><span style={{color:r.cats['社交']?'#ec4899':'#cbd5e1'}}>{r.cats['社交']||0}</span>},
+          {title:'购物',width:64,render:(_,r)=><span style={{color:r.cats['购物']?'#f59e0b':'#cbd5e1'}}>{r.cats['购物']||0}</span>},
+          {title:'资讯',width:64,render:(_,r)=><span style={{color:r.cats['资讯']?'#16a34a':'#cbd5e1'}}>{r.cats['资讯']||0}</span>},
+          {title:'音乐',width:64,render:(_,r)=><span style={{color:r.cats['音乐']?'#8b5cf6':'#cbd5e1'}}>{r.cats['音乐']||0}</span>},
+          {title:'活跃天数',dataIndex:'active_days',width:90,sorter:(a,b)=>b.active_days-a.active_days,
+            render:v=><span className="num" style={{color:v<=1?'#ef4444':'#475569',fontWeight:v<=1?700:400}}>{v}天</span>},
+          {title:'在岗时段',width:120,render:(_,r)=><span style={{color:'#475569'}}>{r.hour_min===null||r.hour_min===undefined?'-':r.hour_min+'-'+r.hour_max+'点'}</span>},
+        ]}/>
+    </Card>
+    <Alert type="info" showIcon style={{marginTop:12}}
+      message="摸鱼 = 工作时段(9-18点)访问 视频/社交/购物/资讯/音乐 类网站。占比≥10%标红、≥5%标橙。活跃天数≤1 可能未在岗/未用电脑。已排除淘宝、头条等 SDK 埋点请求。"/>
   </div>);
 }
 
