@@ -7,7 +7,7 @@
 """
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import timedelta
 
 import llm_client
