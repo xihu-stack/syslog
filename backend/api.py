@@ -117,6 +117,17 @@ def employee(emp: str):
         p = s.query(ProfileRow).filter_by(employee_id=emp).first()
         evs = (s.query(EventRow).filter_by(employee_id=emp)
                .order_by(desc(EventRow.occurred_at)).limit(50).all())
+        # 风险行为: 外发通道/招聘/远程控制域名访问 或 文档写/外发动作(最近300条里筛,取30)
+        import detector
+        risk_evs = []
+        for e in (s.query(EventRow).filter_by(employee_id=emp)
+                  .order_by(desc(EventRow.occurred_at)).limit(300).all()):
+            dom = (e.raw or {}).get("domain") or ""
+            if (e.category == "WEB" and dicts.risk_class(dom)) or \
+               (e.category == "DOC" and e.action in detector.WRITE_ACTIONS):
+                risk_evs.append(e)
+            if len(risk_evs) >= 30:
+                break
         vs = (s.query(VerdictRow).filter_by(employee_id=emp)
               .order_by(desc(VerdictRow.window_start)).limit(20).all())
         return {
@@ -124,6 +135,13 @@ def employee(emp: str):
             "profile": p.payload if p else None,
             "profile_summary": (profiles.summarize_for_llm(p.payload) if p else None) or "样本不足，按通用可疑度判断",
             "events": [_event_dict(e) for e in evs],
+            "risk_events": [{
+                "occurred_at": e.occurred_at.isoformat() if e.occurred_at else None,
+                "category": e.category, "action": e.action, "target_value": e.target_value,
+                "domain": (e.raw or {}).get("domain") or "",
+                "risk_class": dicts.risk_class((e.raw or {}).get("domain") or ""),
+                "source": e.source or "",
+            } for e in risk_evs],
             "verdicts": [{"window_start": v.window_start.isoformat() if v.window_start else None,
                           "intent": v.intent, "risk_score": v.risk_score,
                           "explanation": v.explanation} for v in vs],

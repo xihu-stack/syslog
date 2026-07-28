@@ -136,10 +136,10 @@ def risk_patterns() -> list:
     """返回 [(中文标签, [域名子串...])]：当前生效的高风险域名模式。"""
     return [
         ("远程控制", ["todesk", "teamviewer", "anydesk", "向日葵", "sunlogin", "rustdesk", "vnc"]),
-        ("网盘/云盘", list(get("netdisk_domains"))),
-        ("个人邮箱", list(get("personal_email_domains"))),
+        ("网盘/云盘", list(get("netdisk_domains"))),                  # 公司禁止
+        ("个人邮箱", list(get("personal_email_domains"))),            # 公司禁止
         ("招聘求职", list(get("recruitment_sites"))),
-        ("微信传输", ["weixin.qq.com", "wx.qq.com", "wechat.com", "filehelper", "weixin", "work.weixin.qq"]),
+        ("微信文件助手", ["filehelper", "file.qq.com", "传输助手", "filehelper.weixin"]),  # 微信传文件=外发;普通微信访问不算
     ]
 
 
@@ -155,16 +155,15 @@ def risk_class(domain: str):
     return None
 
 
-# 类别 → 信号强度（仅"上网行为日志"视角；重要前提：访问 ≠ 上传）。
-# 个人邮箱/微信是全民日常行为；真正的数据外发需 IP-Guard 文档审计的"文件上传/发送"动作佐证。
-# 当前未接入 IPG，故邮箱/微信"访问"一律低分；只有远程控制(工具本身在运行)是上网日志视角的强信号。
-# 【接入 IPG 后】：在 detector 里对 low 类别叠加"DOC 上传/外发动作"即可升级为高危。
+# 类别 → 信号强度（仅"上网行为日志"视角）。
+# 公司策略: 个人邮箱/网盘【禁止使用】→访问即违规(high); 微信文件助手=传文件外发嫌疑(high);
+# 普通微信访问=正常办公(不入此表); 远程控制降为mid(工具使用,凌晨/密集才告警); 招聘=job。
 RISK_TIER = {
-    "远程控制": "mid",    # 工具使用非直接外发证据(降权;重心转外发通道)
-    "网盘/云盘": "mid",    # 外发通道:凌晨/密集访问才告警
-    "个人邮箱": "low",     # 外发通道:凌晨/密集才告警(工作时段正常访问不告警)
-    "微信传输": "low",     # 同上
-    "招聘求职": "job",     # 求职意图(重点监控)
+    "远程控制": "mid",           # 工具使用(降权,凌晨/密集才告警)
+    "网盘/云盘": "high",         # 公司禁止→访问即违规告警
+    "个人邮箱": "high",          # 公司禁止→访问即违规告警
+    "招聘求职": "job",           # 求职意图
+    "微信文件助手": "high",      # 微信传文件=外发嫌疑(普通微信访问不算)
 }
 
 

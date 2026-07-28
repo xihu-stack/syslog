@@ -201,17 +201,15 @@ function ProfilePage({user, goBack}){
           {title:'风险',dataIndex:'risk_score',width:120,render:v=><RiskBadge s={v}/>},
           {title:'说明',dataIndex:'explanation',ellipsis:true}]}/>
     </Card>
-    <Card className="card" title="最近行为（最多50条）" size="small" style={{marginTop:16}}>
+    <Card className="card" title={"风险行为（"+(data.risk_events||[]).length+"）"} size="small" style={{marginTop:16}}>
       <div className="tl" style={{maxHeight:350,overflow:'auto'}}>
-        {evs.map((e,i)=><div className="it" key={i}>
-          <span className="t">{fmt(e.occurred_at)}</span> <b>[{e.action}]</b> {e.target_value}
-          <div style={{color:'#9aa3b2',fontSize:12}}>
-            通道:<Tag style={{marginLeft:4,fontSize:10}}>{e.channel||'本地'}</Tag>
-            {e.application&&<span> 应用:{e.application}</span>}
-            {e.size_bytes>0&&<span> {e.size_bytes}B</span>}
-            <Tag style={{marginLeft:4,fontSize:10}} color={e.source==='sangfor'?'green':'blue'}>{e.source==='sangfor'?'深信服':'IP-Guard'}</Tag>
-          </div>
+        {(data.risk_events||[]).map((e,i)=><div className="it" key={i}>
+          <span className="t">{fmt(e.occurred_at)}</span>
+          {e.risk_class&&<Tag color="orange" style={{marginLeft:4,fontSize:10}}>{e.risk_class}</Tag>}
+          <b> [{e.action}]</b> {e.domain||e.target_value}
+          <Tag style={{marginLeft:6,fontSize:10}} color={e.source==='sangfor'?'green':'blue'}>{e.source==='sangfor'?'深信服':'IP-Guard'}</Tag>
         </div>)}
+        {!(data.risk_events||[]).length&&<div style={{color:'#9aa3b2',padding:24,textAlign:'center'}}>近期无风险行为</div>}
       </div>
     </Card>
     {domains.length>0&&<Card className="card" title="常访问域名（按频率）" size="small" style={{marginTop:16}}>

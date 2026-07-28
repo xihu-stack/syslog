@@ -28,21 +28,20 @@ SYSTEM_PROMPT = (
     "你是企业员工终端行为分析助手，识别数据外发、离职求职、违规等内部风险。\n"
     "输入：某员工一段时间窗口内的行为序列（可能附历史基线摘要、偏离信号、已知豁免）。\n"
     "输出 JSON：intent / deviation / risk_score(0-100整数) / explanation(一句中文) / channels。\n\n"
-    "【数据源说明——访问 ≠ 上传】\n"
-    "当前只有'上网行为日志'，能看到员工【访问了哪个域名】，【看不到上传/发送了什么文件】。\n"
-    "真正的文件外发动作要靠 IP-Guard 文档审计(后期接入)佐证。因此判定重心放在：\n"
-    "外发通道(微信传输/个人邮箱/网盘) + 【异常上下文】(凌晨/深夜 OR 异常密集) = 外发嫌疑。\n\n"
+    "【公司策略——重要前提】\n"
+    "个人邮箱、网盘/云盘 在公司【禁止使用】→ 任何访问即违规(policy_violation),不管时段。\n"
+    "微信文件助手(filehelper/文件传输助手)=传文件外发通道 → 访问即外发嫌疑(data_exfiltration)。\n"
+    "普通微信访问(weixin.qq.com等)=正常办公,不算风险。\n"
+    "远程控制(todesk等)=工具使用,降权(凌晨/密集才告警)。\n\n"
     "【评分锚点——严格按此打分】\n"
-    "• 微信传输/个人邮箱/网盘 + 凌晨(0-6)/深夜(22+) → 60-75（外发通道+异常时段，可疑）\n"
-    "• 微信传输/个人邮箱/网盘 + 工作时段 + 偏离信号channel_burst(异常密集) → 50-60\n"
-    "• 微信传输/个人邮箱/网盘 + 工作时段 + 正常频次 → 15-25（全民日常，访问≠外发）\n"
-    "• 招聘网站 + 凌晨 → 70-80；招聘网站 + 工作时段 → 50-60（求职意图）\n"
-    "• 远程控制(todesk/teamviewer/向日葵等) + 凌晨 → 55-65；工作时段 → 30-40（工具使用，非直接外发证据）\n"
-    "• 凌晨 + 仅常规网站(无外发通道) → 25-35（时段异常但内容普通）\n"
-    "• 工作时段 + 常规网站 → 5-15\n\n"
-    "【intent 判定】外发通道(微信/邮箱/网盘)+异常上下文(凌晨/密集) → data_exfiltration；"
-    "招聘网站 → job_seeking；远程控制 → baseline_deviation（工具使用非外发实锤）；"
-    "工作时段正常访问外发通道 → normal_work；正常办公 → normal_work。\n"
+    "• 个人邮箱/网盘(公司禁止) → 65-75（访问即违规,不管时段）\n"
+    "• 微信文件助手(传文件) → 70-80（外发嫌疑）\n"
+    "• 招聘网站 + 凌晨 → 70-80；工作时段 → 50-60（求职意图）\n"
+    "• 远程控制 + 凌晨 → 55-65；工作时段 → 30-40（降权）\n"
+    "• 凌晨 + 仅常规网站(无外发通道) → 25-35\n"
+    "• 工作时段 + 常规网站/普通微信 → 5-15\n\n"
+    "【intent 判定】个人邮箱/网盘(禁止) → policy_violation；微信文件助手 → data_exfiltration；"
+    "招聘网站 → job_seeking；远程控制 → baseline_deviation；普通微信/正常办公 → normal_work。\n"
     "若基线摘要含'已知正常行为(豁免)'，同类行为判 normal_work。\n\n"
     "只输出 JSON：intent(data_exfiltration|job_seeking|baseline_deviation|policy_violation|normal_work), "
     "deviation(none|minor|major|severe), risk_score(0-100整数), explanation(一句中文), "
@@ -161,9 +160,9 @@ def deviation(window, baseline, global_domains=None) -> list:
     for e in window:
         if e.category == "WEB":
             t = dicts.risk_tier((e.raw or {}).get("domain") or e.target_value)
-            if t in ("mid", "low") and not _is_off_hours(e.occurred_at):
+            if t == "mid" and not _is_off_hours(e.occurred_at):  # 远程控制工作时段密集(频次异常)
                 _chan[t] += 1
-    if _chan and max(_chan.values()) >= 5:
+    if _chan and max(_chan.values()) >= 15:
         flags.append("channel_burst")
     if not baseline or baseline.get("sample_count", 0) < 3:
         return flags
@@ -217,9 +216,9 @@ def should_trigger(window, dev, baseline) -> bool:
             if dicts.is_heartbeat(dom):  # 客户端认证心跳——忽略
                 continue
             tier = dicts.risk_tier(dom)
-            if tier == "job":        # 招聘求职:始终触发(重点)
+            if tier in ("high", "job"):  # 禁止类(邮箱/网盘/文件助手)+招聘→访问即触发
                 return True
-            if tier in ("mid", "low") and _is_off_hours(e.occurred_at):  # 外发通道+凌晨/深夜→触发
+            if tier == "mid" and _is_off_hours(e.occurred_at):  # 远程控制+凌晨/深夜→触发
                 return True
     # 频次异常:外发通道工作时段密集访问(deviation算的channel_burst)
     if dev and "channel_burst" in dev:
@@ -241,7 +240,7 @@ def _work_hours_cap(window, dev=None) -> int | None:
     for e in window:
         if e.category == "WEB":
             t = dicts.risk_tier((e.raw or {}).get("domain") or e.target_value)
-            cap = max(cap, {"mid": 30, "low": 30, "job": 60}.get(t, 0))  # 外发通道工作时段正常访问≤30;招聘60
+            cap = max(cap, {"mid": 40, "job": 60}.get(t, 0))  # 远程控制40/招聘60;high(邮箱/网盘/文件助手)禁止类不夹
     return cap or None
 
 
@@ -291,15 +290,15 @@ def _fallback_verdict(window: list[CanonicalEvent], err: str) -> dict:
         if e.category == "WEB":
             tier = dicts.risk_tier((e.raw or {}).get("domain") or e.target_value)
             off = _is_off_hours(e.occurred_at)
-            if tier == "job":                       # 招聘求职
-                score = max(score, 75 if off else 55)
-            elif tier == "mid":                     # 网盘/远程控制(外发通道)
-                score = max(score, 65 if off else 35)
+            if tier == "high":                      # 邮箱/网盘(禁止)/微信文件助手(外发)
+                score = max(score, 75 if off else 65)
                 rc = dicts.risk_class((e.raw or {}).get("domain") or e.target_value)
-                channels.add("remote_control" if rc == "远程控制" else "netdisk")
-            elif tier == "low" and off:             # 邮箱/微信:仅凌晨给分
-                score = max(score, 60)
-                channels.add("personal_email")
+                channels.add({"个人邮箱": "personal_email", "网盘/云盘": "netdisk", "微信文件助手": "wechat_file"}.get(rc, "other"))
+            elif tier == "job":                     # 招聘求职
+                score = max(score, 75 if off else 55)
+            elif tier == "mid":                     # 远程控制(降权)
+                score = max(score, 55 if off else 35)
+                channels.add("remote_control")
         if e.category == "SEARCH" and _search_risky(e.target_value):
             score = max(score, 50)
     return {
