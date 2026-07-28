@@ -11,3 +11,4 @@ services:
     environment:
       - PYTHONIOENCODING=utf-8
       - PORT=18000
+      - TZ=Asia/Shanghai
