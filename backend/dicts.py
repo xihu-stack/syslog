@@ -175,3 +175,13 @@ def risk_tier(domain: str):
     low(邮箱/微信)单独不触发、不加分。"""
     rc = risk_class(domain)
     return RISK_TIER.get(rc) if rc else None
+
+
+# 远程控制工具的"客户端认证/心跳"子域(如 authds.todesk.com)——是软件后台定期连认证服务器,
+# 不是员工主动发起的远程控制/外发。should_trigger 里忽略这类事件,避免凌晨心跳被误判为"员工非工作时段高危行为"。
+def is_heartbeat(domain: str) -> bool:
+    d = (domain or "").lower()
+    if not d or risk_class(d) != "远程控制":
+        return False
+    first = d.split(".")[0]
+    return first.startswith("auth") or "authds" in d

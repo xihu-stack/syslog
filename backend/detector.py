@@ -208,7 +208,10 @@ def should_trigger(window, dev, baseline) -> bool:
         if e.category == "SEARCH" and _search_risky(e.target_value):
             return True
         if e.category == "WEB":
-            tier = dicts.risk_tier((e.raw or {}).get("domain") or e.target_value)
+            dom = (e.raw or {}).get("domain") or e.target_value
+            if dicts.is_heartbeat(dom):  # 客户端认证心跳(如 authds.todesk.com)——忽略,不触发也不计入时段
+                continue
+            tier = dicts.risk_tier(dom)
             if tier in ("high", "mid", "job"):
                 return True
             if _is_off_hours(e.occurred_at):

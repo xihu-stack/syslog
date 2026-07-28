@@ -153,13 +153,20 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                     ).first()
                     if _exc:
                         continue
-                    key = f"{emp}|{v.get('intent')}|{wstart.date()}"
-                    if not wsession.query(AlertRow).filter_by(dedup_key=key).first():
+                    key = f"{emp}|{v.get('intent')}"  # 同员工同意图只保留1条(跨日/跨窗口合并),取最高分+最新
+                    existing = wsession.query(AlertRow).filter_by(dedup_key=key).first()
+                    if not existing:
                         wsession.add(AlertRow(employee_id=emp, scenario=v.get("intent"),
                             severity=severity_of(v.get("risk_score", 0)), risk_score=v.get("risk_score", 0),
                             verdict_id=vr.id, summary=v.get("explanation"), dedup_key=key, window_start=wstart))
                         if v.get("risk_score", 0) >= 75:
                             _notify_webhook(emp, v.get("risk_score", 0), v.get("explanation", ""))
+                    elif v.get("risk_score", 0) > (existing.risk_score or 0):
+                        existing.risk_score = v.get("risk_score", 0)
+                        existing.severity = severity_of(v.get("risk_score", 0))
+                        existing.summary = v.get("explanation")
+                        existing.verdict_id = vr.id
+                        existing.window_start = wstart
             wsession.commit()
         finally:
             wsession.close()
