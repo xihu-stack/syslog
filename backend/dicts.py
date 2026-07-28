@@ -26,7 +26,7 @@ DEFAULTS = {
     ],
     "personal_email_domains": [
         "mail.qq.com", "mail.163.com", "mail.126.com", "gmail.com", "outlook.live.com",
-        "outlook.com", "mail.sina.com.cn", "mail.sohu.com", "mail.10086.cn", "mail.139.com",
+        "mail.sina.com.cn", "mail.sohu.com", "mail.10086.cn", "mail.139.com",
         "mail.aliyun.com", "foxmail.com", "yahoo.com",
     ],
     "job_search_terms": [
