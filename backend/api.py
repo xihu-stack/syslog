@@ -584,6 +584,13 @@ def ask(body: dict = Body(...)):
     action = v.get("action") if v.get("action") in ("employee_risk", "alerts", "slack", "attendance", "who_risk", "help", "chat") else "chat"
     employee = (v.get("employee") or "").strip()
     category = (v.get("category") or "").strip()
+    if action == "who_risk" and not category:  # LLM 漏填 category 时从问题关键词兜底
+        ql = question.lower()
+        if "netdisk" in ql or "网盘" in question or "云盘" in question: category = "网盘"
+        elif "email" in ql or "邮箱" in question or "mail" in ql: category = "邮箱"
+        elif "remote" in ql or "远程" in question or "todesk" in ql: category = "远程控制"
+        elif "recruit" in ql or "招聘" in question or "求职" in question: category = "招聘"
+        elif "filehelper" in ql or "文件助手" in question or "传输助手" in question: category = "文件助手"
     data_ctx = _ask_query(action, employee, category)
     sum_sys = ("你是企业员工行为分析助手,基于给定真实数据简洁回答用户问题。"
                "只基于数据、不编造;数据不足就直说。中文,要点清晰。")
