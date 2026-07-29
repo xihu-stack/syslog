@@ -482,9 +482,14 @@ def system_stats():
         s.close()
 
 
+_eff_cache = {"data": None, "ts": 0}
+
 @app.get("/api/efficiency")
 def efficiency():
     """工作效率统计: 每员工工作时段(9-18)摸鱼(视频/社交/购物/资讯/音乐)+在岗天数/时段。"""
+    import time
+    if _eff_cache["data"] is not None and time.time() - _eff_cache["ts"] < 60:
+        return _eff_cache["data"]
     from collections import Counter
     s = Session()
     try:
@@ -507,6 +512,7 @@ def efficiency():
                         "cats": dict(r["cats"]), "active_days": len(r["days"]),
                         "hour_min": hours[0] if hours else None, "hour_max": hours[-1] if hours else None})
         out.sort(key=lambda x: -x["pct"])
+        _eff_cache["data"] = out; _eff_cache["ts"] = time.time()
         return out
     finally:
         s.close()
@@ -660,20 +666,31 @@ def _ask_query(action, employee, category=""):
                 return f"近期无人访问{target or '该类'}网站。"
             return f"访问{target}类网站的员工(访问次数):\n" + "\n".join(f"{emp} {n}次" for emp, n in rcnt.most_common(20))
         if action == "attendance":
-            eh = defaultdict(set)
+            today = bj_now().date().isoformat()
+            today_active = set(); eh = defaultdict(set)
             for emp_id, occ in s.query(EventRow.employee_id, EventRow.occurred_at).yield_per(2000):
                 if occ:
                     try:
-                        eh[emp_id].add((occ[:10], int(occ[11:13])))
+                        d = occ[:10]; h = int(occ[11:13])
+                        eh[emp_id].add((d, h))
+                        if d == today:
+                            today_active.add(emp_id)
                     except Exception:
                         pass
-            lines = []
-            for emp_id in list(eh)[:20]:
+            all_emps = set(eh.keys())
+            not_today = sorted(all_emps - today_active)
+            lines = [f"今日({today})有活动 {len(today_active)}人 / 全员 {len(all_emps)}人, 今日无活动 {len(not_today)}人(可能不在岗/未用电脑)。"]
+            if not_today:
+                lines.append("今日无活动: " + ", ".join(not_today[:20]))
+            abnormal = []
+            for emp_id in all_emps:
                 days = {d for d, h in eh[emp_id]}; hours = sorted({h for d, h in eh[emp_id]})
-                if hours:
-                    mark = " ⚠活跃≤1天" if len(days) <= 1 else (" ⚠凌晨活动" if hours[0] < 7 else "")
-                    lines.append(f"{emp_id} 活跃{len(days)}天 {hours[0]}-{hours[-1]}点{mark}")
-            return "在岗统计:\n" + "\n".join(lines) if lines else "无在岗数据"
+                if hours and (len(days) <= 1 or hours[0] < 7):
+                    mark = "活跃≤1天" if len(days) <= 1 else f"凌晨{hours[0]}点活动"
+                    abnormal.append(f"{emp_id}({mark})")
+            if abnormal:
+                lines.append("异常: " + ", ".join(abnormal[:15]))
+            return "\n".join(lines)
         if action == "help":
             return ("系统能力: 安全告警(邮箱/网盘/文件助手/远程控制/招聘)、效率监控(视频/社交/购物/资讯/音乐摸鱼)、画像(风险行为/基线)。\n"
                     "规则: 个人邮箱/网盘公司禁止→访问即违规; 微信文件助手=外发; 远程控制降权; 招聘=求职意图。\n"
