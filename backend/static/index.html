@@ -139,12 +139,6 @@ function ProfilePage({user, goBack, from}){
   const usbUsed=(p.channels_used||[]).includes('USB');
   const netdiskUsed=(p.channels_used||[]).some(c=>c==='NETWORK');
   return (<div>
-    <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:16,fontSize:13}}>
-      <a onClick={goBack} style={{color:'#1677ff'}}>{FROM_TITLE[from]||'返回'}</a>
-      <span style={{color:'#cbd5e1'}}>›</span>
-      <Typography.Text strong style={{fontSize:16}}>{user}</Typography.Text>
-      <span style={{marginLeft:6}}><RiskBadge s={maxRisk}/></span>
-    </div>
     <Row gutter={16}>
       <Col span={5}><Card className="card"><Statistic title="历史事件" value={p.sample_count||evs.length}/></Card></Col>
       <Col span={5}><Card className="card"><Statistic title="研判次数" value={vs.length}/></Card></Col>
@@ -261,15 +255,20 @@ function App(){
     <Layout style={{minHeight:'100vh'}}>
       <Sider width={200} style={{background:'#fff',borderRight:'1px solid #e8eef7'}}>
         <div className="logo"><span className="ic">📊</span>用户行为分析系统</div>
-        <Menu mode="inline" selectedKeys={[key==='profile'?'alerts':key]} onClick={e=>setKey(e.key)} style={{borderRight:'none'}}
+        <Menu mode="inline" selectedKeys={[key==='profile'?(profileFrom||'alerts'):key]} onClick={e=>setKey(e.key)} style={{borderRight:'none'}}
           items={[{key:'dashboard',label:'监控大屏'},{key:'computers',label:'用户视图'},{key:'alerts',label:'告警管理'},{key:'efficiency',label:'效率监控'},{key:'ask',label:'AI 问答'},{key:'config',label:'系统设置'}]}/>
       </Sider>
       <Layout>
         <Header style={{background:'#fff',borderBottom:'1px solid var(--line)',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 20px',height:56}}>
           <div style={{display:'flex',alignItems:'center',gap:12}}>
             <div className="brand-bar"></div>
-            <Typography.Title level={4} style={{margin:0}}>{({dashboard:'监控大屏',computers:'用户视图',alerts:'告警管理',efficiency:'效率监控',ask:'AI 问答',config:'系统设置',profile:'用户画像'})[key]}</Typography.Title>
-            <Typography.Text style={{color:'var(--ink3)',fontSize:12}}>· 用户行为分析系统</Typography.Text>
+            {key!=='dashboard' && <a onClick={()=>setKey('dashboard')} style={{color:'var(--ink3)',fontSize:14}}>监控大屏</a>}
+            {key!=='dashboard' && <span style={{color:'#cbd5e1',fontSize:14}}>›</span>}
+            {key==='profile' ? (<>
+              <a onClick={()=>{setKey(profileFrom||'alerts');setProfileUser(null);}} style={{color:'var(--ink3)',fontSize:14}}>{FROM_TITLE[profileFrom]||'告警管理'}</a>
+              <span style={{color:'#cbd5e1',fontSize:14}}>›</span>
+              <Typography.Text strong style={{fontSize:18}}>{profileUser}</Typography.Text>
+            </>) : (<Typography.Title level={4} style={{margin:0}}>{({dashboard:'监控大屏',computers:'用户视图',alerts:'告警管理',efficiency:'效率监控',ask:'AI 问答',config:'系统设置'})[key]}</Typography.Title>)}
           </div>
           <Space>
             <Typography.Text style={{color:'var(--ink3)',fontSize:12,marginRight:4,fontVariantNumeric:'tabular-nums'}}>{now}</Typography.Text>
