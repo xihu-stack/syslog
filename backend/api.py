@@ -671,7 +671,7 @@ def _ask_query(action, employee, category=""):
             for emp_id, occ in s.query(EventRow.employee_id, EventRow.occurred_at).yield_per(2000):
                 if occ:
                     try:
-                        d = occ[:10]; h = int(occ[11:13])
+                        d = occ.date().isoformat(); h = occ.hour  # occurred_at 是 datetime 对象,用属性非切片
                         eh[emp_id].add((d, h))
                         if d == today:
                             today_active.add(emp_id)
