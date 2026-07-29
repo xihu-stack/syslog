@@ -578,6 +578,7 @@ def ask(body: dict = Body(...)):
         return {"answer": "请输入问题。", "action": "empty"}
     route_sys = ("你是行为分析助手。把用户问题路由到查询动作,只输出 JSON {action, employee, category}。\n"
                  "action: employee_risk(查某员工风险行为) / alerts(告警榜) / slack(摸鱼榜) / attendance(在岗情况) / who_risk(谁访问了某类风险网站) / help(规则/用法说明) / chat(其他闲聊)。\n"
+                 "注意: 问【离职/求职/跳槽/找工作】风险 → who_risk + category=招聘(查访问招聘网站的人, 不是看告警)。\n"
                  "employee: 仅 employee_risk 时填员工姓名(从问题提取)。\n"
                  "category: 仅 who_risk 时填, 取值 远程控制/网盘/邮箱/招聘/文件助手 之一(从问题判断是哪类风险)。\n"
                  "只输出 JSON。")
