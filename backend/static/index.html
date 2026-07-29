@@ -82,7 +82,7 @@ const { useState, useEffect, useRef } = React;
 const LVL = s => (s==null)?{c:'#9aa3b2',l:'-'} : s>=86?{c:'#ff4d4f',l:'严重'} : s>=61?{c:'#fa8c16',l:'高危'} : s>=31?{c:'#faad14',l:'关注'} : {c:'#52c41a',l:'正常'};
 const INTENT = {data_exfiltration:'数据外发', job_seeking:'求职离职', baseline_deviation:'行为偏离', policy_violation:'违规', normal_work:'正常', unknown:'未知'};
 const DEV = {none:'无', minor:'轻微', major:'重大', severe:'严重', unknown:'未知'};
-const STATUS_MAP = {NEW:{c:'#4f46e5',t:'待处理'}, TRIAGING:{c:'#faad14',t:'处理中'}, CONFIRMED:{c:'#ff4d4f',t:'已确认'}, FP:{c:'#bfbfbf',t:'误报'}, CLOSED:{c:'#52c41a',t:'已关闭'}};
+const STATUS_MAP = {NEW:{c:'#4f46e5',t:'待处理',i:'fa-clock'}, TRIAGING:{c:'#faad14',t:'处理中',i:'fa-spinner'}, CONFIRMED:{c:'#ff4d4f',t:'已确认',i:'fa-circle-exclamation'}, FP:{c:'#bfbfbf',t:'误报',i:'fa-xmark'}, CLOSED:{c:'#52c41a',t:'已关闭',i:'fa-circle-check'}};
 // 防抖回调（延迟ms后执行，取消前序）
 function debounce(fn, delay){ let t; return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), delay); }; }
 const STATUS_OPTS = [{label:'待处理',value:'NEW'},{label:'处理中',value:'TRIAGING'},{label:'已确认',value:'CONFIRMED'},{label:'误报',value:'FP'},{label:'已关闭',value:'CLOSED'}];
@@ -93,8 +93,8 @@ const POST=(u,o)=>fetch(u,{method:'POST',...o}).then(r=>r.ok?r.json():r.text().t
 const PUTJ=(u,b)=>fetch(u,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('PUT '+u,e);message.error('保存失败');return {};});
 const DEL=(u)=>fetch(u,{method:'DELETE'}).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('DEL '+u,e);message.error('删除失败');return {};});
 
-function RiskBadge({s}){ const v=LVL(s); return <span className="risk" style={{background:v.c+'1a',color:v.c,border:'1px solid '+v.c+'66'}}>{s==null?'-':s} {v.l}</span>; }
-function StatusTag({s}){ const v=STATUS_MAP[s]||{c:'#999',t:s}; return <span className="st-tag" style={{background:v.c+'1a',color:v.c}}>{v.t}</span>; }
+function RiskBadge({s}){ const v=LVL(s); return <span className="risk" style={{background:v.c+'1a',color:v.c,border:'1px solid '+v.c+'66'}}><i className="fa-solid fa-shield-halved" style={{marginRight:4,fontSize:10}}></i>{s==null?'-':s} {v.l}</span>; }
+function StatusTag({s}){ const v=STATUS_MAP[s]||{c:'#999',t:s}; return <span className="st-tag" style={{background:v.c+'1a',color:v.c}}>{v.i&&<i className={'fa-solid '+v.i} style={{marginRight:4,fontSize:10}}></i>}{v.t}</span>; }
 function Legend(){ return <div className="legend">
   <span><i className="swatch" style={{background:'#52c41a'}}/>0-30 正常</span>
   <span><i className="swatch" style={{background:'#faad14'}}/>31-60 关注</span>
