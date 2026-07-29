@@ -68,7 +68,7 @@
 <script>window.onerror=function(m,s,l,c,e){var d=document.getElementById('root');if(d)d.innerHTML='<div style="padding:30px;color:#c0392b;font-family:monospace;white-space:pre-wrap">前端出错：'+(e&&e.stack||m)+'\n\n请截图发我。</div>';return false;};</script>
 <script type="text/babel">
 const { Layout, Menu, Card, Row, Col, Table, Tag, Button, Input, Form, message, Select, Modal,
-        Space, Upload, Divider, Typography, Badge, Empty, Descriptions, Alert, Radio, ConfigProvider, Statistic, Tooltip, Progress } = antd;
+        Space, Upload, Divider, Typography, Badge, Empty, Descriptions, Alert, Radio, ConfigProvider, Statistic, Tooltip, Progress, Tabs } = antd;
 const { Sider, Header, Content } = Layout;
 const { useState, useEffect, useRef } = React;
 
@@ -731,9 +731,10 @@ function Config(){
   const uploadLog=f=>{ const fd=new FormData(); fd.append('file',f); message.loading({content:'导入中…',key:'up',duration:0});
     fetch('/api/ingest',{method:'POST',body:fd}).then(r=>r.json()).then(r=>message.success({content:'已导入 '+r.imported+' 条',key:'up',duration:2})); return false; };
   const DM={sensitive_keywords:'敏感文件名关键词',recruitment_sites:'招聘网站域名',netdisk_domains:'网盘域名',personal_email_domains:'个人邮箱域名',job_search_terms:'求职搜索词',risk_search_terms:'高危搜索词',work_domains:'工作网站白名单(算工作占比)'};
-  return (<div><Monitor/><Row gutter={16} style={{marginTop:16}}>
-    <Col span={12}>
-      <Card className="card" title="模型配置（活动优先·失败自动切换）" size="small" style={{marginBottom:16}}>
+  return (
+    <Tabs defaultActiveKey="monitor" items={[
+      {key:'monitor', label:'系统监控', children:<Monitor/>},
+      {key:'model', label:'模型配置', children:<Card className="card" title="模型配置（活动优先·失败自动切换）" size="small">
         <Form form={form} layout="vertical" onFinish={saveLlm}>
           <Form.Item label="接口地址" name="base_url"><Input placeholder="http://10.4.128.18:4000/v1"/></Form.Item>
           <Form.Item label="活动模型" name="active"><Radio.Group><Radio value="qwen">Qwen</Radio><Radio value="deepseek">DeepSeek</Radio></Radio.Group></Form.Item>
@@ -744,11 +745,9 @@ function Config(){
           <Form.Item label="DeepSeek 密钥（留空不改）" name="deepseek_key"><Input.Password placeholder="sk-..."/></Form.Item>
           <Button type="primary" htmlType="submit" loading={saving}>保存</Button>
         </Form>
-      </Card>
-      <Card className="card" title="Syslog 实时接收" size="small" style={{marginBottom:16}}>
-        <div style={{marginBottom:8,color:'#6b7280',fontSize:13}}>
-          监听地址：<b>{cfg.syslog_host||'0.0.0.0'}:{cfg.syslog_port||'8514'}</b>
-        </div>
+      </Card>},
+      {key:'syslog', label:'Syslog接收', children:<Card className="card" title="Syslog 实时接收" size="small">
+        <div style={{marginBottom:8,color:'#6b7280',fontSize:13}}>监听地址：<b>{cfg.syslog_host||'0.0.0.0'}:{cfg.syslog_port||'8514'}</b></div>
         <div style={{marginBottom:8}}>
           <Typography.Text style={{fontSize:12}}>告警推送地址（留空不推）</Typography.Text>
           <Input placeholder="https://oapi.dingtalk.com/robot/send?access_token=..." defaultValue={cfg.notify_webhook||''} onChange={debounce(e=>PUTJ('/api/config',{notify_webhook:e.target.value}), 800)} />
@@ -758,9 +757,9 @@ function Config(){
         {syslog.recent&&syslog.recent.length? <div style={{background:'#f6f8fb',padding:8,fontSize:12,maxHeight:110,overflow:'auto',border:'1px solid #e6ecf5',borderRadius:6}}>
           {syslog.recent.map((m,i)=><div key={i} style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><b>{m.t}</b> {m.from}: {m.msg.slice(0,80)}</div>)}</div>
           :<Typography.Text type="secondary" style={{fontSize:12}}>等待深信服推送（配好后自动接收→解析→研判）</Typography.Text>}
-      </Card>
-      <Card className="card" title={"误报复核 / 豁免管理（"+excs.length+"）"} size="small" style={{marginBottom:16}}>
-        {excs.length ? <Table size="small" rowKey="id" pagination={{pageSize:8}} dataSource={excs}
+      </Card>},
+      {key:'exempt', label:'豁免管理', children:<Card className="card" title={"误报复核 / 豁免管理（"+excs.length+"）"} size="small">
+        {excs.length ? <Table size="small" rowKey="id" pagination={{pageSize:12}} dataSource={excs}
           columns={[
             {title:'用户',dataIndex:'employee',width:90},
             {title:'豁免场景',dataIndex:'signal_type',width:110,render:v=><Tag color="blue">{INTENT[v]||v}</Tag>},
@@ -769,29 +768,29 @@ function Config(){
             {title:'',width:70,render:(_,r)=><Button size="small" danger ghost onClick={()=>delExc(r.id)}>删除</Button>},
           ]}/> : <Typography.Text type="secondary" style={{fontSize:12}}>暂无豁免。在"告警管理"标记误报时会自动创建（被豁免的用户同类行为不再告警）。</Typography.Text>}
         <Alert type="info" showIcon style={{marginTop:8}} message="删除豁免后，该用户对应场景的行为会恢复告警。"/>
-      </Card>
-      <Card className="card" title="AI 规则建议（扫未分类高频域名→AI 分类）" size="small" style={{marginBottom:16}}
-        extra={<Button size="small" type="primary" loading={loadingSug} onClick={loadSugs}>{sugs?'重新扫描':'开始扫描'}</Button>}>
-        {sugs===null ? <Typography.Text type="secondary" style={{fontSize:12}}>点击"开始扫描"，AI 分析高频未分类域名并建议归类，采纳后写入对应词库。</Typography.Text>:
-         sugs.length===0 ? <Typography.Text type="secondary" style={{fontSize:12}}>暂无建议。</Typography.Text>:
-         <Table size="small" rowKey="domain" pagination={{pageSize:8}} dataSource={sugs}
-           columns={[
-             {title:'域名',dataIndex:'domain',render:v=><span className="num" style={{fontSize:12}}>{v}</span>},
-             {title:'命中',dataIndex:'hits',width:60,render:v=><span style={{color:'#94a3b8'}}>{v}</span>},
-             {title:'AI建议',width:150,render:(_,r)=><Tag color={r.target==='ignore'?'default':r.target==='slack_domains'?'purple':'blue'}>{r.target==='ignore'?'忽略(正常)':(r.target==='slack_domains'?'摸鱼·'+(r.cat||''):{netdisk_domains:'网盘',personal_email_domains:'个人邮箱',recruitment_sites:'招聘'}[r.target]||r.target)}</Tag>},
-             {title:'理由',dataIndex:'reason',ellipsis:true,render:v=><span style={{fontSize:12,color:'#6b7280'}}>{v}</span>},
-             {title:'',width:70,render:(_,r)=><Button size="small" type="primary" ghost disabled={r.target==='ignore'} onClick={()=>applySug(r)}>采纳</Button>},
-           ]}/>}
-        <Alert type="info" showIcon style={{marginTop:8}} message="AI 建议仅供参考，采纳后写入词库立即生效（影响后续研判）。不放心可忽略。"/>
-      </Card>
-    </Col>
-    <Col span={12}>
-      <Card className="card" title="检测字典（可选，默认全自动）" size="small" extra={<Upload showUploadList={false} beforeUpload={uploadLog}><Button size="small" type="primary">导入日志</Button></Upload>}>
-        {Object.keys(DM).map(n=><DictEditor key={n} name={n} label={DM[n]} initial={dicts[n]} onSave={saveDict}/>)}
-        <Alert type="info" showIcon style={{marginTop:8}} message="检测默认全自动（不依赖这些词）。标为误报的行为会自动豁免，下次同类不再告警。"/>
-      </Card>
-    </Col>
-  </Row></div>);
+      </Card>},
+      {key:'dict', label:'字典&AI规则', children:<>
+        <Card className="card" title="AI 规则建议（扫未分类高频域名→AI 分类）" size="small" style={{marginBottom:16}}
+          extra={<Button size="small" type="primary" loading={loadingSug} onClick={loadSugs}>{sugs?'重新扫描':'开始扫描'}</Button>}>
+          {sugs===null ? <Typography.Text type="secondary" style={{fontSize:12}}>点击"开始扫描"，AI 分析高频未分类域名并建议归类，采纳后写入对应词库。</Typography.Text>:
+           sugs.length===0 ? <Typography.Text type="secondary" style={{fontSize:12}}>暂无建议。</Typography.Text>:
+           <Table size="small" rowKey="domain" pagination={{pageSize:8}} dataSource={sugs}
+             columns={[
+               {title:'域名',dataIndex:'domain',render:v=><span className="num" style={{fontSize:12}}>{v}</span>},
+               {title:'命中',dataIndex:'hits',width:60,render:v=><span style={{color:'#94a3b8'}}>{v}</span>},
+               {title:'AI建议',width:150,render:(_,r)=><Tag color={r.target==='ignore'?'default':r.target==='slack_domains'?'purple':'blue'}>{r.target==='ignore'?'忽略(正常)':(r.target==='slack_domains'?'摸鱼·'+(r.cat||''):{netdisk_domains:'网盘',personal_email_domains:'个人邮箱',recruitment_sites:'招聘'}[r.target]||r.target)}</Tag>},
+               {title:'理由',dataIndex:'reason',ellipsis:true,render:v=><span style={{fontSize:12,color:'#6b7280'}}>{v}</span>},
+               {title:'',width:70,render:(_,r)=><Button size="small" type="primary" ghost disabled={r.target==='ignore'} onClick={()=>applySug(r)}>采纳</Button>},
+             ]}/>}
+          <Alert type="info" showIcon style={{marginTop:8}} message="AI 建议仅供参考，采纳后写入词库立即生效（影响后续研判）。不放心可忽略。"/>
+        </Card>
+        <Card className="card" title="检测字典（可选，默认全自动）" size="small" extra={<Upload showUploadList={false} beforeUpload={uploadLog}><Button size="small" type="primary">导入日志</Button></Upload>}>
+          {Object.keys(DM).map(n=><DictEditor key={n} name={n} label={DM[n]} initial={dicts[n]} onSave={saveDict}/>)}
+          <Alert type="info" showIcon style={{marginTop:8}} message="检测默认全自动（不依赖这些词）。标为误报的行为会自动豁免，下次同类不再告警。"/>
+        </Card>
+      </>},
+    ]}/>
+  );
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
