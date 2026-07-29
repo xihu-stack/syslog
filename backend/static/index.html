@@ -297,12 +297,12 @@ function Dashboard({go}){
   const pie=useRef(),bar=useRef(),trend=useRef(),catBar=useRef();
   const pieChart=useRef(null),barChart=useRef(null),trendChart=useRef(null),catChart=useRef(null);
   const load=async()=>{
-    setSt(await GET('/api/stats'));
-    setVs(await GETL('/api/verdicts?limit=300'));
-    setAl(await GETL('/api/alerts?limit=300'));  // 饼图需要更多数据
-    setSys(await GET('/api/system/stats'));
-    setCats(await GET('/api/category_stats'));
-    setEff(await GETL('/api/efficiency'));
+    GET('/api/stats').then(setSt);
+    GETL('/api/verdicts?limit=300').then(setVs);
+    GETL('/api/alerts?limit=300').then(setAl);
+    GET('/api/system/stats').then(setSys);
+    GET('/api/category_stats').then(setCats);
+    GETL('/api/efficiency').then(setEff);
   };
   useEffect(()=>{ load(); const t=setInterval(load,15000); return ()=>clearInterval(t); },[]);
   useEffect(()=>{
@@ -372,7 +372,7 @@ function Dashboard({go}){
       <div className="flow-tail">画像 <b style={{color:'#1677ff'}}>{ago(sys.profile_updated_ts)}</b> 更新</div>
     </div>
     <Row gutter={16} style={{marginTop:16}}>
-      {(()=>{const sp=eff.filter(r=>r.slack>0).length;const aw=eff.length?Math.round(eff.reduce((s,r)=>s+(r.work_pct||0),0)/eff.length):0;return <>
+      {(()=>{const sp=eff.filter(r=>r.slack>=3).length;const aw=eff.length?Math.round(eff.reduce((s,r)=>s+(r.work_pct||0),0)/eff.length):0;return <>
         <Col span={6}><div className="tile alert" onClick={()=>go('alerts')}><div className="v num">{sysAl.today||0}</div><div className="l">风险告警</div><div className="arr">查看告警 ›</div></div></Col>
         <Col span={6}><div className="tile" onClick={()=>go('efficiency')}><div className="v num">{sp}</div><div className="l">摸鱼人数</div><div className="arr">效率榜 ›</div></div></Col>
         <Col span={6}><div className="tile" onClick={()=>go('efficiency')}><div className="v num">{aw}<span style={{fontSize:16,color:'#94a3b8'}}> %</span></div><div className="l">平均工作占比</div><div className="arr">效率榜 ›</div></div></Col>
@@ -656,8 +656,8 @@ function Efficiency({goProfile}){
         onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
         columns={[
           {title:'员工',dataIndex:'employee',width:130,render:v=><a style={{fontWeight:500}}>{v}</a>},
-          {title:'摸鱼占比',dataIndex:'pct',width:120,sorter:(a,b)=>b.pct-a.pct,defaultSortOrder:'descend',
-            render:(v,r)=><span style={{color:v>=10?'#ef4444':v>=5?'#f59e0b':'#475569',fontWeight:v>=5?700:400}}>{v}% <span style={{color:'#94a3b8',fontWeight:400,fontSize:11}}>({r.slack}/{r.total})</span></span>},
+          {title:'摸鱼',dataIndex:'slack',width:110,sorter:(a,b)=>b.slack-a.slack,defaultSortOrder:'descend',
+            render:(v,r)=>!v?'-':<span style={{color:v>=3?'#ef4444':'#94a3b8',fontWeight:v>=3?700:400}}>{v}次 <span style={{fontSize:11,color:'#cbd5e1',fontWeight:400}}>({r.pct}%)</span></span>},
           {title:'工作%',dataIndex:'work_pct',width:85,sorter:(a,b)=>(b.work_pct||0)-(a.work_pct||0),
             render:v=><span style={{color:v>=60?'#16a34a':v>=30?'#475569':'#94a3b8',fontWeight:v>=60?700:400}}>{v}%</span>},
           {title:'视频',width:64,render:(_,r)=><span style={{color:r.cats['视频']?'#1677ff':'#cbd5e1'}}>{r.cats['视频']||0}</span>},
