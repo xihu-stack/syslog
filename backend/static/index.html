@@ -95,7 +95,7 @@ function Legend(){ return <div className="legend">
   <span><i className="swatch" style={{background:'#ff4d4f'}}/>86-100 严重</span>
 </div>; }
 
-const FROM_TITLE={computers:'用户视图',alerts:'告警管理',efficiency:'效率监控'};
+const FROM_TITLE={computers:'用户视图',alerts:'告警管理',efficiency:'效率监控',dashboard:'监控大屏'};
 function ProfilePage({user, goBack, from}){
   const [data,setData]=useState(null);
   const trendRef=useRef(), hoursRef=useRef(), actRef=useRef();
@@ -290,7 +290,7 @@ function App(){
           </Space>
         </Header>
         <Content style={{margin:16}}>
-          {key==='dashboard' && <Dashboard go={setKey}/>}
+          {key==='dashboard' && <Dashboard go={setKey} goProfile={(u)=>{setProfileFrom('dashboard');setProfileUser(u);setKey('profile');}}/>}
           {key==='computers' && <Computers goProfile={(u)=>{setProfileFrom('computers');setProfileUser(u);setKey('profile');}}/>}
           {key==='alerts' && <Alerts goProfile={(u)=>{setProfileFrom('alerts');setProfileUser(u);setKey('profile');}}/>}
           {key==='config' && <Config/>}
@@ -304,7 +304,7 @@ function App(){
   );
 }
 
-function Dashboard({go}){
+function Dashboard({go, goProfile}){
   const [st,setSt]=useState({}); const [vs,setVs]=useState([]); const [al,setAl]=useState([]); const [sys,setSys]=useState({}); const [cats,setCats]=useState({}); const [eff,setEff]=useState([]);
   const pie=useRef(),bar=useRef(),trend=useRef(),catBar=useRef();
   const pieChart=useRef(null),barChart=useRef(null),trendChart=useRef(null),catChart=useRef(null);
@@ -323,12 +323,12 @@ function Dashboard({go}){
     if(pie.current){ if(pieChart.current){pieChart.current.dispose();pieChart.current=null;} if(pieData.length){ const cnt={}; pieData.forEach(v=>{const s=v.scenario||v.intent||'unknown';cnt[s]=(cnt[s]||0)+1;}); if(!Object.keys(cnt).length){ pie.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无告警分布</div>'; } else { const c=echarts.init(pie.current); pieChart.current=c;
       c.setOption({tooltip:{trigger:'item'},legend:{bottom:0,textStyle:{color:'#6b7280',fontSize:11}},
         color:['#ff4d4f','#fa8c16','#faad14','#1677ff','#52c41a'],
-        series:[{type:'pie',radius:['42%','70%'],label:{color:'#4b5563'},data:Object.entries(cnt).map(([k,v])=>({name:INTENT[k]||k,value:v}))}]});}} else { pie.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无告警分布</div>'; }}
+        series:[{type:'pie',radius:['42%','70%'],label:{color:'#4b5563'},data:Object.entries(cnt).map(([k,v])=>({name:INTENT[k]||k,value:v}))}]}); c.on('click',()=>go('alerts'));}} else { pie.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无告警分布</div>'; }}
     if(bar.current){ if(barChart.current){barChart.current.dispose();barChart.current=null;} if(vs.length){ const er={}; vs.forEach(v=>er[v.employee]=Math.max(er[v.employee]||0,v.risk_score));
       const top=Object.entries(er).sort((a,b)=>b[1]-a[1]).slice(0,5); if(!top.length){ bar.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无高风险用户</div>'; } else { const c=echarts.init(bar.current); barChart.current=c;
       c.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0].name+'：'+p[0].value+'分'},grid:{left:200,right:60},xAxis:{type:'value',max:100,axisLine:{lineStyle:{color:'#d0d7e3'}},axisLabel:{color:'#9aa3b2'}},
         yAxis:{type:'category',data:top.map(x=>x[0]).reverse(),axisLabel:{color:'#475569',fontSize:13,interval:0},axisLine:{lineStyle:{color:'#d0d7e3'}}},
-        series:[{type:'bar',data:top.map(x=>x[1]).reverse(),barCategoryGap:'30%',itemStyle:{color:'#1677ff',borderRadius:[0,4,4,0]},label:{show:true,position:'right',color:'#6b7280',formatter:'{c}分'}}]});}} else { bar.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无高风险用户</div>'; }}
+        series:[{type:'bar',data:top.map(x=>x[1]).reverse(),barCategoryGap:'30%',itemStyle:{color:'#1677ff',borderRadius:[0,4,4,0]},label:{show:true,position:'right',color:'#6b7280',formatter:'{c}分'}}]}); c.on('click',p=>goProfile&&goProfile(p.name));}} else { bar.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无高风险用户</div>'; }}
     if(trend.current){ if(trendChart.current){trendChart.current.dispose();trendChart.current=null;} if(vs.length){
       const bk={};
       vs.forEach(v=>{
@@ -372,13 +372,13 @@ function Dashboard({go}){
   const sl=sys.syslog||{};
   return (<div>
     <div className="flowbar">
-      <div className="flow-item"><div className="fv num">{sl.count||0}</div><div className="fl">实时接收</div></div>
+      <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('config')}><div className="fv num">{sl.count||0}</div><div className="fl">实时接收</div></div>
       <div className="flow-arrow">›</div>
-      <div className="flow-item"><div className="fv num">{sl.ingested||0}</div><div className="fl">已入库</div></div>
+      <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('config')}><div className="fv num">{sl.ingested||0}</div><div className="fl">已入库</div></div>
       <div className="flow-arrow">›</div>
       <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('computers')}><div className="fv num">{ev.today||0}</div><div className="fl">今日日志</div></div>
       <div className="flow-arrow">›</div>
-      <div className="flow-item"><div className="fv num">{vd.ai||0}</div><div className="fl">过 AI 研判</div></div>
+      <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('alerts')}><div className="fv num">{vd.ai||0}</div><div className="fl">过 AI 研判</div></div>
       <div className="flow-arrow">›</div>
       <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('alerts')}><div className="fv num" style={{color:'#ef4444'}}>{sysAl.today||0}</div><div className="fl">今日告警</div></div>
       <div className="flow-tail">画像 <b style={{color:'#1677ff'}}>{ago(sys.profile_updated_ts)}</b> 更新</div>
@@ -404,7 +404,7 @@ function Dashboard({go}){
       const ag={};(sysAl.list||[]).forEach(a=>{if(!ag[a.employee])ag[a.employee]={key:a.employee,employee:a.employee,scenarios:[],maxRisk:0,summary:'',status:a.status};const g=ag[a.employee];const sc=INTENT[a.scenario]||a.scenario;if(!g.scenarios.includes(sc))g.scenarios.push(sc);if((a.risk_score||0)>g.maxRisk){g.maxRisk=a.risk_score;g.summary=a.summary;}});
       const ga=Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);
       return <Card className="card" style={{marginTop:16}} title={'最新告警（'+ga.length+'人）'} size="small" extra={<a onClick={()=>go('alerts')} style={{fontSize:12}}>全部 →</a>}>
-        {ga.length? <Table size="small" rowKey="key" pagination={false} dataSource={ga.slice(0,5)}
+        {ga.length? <Table size="small" rowKey="key" pagination={false} dataSource={ga.slice(0,5)} onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
           columns={[{title:'用户',dataIndex:'employee',width:110},
             {title:'风险场景',dataIndex:'scenarios',render:v=><Space wrap size={[4,4]}>{v.map(s=><Tag key={s} style={{fontSize:11}} color={'blue'}>{s}</Tag>)}</Space>},
             {title:'风险',dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
