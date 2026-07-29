@@ -275,7 +275,14 @@ function App(){
       <Sider width={200} style={{background:'#fff',borderRight:'1px solid #e8eef7'}}>
         <div className="logo"><span className="ic"><i className="fa-solid fa-chart-line"></i></span>用户行为分析系统</div>
         <Menu mode="inline" selectedKeys={[key==='profile'?(profileFrom||'alerts'):key]} onClick={e=>setKey(e.key)} style={{borderRight:'none'}}
-          items={[{key:'dashboard',label:'监控大屏'},{key:'computers',label:'用户视图'},{key:'alerts',label:'告警管理'},{key:'efficiency',label:'效率监控'},{key:'ask',label:'AI 问答'},{key:'config',label:'系统设置'}]}/>
+          items={[
+            {key:'dashboard',label:<span><i className="fa-solid fa-gauge-high" style={{marginRight:8,width:16}}></i>监控大屏</span>},
+            {key:'computers',label:<span><i className="fa-solid fa-users" style={{marginRight:8,width:16}}></i>用户视图</span>},
+            {key:'alerts',label:<span><i className="fa-solid fa-bell" style={{marginRight:8,width:16}}></i>告警管理</span>},
+            {key:'efficiency',label:<span><i className="fa-solid fa-chart-column" style={{marginRight:8,width:16}}></i>效率监控</span>},
+            {key:'ask',label:<span><i className="fa-solid fa-robot" style={{marginRight:8,width:16}}></i>AI 问答</span>},
+            {key:'config',label:<span><i className="fa-solid fa-gear" style={{marginRight:8,width:16}}></i>系统设置</span>},
+          ]}/>
       </Sider>
       <Layout>
         <Header style={{background:'#fff',borderBottom:'1px solid var(--line)',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 20px',height:56}}>
