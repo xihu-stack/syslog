@@ -221,7 +221,8 @@ def is_heartbeat(domain: str) -> bool:
 
 
 # 已知SDK埋点/统计/日志子域前缀(排除,避免把app后台请求算作主动摸鱼)
-_SLACK_SDK_HINT = ("api.", "sdk", "audid", "fourier", "nbsdk", "log.", "error.",
+_SLACK_SDK_HINT = ("api.", "sdk", "audid", "fourier", "nbsdk", "log.", "error.", "err.", "perf.",
+                   "mqtt.", "sugar.", "datahub.", "doubanio", "umdcv4", "cloudvideocdn", "rta",
                    "cloud.video", "stat.", "analytics.", "monitor.", "ping.", "collector")
 
 
