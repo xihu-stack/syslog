@@ -521,7 +521,7 @@ def efficiency():
             if sp_e is not None:
                 mx = max(mx, (sp_e - sp_s).total_seconds())
             out.append({"employee": k, "total": r["total"], "slack": r["slack"],
-                        "pct": round(r["slack"] / r["total"] * 100) if r["total"] else 0,
+                        "pct": round(r["slack"] / r["total"] * 100, 1) if r["total"] else 0,
                         "cats": dict(r["cats"]), "active_days": len(r["days"]),
                         "hour_min": hours[0] if hours else None, "hour_max": hours[-1] if hours else None,
                         "max_span": round(mx / 60), "work": r["work"],
