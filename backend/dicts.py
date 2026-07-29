@@ -157,6 +157,8 @@ def risk_patterns() -> list:
     """返回 [(中文标签, [域名子串...])]：当前生效的高风险域名模式。"""
     return [
         ("远程控制", ["todesk", "teamviewer", "anydesk", "向日葵", "sunlogin", "rustdesk", "vnc"]),
+        ("VPN/翻墙", ["privado", "clash", "clashverge", "shadowsocks", "v2ray", "trojan", "wireguard", "nordvpn", "expressvpn", "surfshark", "psiphon", "vmess", " Lantern"]),
+        ("代码外发", ["github", "gitlab", "gitee.com", "bitbucket", "gitpush", "coding.net"]),
         ("网盘/云盘", list(get("netdisk_domains"))),                  # 公司禁止
         ("个人邮箱", list(get("personal_email_domains"))),            # 公司禁止
         ("招聘求职", list(get("recruitment_sites"))),
@@ -181,6 +183,8 @@ def risk_class(domain: str):
 # 普通微信访问=正常办公(不入此表); 远程控制降为mid(工具使用,凌晨/密集才告警); 招聘=job。
 RISK_TIER = {
     "远程控制": "mid",           # 工具使用(降权,凌晨/密集才告警)
+    "VPN/翻墙": "high",          # 翻墙=违规+绕监控,访问即告警
+    "代码外发": "mid",           # 代码仓库上传嫌疑,凌晨/密集才告警
     "网盘/云盘": "high",         # 公司禁止→访问即违规告警
     "个人邮箱": "high",          # 公司禁止→访问即违规告警
     "招聘求职": "job",           # 求职意图
