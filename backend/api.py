@@ -555,7 +555,7 @@ def efficiency():
                         "hour_min": hours[0] if hours else None, "hour_max": hours[-1] if hours else None,
                         "max_span": round(mx / 60), "work": r["work"],
                         "work_pct": round(r["work"] / r["total"] * 100) if r["total"] else 0})
-        out.sort(key=lambda x: -x["pct"])
+        out.sort(key=lambda x: -(x.get("max_span") or 0))
         _eff_cache["data"] = out; _eff_cache["ts"] = time.time()
         return out
     finally:
