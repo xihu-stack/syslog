@@ -28,6 +28,7 @@ if _se == "1":
         print("[startup] syslog 自启成功, enabled =", syslog_recv.status().get("enabled"))
     except Exception as e:
         print("[startup] syslog 自启失败:", e)
+    syslog_recv.start_watchdog()  # 兜底: syslog停了自动重启(每60s检查)
 
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 

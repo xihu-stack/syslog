@@ -115,6 +115,24 @@ def start(host, port):
     _flush_loop()
 
 
+def _watchdog():
+    """每60s检查, syslog停了(syslog_enabled=1但enabled=False)自动重启, 防数据流断。"""
+    import time as _t
+    while True:
+        _t.sleep(60)
+        try:
+            if not _state.get("enabled"):
+                import dicts as _d
+                if _d.get_setting("syslog_enabled", "0") == "1":
+                    start(_state.get("host") or "0.0.0.0", _state.get("port") or 8514)
+        except Exception:
+            pass
+
+
+def start_watchdog():
+    threading.Thread(target=_watchdog, daemon=True).start()
+
+
 def stop():
     global _flush_timer
     with _lock:
