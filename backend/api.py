@@ -128,6 +128,15 @@ def employee(emp: str):
                 risk_evs.append(e)
             if len(risk_evs) >= 30:
                 break
+        slack_evs = []
+        for e in (s.query(EventRow).filter_by(employee_id=emp).filter(EventRow.category == "WEB")
+                  .order_by(desc(EventRow.occurred_at)).limit(300).all()):
+            dom = (e.raw or {}).get("domain") or ""
+            sc = dicts.slack_category(dom)
+            if sc:
+                slack_evs.append((e, sc))
+            if len(slack_evs) >= 30:
+                break
         vs = (s.query(VerdictRow).filter_by(employee_id=emp)
               .order_by(desc(VerdictRow.window_start)).limit(20).all())
         return {
@@ -142,6 +151,11 @@ def employee(emp: str):
                 "risk_class": dicts.risk_class((e.raw or {}).get("domain") or ""),
                 "source": e.source or "",
             } for e in risk_evs],
+            "slack_events": [{
+                "occurred_at": e.occurred_at.isoformat() if e.occurred_at else None,
+                "category": sc, "domain": (e.raw or {}).get("domain") or "",
+                "source": e.source or "",
+            } for e, sc in slack_evs],
             "verdicts": [{"window_start": v.window_start.isoformat() if v.window_start else None,
                           "intent": v.intent, "risk_score": v.risk_score,
                           "explanation": v.explanation} for v in vs],
@@ -503,7 +517,7 @@ def efficiency():
                 r["days"].add(e.occurred_at.date()); r["hours"].add(e.occurred_at.hour)
             dom = (e.raw or {}).get("domain") or ""
             cat = dicts.slack_category(dom)
-            if cat and e.occurred_at and 9 <= e.occurred_at.hour < 18:
+            if cat and e.occurred_at and (9 <= e.occurred_at.hour < 12 or 14 <= e.occurred_at.hour < 18):  # 工作时间,排除午休12-14
                 r["slack"] += 1; r["cats"][cat] += 1; r["stimes"].append(e.occurred_at)
             elif not cat and not dicts.risk_class(dom) and dicts.work_category(dom):
                 r["work"] += 1
@@ -661,7 +675,7 @@ def _ask_query(action, employee, category=""):
             for e in s.query(EventRow).filter(EventRow.category == "WEB").yield_per(2000):
                 et[e.employee_id] += 1
                 cat = dicts.slack_category((e.raw or {}).get("domain") or "")
-                if cat and e.occurred_at and 9 <= e.occurred_at.hour < 18:
+                if cat and e.occurred_at and (9 <= e.occurred_at.hour < 12 or 14 <= e.occurred_at.hour < 18):  # 工作时间,排除午休12-14
                     es[e.employee_id] += 1
             top = sorted([(e, es[e], et[e]) for e in es if et[e] > 50], key=lambda x: -x[1])[:10]
             if not top:

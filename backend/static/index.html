@@ -220,6 +220,16 @@ function ProfilePage({user, goBack, from}){
         {!(data.risk_events||[]).length&&<div style={{color:'#9aa3b2',padding:24,textAlign:'center'}}>近期无风险行为</div>}
       </div>
     </Card>
+    <Card className="card" title={"摸鱼行为（"+(data.slack_events||[]).length+"）"} size="small" style={{marginTop:16}}>
+      <div className="tl" style={{maxHeight:300,overflow:'auto'}}>
+        {(data.slack_events||[]).map((e,i)=><div className="it" key={i}>
+          <span className="t">{fmt(e.occurred_at)}</span>
+          {e.category&&<Tag color="purple" style={{marginLeft:4,fontSize:10}}>{e.category}</Tag>}
+          <b> {e.domain}</b>
+        </div>)}
+        {!(data.slack_events||[]).length&&<div style={{color:'#9aa3b2',padding:24,textAlign:'center'}}>近期无摸鱼行为</div>}
+      </div>
+    </Card>
     {domains.length>0&&<Card className="card" title="常访问域名（按频率）" size="small" style={{marginTop:16}}>
       <Space wrap size={[4,4]}>
         {domains.slice(0,40).map((d,i)=><Tag key={d} style={{fontSize:11}} color={i<5?'blue':'default'}>{d}</Tag>)}
