@@ -378,7 +378,7 @@ function Dashboard({go, goProfile}){
       <div className="flow-arrow">›</div>
       <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('computers')}><div className="fv num">{ev.today||0}</div><div className="fl">今日日志</div></div>
       <div className="flow-arrow">›</div>
-      <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('alerts')}><div className="fv num">{vd.ai||0}</div><div className="fl">过 AI 研判</div></div>
+      <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('alerts')}><div className="fv num">{vd.today||0}</div><div className="fl">过 AI 研判</div></div>
       <div className="flow-arrow">›</div>
       <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('alerts')}><div className="fv num" style={{color:'#ef4444'}}>{sysAl.today||0}</div><div className="fl">今日告警</div></div>
       <div className="flow-tail">画像 <b style={{color:'#1677ff'}}>{ago(sys.profile_updated_ts)}</b> 更新</div>
