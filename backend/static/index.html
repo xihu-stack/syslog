@@ -12,19 +12,23 @@
 <script src="/libs/babel.js"></script>
 <style>
   :root{
-    --ink:#0f172a; --ink2:#475569; --ink3:#94a3b8;
-    --line:#edf0f5; --bg:#f5f7fa;
-    --brand:#1677ff; --brand-soft:#eaf2ff;
+    --ink:#0f172a; --ink2:#475569; --ink3:#94a3b8; --ink4:#cbd5e1;
+    --line:#eef1f6; --bg:#fafbfc;
+    --brand:#4f46e5; --brand-soft:#eef2ff; --brand-deep:#4338ca;
     --danger:#ef4444; --danger-soft:#fef2f2;
     --warn:#f59e0b; --ok:#16a34a;
+    --shadow-sm:0 1px 2px rgba(15,23,42,.04);
+    --shadow-md:0 1px 3px rgba(15,23,42,.05), 0 4px 12px rgba(15,23,42,.04);
+    --shadow-lg:0 4px 6px rgba(15,23,42,.03), 0 10px 30px rgba(15,23,42,.07);
+    --radius:12px;
   }
   *{box-sizing:border-box;}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:"Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","HarmonyOS Sans","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased;}
   #root{min-height:100vh;}
   .logo{height:60px;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--brand);font-size:15px;font-weight:700;line-height:1.3;border-bottom:1px solid var(--line);background:#fff;letter-spacing:.5px;}
   .num{font-family:Consolas,"Courier New",monospace;font-variant-numeric:tabular-nums;}
   .tile{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px 22px;cursor:pointer;transition:.2s;position:relative;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,.03);}
-  .tile:hover{border-color:var(--brand);box-shadow:0 8px 22px rgba(22,123,255,.12);transform:translateY(-2px);}
+  .tile:hover{border-color:var(--brand);box-shadow:0 8px 24px rgba(79,70,229,.15);transform:translateY(-2px);}
   .tile .v{font-size:30px;font-weight:700;color:var(--ink);letter-spacing:-.5px;line-height:1.1;}
   .tile.alert .v{color:var(--danger);}
   .tile.alert{border-top:3px solid var(--danger);}
@@ -35,7 +39,7 @@
   .swatch{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:middle;}
   .tl{border-left:2px solid var(--brand);margin:8px 0 8px 4px;padding-left:14px;}
   .tl .it{margin:8px 0;font-size:13px;} .tl .t{color:var(--ink3);font-size:12px;}
-  .card{border:1px solid var(--line) !important;border-radius:12px !important;box-shadow:0 1px 3px rgba(15,23,42,.04) !important;}
+  .card{border:1px solid var(--line) !important;border-radius:var(--radius) !important;box-shadow:var(--shadow-md) !important;}
   .card>.ant-card-head{min-height:40px;border-bottom-color:var(--line) !important;}
   .sec-title{color:var(--ink2);font-size:12px;letter-spacing:1px;margin:6px 0 10px;}
   .st-tag{display:inline-block;padding:1px 7px;border-radius:4px;font-size:11px;font-weight:600;}
@@ -53,7 +57,7 @@
   .flow-arrow{color:var(--ink3);opacity:.4;font-size:16px;}
   .flow-tail{margin-left:auto;padding-left:16px;border-left:1px solid var(--line);font-size:12px;color:var(--ink3);white-space:nowrap;}
   .card{transition:box-shadow .2s !important;}
-  .card:hover{box-shadow:0 6px 18px rgba(15,23,42,.09) !important;}
+  .card:hover{box-shadow:var(--shadow-lg) !important;}
   .ant-table-tbody>tr{transition:background .15s;}
   .ant-table-tbody>tr:hover>td{background:#f8fafc !important;}
   .logo{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;line-height:1.3;}
@@ -75,7 +79,7 @@ const { useState, useEffect, useRef } = React;
 const LVL = s => (s==null)?{c:'#9aa3b2',l:'-'} : s>=86?{c:'#ff4d4f',l:'严重'} : s>=61?{c:'#fa8c16',l:'高危'} : s>=31?{c:'#faad14',l:'关注'} : {c:'#52c41a',l:'正常'};
 const INTENT = {data_exfiltration:'数据外发', job_seeking:'求职离职', baseline_deviation:'行为偏离', policy_violation:'违规', normal_work:'正常', unknown:'未知'};
 const DEV = {none:'无', minor:'轻微', major:'重大', severe:'严重', unknown:'未知'};
-const STATUS_MAP = {NEW:{c:'#1677ff',t:'待处理'}, TRIAGING:{c:'#faad14',t:'处理中'}, CONFIRMED:{c:'#ff4d4f',t:'已确认'}, FP:{c:'#bfbfbf',t:'误报'}, CLOSED:{c:'#52c41a',t:'已关闭'}};
+const STATUS_MAP = {NEW:{c:'#4f46e5',t:'待处理'}, TRIAGING:{c:'#faad14',t:'处理中'}, CONFIRMED:{c:'#ff4d4f',t:'已确认'}, FP:{c:'#bfbfbf',t:'误报'}, CLOSED:{c:'#52c41a',t:'已关闭'}};
 // 防抖回调（延迟ms后执行，取消前序）
 function debounce(fn, delay){ let t; return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), delay); }; }
 const STATUS_OPTS = [{label:'待处理',value:'NEW'},{label:'处理中',value:'TRIAGING'},{label:'已确认',value:'CONFIRMED'},{label:'误报',value:'FP'},{label:'已关闭',value:'CLOSED'}];
@@ -108,14 +112,14 @@ function ProfilePage({user, goBack, from}){
       c.setOption({tooltip:{trigger:'axis',formatter:p=>p[0].name+'<br/>风险分: <b>'+p[0].value+'</b>'},grid:{left:40,right:20,top:20,bottom:35},
         xAxis:{type:'category',data:vs.map(v=>(v.window_start||'').replace('T',' ').slice(5,16)),axisLabel:{color:'#9aa3b2',fontSize:9,rotate:30}},
         yAxis:{type:'value',max:100,axisLabel:{color:'#9aa3b2'}},
-        series:[{type:'line',data:vs.map(v=>v.risk_score||0),smooth:true,areaStyle:{color:'#1677ff22'},lineStyle:{color:'#1677ff'},itemStyle:{color:function(p){return riskColors[p.dataIndex]||'#1677ff';}}}]});}
+        series:[{type:'line',data:vs.map(v=>v.risk_score||0),smooth:true,areaStyle:{color:'#4f46e522'},lineStyle:{color:'#4f46e5'},itemStyle:{color:function(p){return riskColors[p.dataIndex]||'#4f46e5';}}}]});}
     const hrs=(data.profile||{}).active_hours_top||[];
     if(hrs.length&&hoursRef.current){ const c=echarts.init(hoursRef.current);
       const full=Array.from({length:24},(_,h)=>hrs.includes(h)?1:0);
       c.setOption({tooltip:{},grid:{left:30,right:15,top:15,bottom:30},
         xAxis:{type:'category',data:Array.from({length:24},(_,h)=>h+'时'),axisLabel:{color:'#9aa3b2',fontSize:9}},
         yAxis:{type:'value',show:false},
-        series:[{type:'bar',data:full,itemStyle:{color:full.map(v=>v?'#1677ff':'#e6ecf5')}}]});}
+        series:[{type:'bar',data:full,itemStyle:{color:full.map(v=>v?'#4f46e5':'#e6ecf5')}}]});}
     const evs=data.events||[];
     if(evs.length&&actRef.current){ const c=echarts.init(actRef.current);
       const actCnt={}; evs.forEach(e=>{ const a=e.action||'UNKNOWN'; actCnt[a]=(actCnt[a]||0)+1; });
@@ -123,7 +127,7 @@ function ProfilePage({user, goBack, from}){
       c.setOption({tooltip:{},grid:{left:80,right:20,top:15,bottom:30},
         xAxis:{type:'value',axisLabel:{color:'#9aa3b2'}},
         yAxis:{type:'category',data:top.map(t=>t[0]).reverse(),axisLabel:{color:'#6b7280',fontSize:11}},
-        series:[{type:'bar',data:top.map(t=>t[1]).reverse(),itemStyle:{color:'#1677ff',borderRadius:[0,4,4,0]}}]});}
+        series:[{type:'bar',data:top.map(t=>t[1]).reverse(),itemStyle:{color:'#4f46e5',borderRadius:[0,4,4,0]}}]});}
   },[data]);
   if(!data) return <Card className="card"><div style={{padding:40,textAlign:'center',color:'#9aa3b2'}}>加载中...</div></Card>;
   const vs=data.verdicts||[];
@@ -154,7 +158,7 @@ function ProfilePage({user, goBack, from}){
       <Col span={8}>
     <Card className="card" title="事件分类" size="small">
       <Table size="small" pagination={false} dataSource={[
-        {key:'doc',label:'文档操作',val:docCnt,color:'#1677ff'},
+        {key:'doc',label:'文档操作',val:docCnt,color:'#4f46e5'},
         {key:'web',label:'网页浏览',val:webCnt,color:'#52c41a'},
         {key:'search',label:'关键字搜索',val:searchCnt,color:'#faad14'},
       ]} columns={[
@@ -172,7 +176,7 @@ function ProfilePage({user, goBack, from}){
     <Card className="card" title="数据来源" size="small">
       <Table size="small" pagination={false} dataSource={[
         {key:'sangfor',label:'深信服上网行为',val:sangforCnt,color:'#52c41a'},
-        {key:'ipguard',label:'IP-Guard文档/网页',val:ipguardCnt,color:'#1677ff'},
+        {key:'ipguard',label:'IP-Guard文档/网页',val:ipguardCnt,color:'#4f46e5'},
       ]} columns={[
         {title:'来源',dataIndex:'label'},
         {title:'数量',dataIndex:'val',render:(v,r)=><span style={{fontWeight:600,color:r.color}}>{v}</span>},
@@ -263,7 +267,7 @@ function App(){
     message.loading({content:'导入中…',key:'up',duration:0});
     fetch('/api/ingest',{method:'POST',body:fd}).then(r=>r.json()).then(r=>{ message.success({content:'已导入 '+r.imported+' 条，开始研判…',key:'up',duration:2}); pollDetect(); }); return false; };
   return (
-    <ConfigProvider theme={{token:{colorPrimary:'#1677ff',borderRadius:8}}}>
+    <ConfigProvider theme={{token:{colorPrimary:'#4f46e5',borderRadius:8}}}>
     <Layout style={{minHeight:'100vh'}}>
       <Sider width={200} style={{background:'#fff',borderRight:'1px solid #e8eef7'}}>
         <div className="logo"><span className="ic">📊</span>用户行为分析系统</div>
@@ -322,13 +326,13 @@ function Dashboard({go, goProfile}){
     const pieData = al.length ? al : vs;
     if(pie.current){ if(pieChart.current){pieChart.current.dispose();pieChart.current=null;} if(pieData.length){ const cnt={}; pieData.forEach(v=>{const s=v.scenario||v.intent||'unknown';cnt[s]=(cnt[s]||0)+1;}); if(!Object.keys(cnt).length){ pie.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无告警分布</div>'; } else { const c=echarts.init(pie.current); pieChart.current=c;
       c.setOption({tooltip:{trigger:'item'},legend:{bottom:0,textStyle:{color:'#6b7280',fontSize:11}},
-        color:['#ff4d4f','#fa8c16','#faad14','#1677ff','#52c41a'],
+        color:['#ff4d4f','#fa8c16','#faad14','#4f46e5','#52c41a'],
         series:[{type:'pie',radius:['42%','70%'],label:{color:'#4b5563'},data:Object.entries(cnt).map(([k,v])=>({name:INTENT[k]||k,value:v}))}]}); c.on('click',()=>go('alerts'));}} else { pie.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无告警分布</div>'; }}
     if(bar.current){ if(barChart.current){barChart.current.dispose();barChart.current=null;} if(vs.length){ const er={}; vs.forEach(v=>er[v.employee]=Math.max(er[v.employee]||0,v.risk_score));
       const top=Object.entries(er).sort((a,b)=>b[1]-a[1]).slice(0,5); if(!top.length){ bar.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无高风险用户</div>'; } else { const c=echarts.init(bar.current); barChart.current=c;
       c.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0].name+'：'+p[0].value+'分'},grid:{left:200,right:60},xAxis:{type:'value',max:100,axisLine:{lineStyle:{color:'#d0d7e3'}},axisLabel:{color:'#9aa3b2'}},
         yAxis:{type:'category',data:top.map(x=>x[0]).reverse(),axisLabel:{color:'#475569',fontSize:13,interval:0},axisLine:{lineStyle:{color:'#d0d7e3'}}},
-        series:[{type:'bar',data:top.map(x=>x[1]).reverse(),barCategoryGap:'30%',itemStyle:{color:'#1677ff',borderRadius:[0,4,4,0]},label:{show:true,position:'right',color:'#6b7280',formatter:'{c}分'}}]}); c.on('click',p=>goProfile&&goProfile(p.name));}} else { bar.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无高风险用户</div>'; }}
+        series:[{type:'bar',data:top.map(x=>x[1]).reverse(),barCategoryGap:'30%',itemStyle:{color:'#4f46e5',borderRadius:[0,4,4,0]},label:{show:true,position:'right',color:'#6b7280',formatter:'{c}分'}}]}); c.on('click',p=>goProfile&&goProfile(p.name));}} else { bar.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无高风险用户</div>'; }}
     if(trend.current){ if(trendChart.current){trendChart.current.dispose();trendChart.current=null;} if(vs.length){
       const bk={};
       vs.forEach(v=>{
@@ -347,7 +351,7 @@ function Dashboard({go, goProfile}){
       c.setOption({tooltip:{trigger:'axis'},grid:{left:40,right:20,top:20,bottom:40},
         xAxis:{type:'category',data:ts.map(t=>{const d=new Date(+t);return (d.getMonth()+1)+'/'+d.getDate()+' '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');}),axisLabel:{color:'#9aa3b2',fontSize:9,rotate:30}},
         yAxis:{type:'value',max:maxY+1,axisLabel:{color:'#9aa3b2'}},
-        series:[{type:'bar',data:vals,areaStyle:{color:'#1677ff22'},itemStyle:{color:'#1677ff',borderColor:'#fff'},name:'风险用户数'}]});} else { trend.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:40px">暂无风险趋势数据</div>'; }}
+        series:[{type:'bar',data:vals,areaStyle:{color:'#4f46e522'},itemStyle:{color:'#4f46e5',borderColor:'#fff'},name:'风险用户数'}]});} else { trend.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:40px">暂无风险趋势数据</div>'; }}
   },[vs, al]);
   useEffect(()=>{
     const days=sys.alerts_by_day||[];
@@ -357,7 +361,7 @@ function Dashboard({go, goProfile}){
       c.setOption({tooltip:{trigger:'axis'},grid:{left:40,right:20,top:30,bottom:30},
         xAxis:{type:'category',data:days.map(d=>d[0].slice(5)),axisLabel:{color:'#9aa3b2'}},
         yAxis:{type:'value',axisLabel:{color:'#9aa3b2'}},
-        series:[{type:'bar',data:days.map(d=>d[1]),itemStyle:{color:'#1677ff',borderRadius:[4,4,0,0]},label:{show:true,position:'top',color:'#6b7280'}}]});
+        series:[{type:'bar',data:days.map(d=>d[1]),itemStyle:{color:'#4f46e5',borderRadius:[4,4,0,0]},label:{show:true,position:'top',color:'#6b7280'}}]});
     }
   },[sys]);
   const SRC={"sangfor":"深信服","ipguard":"IP-Guard","":"未知"};
@@ -371,7 +375,7 @@ function Dashboard({go, goProfile}){
       <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('alerts')}><div className="fv num">{vd.today||0}</div><div className="fl">过 AI 研判</div></div>
       <div className="flow-arrow">›</div>
       <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('alerts')}><div className="fv num" style={{color:'#ef4444'}}>{sysAl.today||0}</div><div className="fl">今日告警</div></div>
-      <div className="flow-tail">画像 <b style={{color:'#1677ff'}}>{ago(sys.profile_updated_ts)}</b> 更新</div>
+      <div className="flow-tail">画像 <b style={{color:'#4f46e5'}}>{ago(sys.profile_updated_ts)}</b> 更新</div>
     </div>
     <Row gutter={16} style={{marginTop:16}}>
       {(()=>{const sp=eff.filter(r=>(r.max_span||0)>=30).length;const aw=eff.length?Math.round(eff.reduce((s,r)=>s+(r.work_pct||0),0)/eff.length):0;const alertPpl=new Set((sysAl.list||[]).map(a=>a.employee)).size;return <>
@@ -660,7 +664,7 @@ function Efficiency({goProfile}){
             render:v=>!v?'-':v>=60?<span style={{color:'#ef4444',fontWeight:700}}>{Math.floor(v/60)}小时{v%60}分</span>:<span style={{color:v>=30?'#f59e0b':'#94a3b8',fontWeight:v>=30?700:400}}>{v}分</span>},
           {title:'工作%',dataIndex:'work_pct',width:85,sorter:(a,b)=>(b.work_pct||0)-(a.work_pct||0),
             render:v=><span style={{color:v>=60?'#16a34a':v>=30?'#475569':'#94a3b8',fontWeight:v>=60?700:400}}>{v}%</span>},
-          {title:'视频',width:64,render:(_,r)=><span style={{color:r.cats['视频']?'#1677ff':'#cbd5e1'}}>{r.cats['视频']||0}</span>},
+          {title:'视频',width:64,render:(_,r)=><span style={{color:r.cats['视频']?'#4f46e5':'#cbd5e1'}}>{r.cats['视频']||0}</span>},
           {title:'社交',width:64,render:(_,r)=><span style={{color:r.cats['社交']?'#ec4899':'#cbd5e1'}}>{r.cats['社交']||0}</span>},
           {title:'购物',width:64,render:(_,r)=><span style={{color:r.cats['购物']?'#f59e0b':'#cbd5e1'}}>{r.cats['购物']||0}</span>},
           {title:'资讯',width:64,render:(_,r)=><span style={{color:r.cats['资讯']?'#16a34a':'#cbd5e1'}}>{r.cats['资讯']||0}</span>},
@@ -691,7 +695,7 @@ function Ask(){
     <div style={{flex:1,minHeight:0,overflow:'auto',background:'#fff',border:'1px solid var(--line)',borderRadius:12,padding:12,boxShadow:'0 1px 3px rgba(15,23,42,.04)'}}>
       {msgs.length===0?<Empty description="提问开始对话（如：今天谁摸鱼最多？张三有什么风险行为？今天有哪些告警？）" style={{paddingTop:80}}/>:
         msgs.map((m,i)=><div key={i} style={{display:'flex',justifyContent:m.role==='user'?'flex-end':'flex-start',marginBottom:10}}>
-          <div style={{maxWidth:'72%',padding:'9px 13px',borderRadius:12,background:m.role==='user'?'#1677ff':'#f1f5f9',color:m.role==='user'?'#fff':'#0f172a',whiteSpace:'pre-wrap',wordBreak:'break-word',lineHeight:1.6,boxShadow:'0 1px 2px rgba(15,23,42,.04)'}}>{m.text}</div>
+          <div style={{maxWidth:'72%',padding:'9px 13px',borderRadius:12,background:m.role==='user'?'#4f46e5':'#f1f5f9',color:m.role==='user'?'#fff':'#0f172a',whiteSpace:'pre-wrap',wordBreak:'break-word',lineHeight:1.6,boxShadow:'0 1px 2px rgba(15,23,42,.04)'}}>{m.text}</div>
         </div>)}
       {sending&&<div style={{color:'#94a3b8',fontSize:13,padding:'4px 8px'}}>AI 思考中…（查数据+总结，约10-20秒）</div>}
     </div>
