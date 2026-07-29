@@ -382,7 +382,7 @@ function Dashboard({go}){
       <div className="flow-tail">画像 <b style={{color:'#1677ff'}}>{ago(sys.profile_updated_ts)}</b> 更新</div>
     </div>
     <Row gutter={16} style={{marginTop:16}}>
-      {(()=>{const sp=eff.filter(r=>r.slack>=3).length;const aw=eff.length?Math.round(eff.reduce((s,r)=>s+(r.work_pct||0),0)/eff.length):0;return <>
+      {(()=>{const sp=eff.filter(r=>(r.max_span||0)>=30).length;const aw=eff.length?Math.round(eff.reduce((s,r)=>s+(r.work_pct||0),0)/eff.length):0;return <>
         <Col span={6}><div className="tile alert" onClick={()=>go('alerts')}><div className="v num">{sysAl.today||0}</div><div className="l">风险告警</div><div className="arr">查看告警 ›</div></div></Col>
         <Col span={6}><div className="tile" onClick={()=>go('efficiency')}><div className="v num">{sp}</div><div className="l">摸鱼人数</div><div className="arr">效率榜 ›</div></div></Col>
         <Col span={6}><div className="tile" onClick={()=>go('efficiency')}><div className="v num">{aw}<span style={{fontSize:16,color:'#94a3b8'}}> %</span></div><div className="l">平均工作占比</div><div className="arr">效率榜 ›</div></div></Col>
@@ -666,8 +666,8 @@ function Efficiency({goProfile}){
         onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
         columns={[
           {title:'员工',dataIndex:'employee',width:130,render:v=><a style={{fontWeight:500}}>{v}</a>},
-          {title:'摸鱼',dataIndex:'slack',width:110,sorter:(a,b)=>b.slack-a.slack,defaultSortOrder:'descend',
-            render:(v,r)=>!v?'-':<span style={{color:v>=3?'#ef4444':'#94a3b8',fontWeight:v>=3?700:400}}>{v}次 <span style={{fontSize:11,color:'#cbd5e1',fontWeight:400}}>({r.pct}%)</span></span>},
+          {title:'摸鱼时长',dataIndex:'max_span',width:115,sorter:(a,b)=>(b.max_span||0)-(a.max_span||0),defaultSortOrder:'descend',
+            render:v=>!v?'-':v>=60?<span style={{color:'#ef4444',fontWeight:700}}>{Math.floor(v/60)}小时{v%60}分</span>:<span style={{color:v>=30?'#f59e0b':'#94a3b8',fontWeight:v>=30?700:400}}>{v}分</span>},
           {title:'工作%',dataIndex:'work_pct',width:85,sorter:(a,b)=>(b.work_pct||0)-(a.work_pct||0),
             render:v=><span style={{color:v>=60?'#16a34a':v>=30?'#475569':'#94a3b8',fontWeight:v>=60?700:400}}>{v}%</span>},
           {title:'视频',width:64,render:(_,r)=><span style={{color:r.cats['视频']?'#1677ff':'#cbd5e1'}}>{r.cats['视频']||0}</span>},
@@ -675,8 +675,6 @@ function Efficiency({goProfile}){
           {title:'购物',width:64,render:(_,r)=><span style={{color:r.cats['购物']?'#f59e0b':'#cbd5e1'}}>{r.cats['购物']||0}</span>},
           {title:'资讯',width:64,render:(_,r)=><span style={{color:r.cats['资讯']?'#16a34a':'#cbd5e1'}}>{r.cats['资讯']||0}</span>},
           {title:'音乐',width:64,render:(_,r)=><span style={{color:r.cats['音乐']?'#8b5cf6':'#cbd5e1'}}>{r.cats['音乐']||0}</span>},
-          {title:'最长摸鱼',dataIndex:'max_span',width:100,sorter:(a,b)=>(b.max_span||0)-(a.max_span||0),
-            render:v=>!v?'-':v>=60?<span style={{color:'#ef4444',fontWeight:700}}>{Math.floor(v/60)}小时{v%60}分</span>:<span style={{color:v>=30?'#f59e0b':'#475569',fontWeight:v>=30?700:400}}>{v}分</span>},
           {title:'活跃天数',dataIndex:'active_days',width:90,sorter:(a,b)=>b.active_days-a.active_days,
             render:v=><span className="num" style={{color:v<=1?'#ef4444':'#475569',fontWeight:v<=1?700:400}}>{v}天</span>},
           {title:'在岗时段',width:120,render:(_,r)=><span style={{color:'#475569'}}>{r.hour_min===null||r.hour_min===undefined?'-':r.hour_min+'-'+r.hour_max+'点'}</span>},
