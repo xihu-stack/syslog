@@ -709,12 +709,21 @@ def rules_suggest():
     from collections import Counter
     s = Session()
     try:
-        unclass = Counter()
+        unclass = Counter(); kw_hits = set()
+        # 风险/摸鱼关键词: 含这些的未分类域名即使低频也要扫,避免漏掉招聘/网盘/邮箱/视频等
+        RISK_KW = ("job", "zhaopin", "recruit", "resume", "hr", "hire", "cv", "mail",
+                   "pan", "disk", "cloud", "drive", "upload", "video", "shop", "mall",
+                   "weibo", "zhihu", "douban", "game", "novel", "comic")
         for e in s.query(EventRow).filter(EventRow.category == "WEB").yield_per(2000):
             d = (e.raw or {}).get("domain") or ""
             if d and not dicts.risk_class(d) and not dicts.slack_category(d):
                 unclass[d] += 1
+                if any(k in d.lower() for k in RISK_KW):
+                    kw_hits.add(d)
         top = unclass.most_common(30)
+        for d in kw_hits:  # 补充含风险关键词的域名(低频但疑似风险/摸鱼),确保被AI扫到
+            if d not in dict(top):
+                top.append((d, unclass[d]))
         if not top:
             return {"suggestions": [], "msg": "无未分类高频域名"}
         sys_p = ("你是域名分类助手。对每个域名判断归属,只输出 JSON 数组 [{domain, target, cat, reason}]。\n"
