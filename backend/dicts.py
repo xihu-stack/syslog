@@ -37,6 +37,16 @@ DEFAULTS = {
         "网盘", "数据恢复", "匿名", "匿名邮箱", "临时邮箱", "绕过", "外发", "解密",
         "破解", "泄密", "u盘启动", "文件恢复", "截图", "窃取",
     ],
+    "slack_domains": {
+        "视频": ["bilibili.com", "douyin.com", "iesdouyin.com", "snssdk.com", "kuaishou.com",
+                "youku.com", "iqiyi.com", "mgtv.cn", "youtube.com", "fun.tv"],
+        "社交": ["weibo.com", "weibo.cn", "douban.com", "doubanio.com", "xiaohongshu.com",
+                "zhihu.com", "tieba.baidu.com", "hupu.com", "reddit.com"],
+        "购物": ["taobao.com", "tmall.com", "jd.com", "jd.hk", "pdd.com", "yangkeduo.com",
+                "suning.com", "vip.com", "smzdm.com"],
+        "资讯": ["toutiao.com", "36kr.com", "ifeng.com", "sspai.com"],
+        "音乐": ["music.163.com", "y.qq.com", "kugou.com", "kuwo.cn", "spotify.com", "music.apple.com"],
+    },
 }
 
 _inited = False
@@ -186,29 +196,22 @@ def is_heartbeat(domain: str) -> bool:
     return first.startswith("auth") or "authds" in d
 
 
-# 摸鱼/娱乐域名(工作效率监控维度,非安全风险)。精确主域匹配,排除SDK埋点噪音。
-SLACK_CATEGORIES = {
-    "视频": ["bilibili.com", "douyin.com", "iesdouyin.com", "snssdk.com", "kuaishou.com",
-            "youku.com", "iqiyi.com", "mgtv.cn", "youtube.com", "fun.tv"],
-    "社交": ["weibo.com", "weibo.cn", "douban.com", "doubanio.com", "xiaohongshu.com",
-            "zhihu.com", "tieba.baidu.com", "hupu.com", "reddit.com"],
-    "购物": ["taobao.com", "tmall.com", "jd.com", "jd.hk", "pdd.com", "yangkeduo.com",
-            "suning.com", "vip.com", "smzdm.com"],
-    "资讯": ["toutiao.com", "36kr.com", "ifeng.com", "sspai.com"],
-    "音乐": ["music.163.com", "y.qq.com", "kugou.com", "kuwo.cn", "spotify.com", "music.apple.com"],
-}
 # 已知SDK埋点/统计/日志子域前缀(排除,避免把app后台请求算作主动摸鱼)
 _SLACK_SDK_HINT = ("api.", "sdk", "audid", "fourier", "nbsdk", "log.", "error.",
                    "cloud.video", "stat.", "analytics.", "monitor.", "ping.", "collector")
 
 
 def slack_category(domain: str):
-    """域名 → 摸鱼类别(视频/社交/购物/资讯/音乐);排除SDK埋点;非摸鱼返回 None。"""
+    """域名 → 摸鱼类别(视频/社交/购物/资讯/音乐);排除SDK埋点;非摸鱼返回 None。
+    摸鱼域名存 DB DictRow(slack_domains, object{cat:[domains]}),可后台/AI动态更新。"""
     d = (domain or "").lower()
     if not d or any(d.startswith(h) or h in d for h in _SLACK_SDK_HINT):
         return None
-    for cat, doms in SLACK_CATEGORIES.items():
-        for dom in doms:
+    cats = get("slack_domains")
+    if not isinstance(cats, dict):
+        return None
+    for cat, doms in cats.items():
+        for dom in (doms or []):
             if d == dom or d.endswith("." + dom):
                 return cat
     return None

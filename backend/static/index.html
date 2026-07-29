@@ -246,11 +246,11 @@ function App(){
       <Sider width={200} style={{background:'#fff',borderRight:'1px solid #e8eef7'}}>
         <div className="logo">IP-Guard<br/>行为研判中心</div>
         <Menu mode="inline" selectedKeys={[key==='profile'?'alerts':key]} onClick={e=>setKey(e.key)} style={{borderRight:'none'}}
-          items={[{key:'dashboard',label:'监控大屏'},{key:'computers',label:'用户视图'},{key:'alerts',label:'告警管理'},{key:'monitor',label:'系统监控'},{key:'efficiency',label:'效率监控'},{key:'config',label:'系统设置'}]}/>
+          items={[{key:'dashboard',label:'监控大屏'},{key:'computers',label:'用户视图'},{key:'alerts',label:'告警管理'},{key:'monitor',label:'系统监控'},{key:'efficiency',label:'效率监控'},{key:'ask',label:'AI 问答'},{key:'config',label:'系统设置'}]}/>
       </Sider>
       <Layout>
         <Header style={{background:'#fff',borderBottom:'1px solid #e8eef7',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 20px'}}>
-          <Typography.Title level={4} style={{margin:0}}>{({dashboard:'监控大屏',computers:'用户视图',alerts:'告警管理',monitor:'系统监控',efficiency:'效率监控',config:'系统设置',profile:'用户画像'})[key]}</Typography.Title>
+          <Typography.Title level={4} style={{margin:0}}>{({dashboard:'监控大屏',computers:'用户视图',alerts:'告警管理',monitor:'系统监控',efficiency:'效率监控',ask:'AI 问答',config:'系统设置',profile:'用户画像'})[key]}</Typography.Title>
           <Space>
             <Upload showUploadList={false} beforeUpload={uploadLog}><Button type="primary">导入日志</Button></Upload>
             <Button onClick={()=>{ POST('/api/run'); pollDetect(); }}>重新研判</Button>
@@ -264,6 +264,7 @@ function App(){
           {key==='config' && <Config/>}
           {key==='monitor' && <Monitor/>}
           {key==='efficiency' && <Efficiency goProfile={(u)=>{setProfileUser(u);setKey('profile');}}/>}
+          {key==='ask' && <Ask/>}
           {key==='profile' && profileUser && <ProfilePage user={profileUser} goBack={()=>{setKey('alerts');setProfileUser(null);}}/>}
         </Content>
       </Layout>
@@ -644,6 +645,35 @@ function Efficiency({goProfile}){
   </div>);
 }
 
+function Ask(){
+  const [msgs,setMsgs]=useState([]); const [q,setQ]=useState(''); const [sending,setSending]=useState(false);
+  const send=async()=>{
+    if(!q.trim()||sending)return;
+    const question=q.trim(); setQ('');
+    setMsgs(m=>[...m,{role:'user',text:question}]);
+    setSending(true);
+    const r=await POST('/api/ask',{headers:{'Content-Type':'application/json'},body:JSON.stringify({question})});
+    setSending(false);
+    setMsgs(m=>[...m,{role:'ai',text:(r&&r.answer)||'（无回答）'}]);
+  };
+  return (<div>
+    <div className="sec-title">AI 问答 · 基于行为数据回答 · <span style={{fontSize:11,color:'#94a3b8'}}>可问:某员工风险行为 / 告警榜 / 摸鱼榜 / 在岗情况 / 规则说明</span></div>
+    <Card className="card" size="small" style={{height:'calc(100vh - 170px)',display:'flex',flexDirection:'column'}}>
+      <div style={{flex:1,overflow:'auto',padding:4}}>
+        {msgs.length===0?<Empty description="提问开始对话（如：今天谁摸鱼最多？张三有什么风险行为？今天有哪些告警？）" style={{paddingTop:80}}/>:
+          msgs.map((m,i)=><div key={i} style={{display:'flex',justifyContent:m.role==='user'?'flex-end':'flex-start',marginBottom:10}}>
+            <div style={{maxWidth:'72%',padding:'9px 13px',borderRadius:12,background:m.role==='user'?'#1677ff':'#f1f5f9',color:m.role==='user'?'#fff':'#0f172a',whiteSpace:'pre-wrap',wordBreak:'break-word',lineHeight:1.6,boxShadow:'0 1px 2px rgba(15,23,42,.04)'}}>{m.text}</div>
+          </div>)}
+        {sending&&<div style={{color:'#94a3b8',fontSize:13,padding:'4px 8px'}}>AI 思考中…（查数据+总结，约10-20秒）</div>}
+      </div>
+      <div style={{borderTop:'1px solid #eef0f5',paddingTop:10,display:'flex',gap:8,alignItems:'flex-end'}}>
+        <Input.TextArea value={q} onChange={e=>setQ(e.target.value)} onPressEnter={e=>{if(!e.shiftKey){e.preventDefault();send();}}} placeholder="提问…（回车发送，Shift+回车换行）" autoSize={{minRows:1,maxRows:4}} disabled={sending} style={{flex:1}}/>
+        <Button type="primary" loading={sending} onClick={send}>发送</Button>
+      </div>
+    </Card>
+  </div>);
+}
+
 function DictEditor({name,label,initial,onSave}){
   const [vals,setVals]=useState(initial||[]);
   useEffect(()=>{ setVals(initial||[]); },[initial]);
@@ -655,6 +685,7 @@ function DictEditor({name,label,initial,onSave}){
 }
 function Config(){
   const [cfg,setCfg]=useState({}); const [dicts,setDicts]=useState({}); const [syslog,setSyslog]=useState({}); const [saving,setSaving]=useState(false); const [excs,setExcs]=useState([]);
+  const [sugs,setSugs]=useState(null); const [loadingSug,setLoadingSug]=useState(false);
   const [form]=Form.useForm();
   const load=async()=>{ const c=await GET('/api/config'); setCfg(c); form.setFieldsValue({base_url:c.llm_base_url,active:c.llm_active||'qwen',qwen_model:(c.qwen||{}).model,deepseek_model:(c.deepseek||{}).model,deepseek_base_url:(c.deepseek||{}).base_url}); setDicts(await GET('/api/dicts')); setSyslog(await GET('/api/syslog/status')); setExcs(await GETL('/api/exceptions')); };
   useEffect(()=>{ load(); const t=setInterval(()=>GET('/api/syslog/status').then(setSyslog),5000); return ()=>clearInterval(t); },[]);
@@ -662,6 +693,8 @@ function Config(){
     if(v.qwen_key) body.qwen_key=v.qwen_key; if(v.deepseek_key) body.deepseek_key=v.deepseek_key;
     await PUTJ('/api/config',body); setSaving(false); message.success('已保存'); load(); };
   const saveDict=async(n,val)=>{ await PUTJ('/api/dicts/'+n,val); message.success('已保存'); };
+  const loadSugs=async()=>{ setLoadingSug(true); const r=await POST('/api/rules/suggest'); setSugs(r.suggestions||[]); setLoadingSug(false); };
+  const applySug=async(s)=>{ await POST('/api/rules/apply',{headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:s.domain,target_dict:s.target,cat:s.cat||''})}); message.success('已采纳 '+s.domain); setSugs((sugs||[]).filter(x=>x!==s)); };
   const delExc=async(id)=>{ await DEL('/api/exceptions/'+id); message.success('已删除豁免'); load(); };
   const toggleSys=async(on)=>{ await POST('/api/syslog/'+(on?'start':'stop')); message.success(on?'已启动':'已停止'); load(); };
   const uploadLog=f=>{ const fd=new FormData(); fd.append('file',f); message.loading({content:'导入中…',key:'up',duration:0});
@@ -705,6 +738,20 @@ function Config(){
             {title:'',width:70,render:(_,r)=><Button size="small" danger ghost onClick={()=>delExc(r.id)}>删除</Button>},
           ]}/> : <Typography.Text type="secondary" style={{fontSize:12}}>暂无豁免。在"告警管理"标记误报时会自动创建（被豁免的用户同类行为不再告警）。</Typography.Text>}
         <Alert type="info" showIcon style={{marginTop:8}} message="删除豁免后，该用户对应场景的行为会恢复告警。"/>
+      </Card>
+      <Card className="card" title="AI 规则建议（扫未分类高频域名→AI 分类）" size="small" style={{marginBottom:16}}
+        extra={<Button size="small" type="primary" loading={loadingSug} onClick={loadSugs}>{sugs?'重新扫描':'开始扫描'}</Button>}>
+        {sugs===null ? <Typography.Text type="secondary" style={{fontSize:12}}>点击"开始扫描"，AI 分析高频未分类域名并建议归类，采纳后写入对应词库。</Typography.Text>:
+         sugs.length===0 ? <Typography.Text type="secondary" style={{fontSize:12}}>暂无建议。</Typography.Text>:
+         <Table size="small" rowKey="domain" pagination={{pageSize:8}} dataSource={sugs}
+           columns={[
+             {title:'域名',dataIndex:'domain',render:v=><span className="num" style={{fontSize:12}}>{v}</span>},
+             {title:'命中',dataIndex:'hits',width:60,render:v=><span style={{color:'#94a3b8'}}>{v}</span>},
+             {title:'AI建议',width:150,render:(_,r)=><Tag color={r.target==='ignore'?'default':r.target==='slack_domains'?'purple':'blue'}>{r.target==='ignore'?'忽略(正常)':(r.target==='slack_domains'?'摸鱼·'+(r.cat||''):{netdisk_domains:'网盘',personal_email_domains:'个人邮箱',recruitment_sites:'招聘'}[r.target]||r.target)}</Tag>},
+             {title:'理由',dataIndex:'reason',ellipsis:true,render:v=><span style={{fontSize:12,color:'#6b7280'}}>{v}</span>},
+             {title:'',width:70,render:(_,r)=><Button size="small" type="primary" ghost disabled={r.target==='ignore'} onClick={()=>applySug(r)}>采纳</Button>},
+           ]}/>}
+        <Alert type="info" showIcon style={{marginTop:8}} message="AI 建议仅供参考，采纳后写入词库立即生效（影响后续研判）。不放心可忽略。"/>
       </Card>
     </Col>
     <Col span={12}>

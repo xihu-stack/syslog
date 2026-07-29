@@ -562,6 +562,166 @@ def export_alerts():
         s.close()
 
 
+# ---------------- AI 问答（LLM 路由 → 查真数据 → LLM 总结）----------------
+@app.post("/api/ask")
+def ask(body: dict = Body(...)):
+    """自然语言查数据: 路由 LLM 选 action → 后端查真数据 → 总结 LLM 回答。"""
+    import llm_client
+    question = (body.get("question") or "").strip()
+    if not question:
+        return {"answer": "请输入问题。", "action": "empty"}
+    route_sys = ("你是行为分析助手。把用户问题路由到查询动作,只输出 JSON {action, employee}。\n"
+                 "action: employee_risk(查某员工风险行为) / alerts(告警榜) / slack(摸鱼榜) / attendance(在岗情况) / help(规则/用法说明) / chat(其他闲聊)。\n"
+                 "employee: 仅 employee_risk 时填员工姓名(从问题提取),其余留空。只输出 JSON。")
+    try:
+        raw = llm_client.chat([{"role": "system", "content": route_sys}, {"role": "user", "content": question}],
+                              max_tokens=120, timeout=60)
+        v = llm_client.extract_json(raw) or {}
+    except Exception:
+        v = {}
+    action = v.get("action") if v.get("action") in ("employee_risk", "alerts", "slack", "attendance", "help", "chat") else "chat"
+    employee = (v.get("employee") or "").strip()
+    data_ctx = _ask_query(action, employee)
+    sum_sys = ("你是企业员工行为分析助手,基于给定真实数据简洁回答用户问题。"
+               "只基于数据、不编造;数据不足就直说。中文,要点清晰。")
+    user_msg = f"用户问题: {question}\n\n查询数据:\n{data_ctx}" + ("\n\n请基于上述数据回答。" if data_ctx else "\n\n(无相关数据,可自由作答)")
+    try:
+        ans = llm_client.chat([{"role": "system", "content": sum_sys}, {"role": "user", "content": user_msg}],
+                              max_tokens=800, timeout=120)
+    except Exception as e:
+        ans = f"AI 回答失败: {e}"
+    return {"answer": ans, "action": action}
+
+
+def _ask_query(action, employee):
+    """按 action 复用现有查询逻辑,返回文本上下文喂总结 LLM。"""
+    import detector
+    from collections import Counter, defaultdict
+    s = Session()
+    try:
+        if action == "employee_risk" and employee:
+            p = s.query(ProfileRow).filter_by(employee_id=employee).first()
+            risk_evs = []
+            for e in (s.query(EventRow).filter_by(employee_id=employee)
+                      .order_by(desc(EventRow.occurred_at)).limit(500).all()):
+                dom = (e.raw or {}).get("domain") or ""
+                if (e.category == "WEB" and dicts.risk_class(dom)) or \
+                   (e.category == "DOC" and e.action in detector.WRITE_ACTIONS):
+                    risk_evs.append(e)
+                if len(risk_evs) >= 15:
+                    break
+            vs = s.query(VerdictRow).filter_by(employee_id=employee).order_by(desc(VerdictRow.window_start)).limit(10).all()
+            lines = [f"员工 {employee}:",
+                     f"画像: {profiles.summarize_for_llm(p.payload) if p else '无画像'}",
+                     f"风险行为 {len(risk_evs)} 条:"]
+            for e in risk_evs[:10]:
+                dom = (e.raw or {}).get("domain") or e.target_value
+                lines.append(f"  {e.occurred_at} | {dicts.risk_class(dom) or e.action} | {dom}")
+            lines.append(f"研判 {len(vs)} 条: " + "; ".join(f"{v.intent} R{v.risk_score}" for v in vs[:8]))
+            return "\n".join(lines)
+        if action == "alerts":
+            rows = s.query(AlertRow).order_by(desc(AlertRow.risk_score), desc(AlertRow.created_at)).limit(10).all()
+            if not rows:
+                return "当前无告警。"
+            return "告警 top10:\n" + "\n".join(f"{a.employee_id} | {a.scenario} | R{a.risk_score} | {a.summary}" for a in rows)
+        if action == "slack":
+            et = Counter(); es = Counter()
+            for e in s.query(EventRow).filter(EventRow.category == "WEB").yield_per(2000):
+                et[e.employee_id] += 1
+                cat = dicts.slack_category((e.raw or {}).get("domain") or "")
+                if cat and e.occurred_at and 9 <= e.occurred_at.hour < 18:
+                    es[e.employee_id] += 1
+            top = sorted([(e, es[e], et[e]) for e in es if et[e] > 50], key=lambda x: -x[1])[:10]
+            if not top:
+                return "无摸鱼数据。"
+            return "摸鱼榜 top10(工作时段娱乐占比):\n" + "\n".join(f"{e} 摸鱼{sn}/{tn} ({round(sn/tn*100)}%)" for e, sn, tn in top)
+        if action == "attendance":
+            eh = defaultdict(set)
+            for emp_id, occ in s.query(EventRow.employee_id, EventRow.occurred_at).yield_per(2000):
+                if occ:
+                    try:
+                        eh[emp_id].add((occ[:10], int(occ[11:13])))
+                    except Exception:
+                        pass
+            lines = []
+            for emp_id in list(eh)[:20]:
+                days = {d for d, h in eh[emp_id]}; hours = sorted({h for d, h in eh[emp_id]})
+                if hours:
+                    mark = " ⚠活跃≤1天" if len(days) <= 1 else (" ⚠凌晨活动" if hours[0] < 7 else "")
+                    lines.append(f"{emp_id} 活跃{len(days)}天 {hours[0]}-{hours[-1]}点{mark}")
+            return "在岗统计:\n" + "\n".join(lines) if lines else "无在岗数据"
+        if action == "help":
+            return ("系统能力: 安全告警(邮箱/网盘/文件助手/远程控制/招聘)、效率监控(视频/社交/购物/资讯/音乐摸鱼)、画像(风险行为/基线)。\n"
+                    "规则: 个人邮箱/网盘公司禁止→访问即违规; 微信文件助手=外发; 远程控制降权; 招聘=求职意图。\n"
+                    "可问: 某员工风险/告警榜/摸鱼榜/在岗情况。")
+        return ""
+    finally:
+        s.close()
+
+
+# ---------------- AI 规则建议（建议 + 人工确认）----------------
+@app.post("/api/rules/suggest")
+def rules_suggest():
+    """AI 扫未分类高频域名,建议加到风险/摸鱼词库(只返回建议,不写库)。"""
+    import llm_client, json as _json, re as _re
+    from collections import Counter
+    s = Session()
+    try:
+        unclass = Counter()
+        for e in s.query(EventRow).filter(EventRow.category == "WEB").yield_per(2000):
+            d = (e.raw or {}).get("domain") or ""
+            if d and not dicts.risk_class(d) and not dicts.slack_category(d):
+                unclass[d] += 1
+        top = unclass.most_common(30)
+        if not top:
+            return {"suggestions": [], "msg": "无未分类高频域名"}
+        sys_p = ("你是域名分类助手。对每个域名判断归属,只输出 JSON 数组 [{domain, target, cat, reason}]。\n"
+                 "target: netdisk_domains(网盘云盘) / personal_email_domains(个人邮箱) / recruitment_sites(招聘求职) / slack_domains(摸鱼娱乐) / ignore(正常办公/厂商后台/CDN/SDK/无关)。\n"
+                 "cat: 仅 target=slack_domains 时填 视频/社交/购物/资讯/音乐 之一,否则空字符串。\n"
+                 "reason: 一句中文理由。只输出 JSON 数组。")
+        user = "域名列表(域名 出现次数):\n" + "\n".join(f"{d} {n}" for d, n in top)
+        raw = llm_client.chat([{"role": "system", "content": sys_p}, {"role": "user", "content": user}],
+                              max_tokens=1500, timeout=120)
+        m = _re.search(r"\[.*\]", raw, _re.S)
+        suggestions = []
+        if m:
+            try:
+                suggestions = _json.loads(m.group(0))
+            except Exception:
+                pass
+        hit_map = dict(top)
+        for it in suggestions:
+            it["hits"] = hit_map.get((it.get("domain") or "").lower(), 0)
+        return {"suggestions": suggestions}
+    finally:
+        s.close()
+
+
+@app.post("/api/rules/apply")
+def rules_apply(body: dict = Body(...)):
+    """采纳建议: 把 domain 加到 target_dict(slack_domains 时加到 cat 列表)。"""
+    domain = (body.get("domain") or "").lower().strip()
+    target = body.get("target_dict") or body.get("target") or ""
+    cat = body.get("cat") or ""
+    if not domain or target not in dicts.DEFAULTS:
+        raise HTTPException(400, "无效 target 或 domain")
+    if target == "slack_domains":
+        cur = dicts.get("slack_domains")
+        if not isinstance(cur, dict):
+            cur = {}
+        if cat:
+            cur[cat] = list(cur.get(cat) or [])
+            if domain not in cur[cat]:
+                cur[cat].append(domain)
+        dicts.set_dict("slack_domains", cur)
+    else:
+        cur = list(dicts.get(target) or [])
+        if domain not in cur:
+            cur.append(domain)
+        dicts.set_dict(target, cur)
+    return {"ok": True, "target": target, "domain": domain, "cat": cat}
+
+
 # ---------------- 托管前端（放最后，避免拦截 /api）----------------
 if os.path.isdir(FRONTEND_DIR):
     app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="static")
