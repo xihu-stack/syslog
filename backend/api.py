@@ -496,14 +496,17 @@ def efficiency():
         rows = s.query(EventRow).filter(EventRow.category == "WEB").all()
         emp = {}
         for e in rows:
-            r = emp.setdefault(e.employee_id, {"total": 0, "slack": 0, "cats": Counter(),
+            r = emp.setdefault(e.employee_id, {"total": 0, "slack": 0, "work": 0, "cats": Counter(),
                                                "days": set(), "hours": set(), "stimes": []})
             r["total"] += 1
             if e.occurred_at:
                 r["days"].add(e.occurred_at.date()); r["hours"].add(e.occurred_at.hour)
-            cat = dicts.slack_category((e.raw or {}).get("domain") or "")
+            dom = (e.raw or {}).get("domain") or ""
+            cat = dicts.slack_category(dom)
             if cat and e.occurred_at and 9 <= e.occurred_at.hour < 18:
                 r["slack"] += 1; r["cats"][cat] += 1; r["stimes"].append(e.occurred_at)
+            elif not cat and not dicts.risk_class(dom) and dicts.work_category(dom):
+                r["work"] += 1
         out = []
         for k, r in emp.items():
             hours = sorted(r["hours"])
@@ -521,7 +524,8 @@ def efficiency():
                         "pct": round(r["slack"] / r["total"] * 100) if r["total"] else 0,
                         "cats": dict(r["cats"]), "active_days": len(r["days"]),
                         "hour_min": hours[0] if hours else None, "hour_max": hours[-1] if hours else None,
-                        "max_span": round(mx / 60)})
+                        "max_span": round(mx / 60), "work": r["work"],
+                        "work_pct": round(r["work"] / r["total"] * 100) if r["total"] else 0})
         out.sort(key=lambda x: -x["pct"])
         _eff_cache["data"] = out; _eff_cache["ts"] = time.time()
         return out

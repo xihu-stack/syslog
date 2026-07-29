@@ -49,6 +49,15 @@ DEFAULTS = {
         "资讯": ["toutiao.com", "36kr.com", "ifeng.com", "sspai.com"],
         "音乐": ["music.163.com", "y.qq.com", "kugou.com", "kuwo.cn", "spotify.com", "music.apple.com"],
     },
+    "work_domains": [
+        "office.com", "outlook.com", "m365.cloud.microsoft", "teams.cloud.microsoft",
+        "sharepoint.com", "onedrive.com", "azure.com",
+        "bing.com", "baidu.com", "google.com", "so.com", "sogou.com",
+        "cmbchina.com", "icbc.com.cn", "ccb.com", "boc.cn", "abchina.com", "unionpay.com",
+        "gov.cn", "youdao.com", "wps.cn", "notion.so", "feishu.cn", "dingtalk.com", "larksuite.com",
+        "helixon.com", "huashen.bio",
+        "stackoverflow.com", "csdn.net", "juejin.cn", "npmjs.com", "pypi.org", "docker.com",
+    ],
 }
 
 _inited = False
@@ -229,4 +238,15 @@ def slack_category(domain: str):
         for dom in (doms or []):
             if d == dom or d.endswith("." + dom):
                 return cat
+    return None
+
+
+def work_category(domain: str):
+    """域名 → 是否工作网站(办公/银行/政府/搜索/工具/公司业务);基于 work_domains 白名单。"""
+    d = (domain or "").lower()
+    if not d:
+        return None
+    for dom in get("work_domains"):
+        if d == dom or d.endswith("." + dom):
+            return "工作"
     return None

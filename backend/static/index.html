@@ -645,6 +645,8 @@ function Efficiency({goProfile}){
           {title:'员工',dataIndex:'employee',width:130,render:v=><a style={{fontWeight:500}}>{v}</a>},
           {title:'摸鱼占比',dataIndex:'pct',width:120,sorter:(a,b)=>b.pct-a.pct,defaultSortOrder:'descend',
             render:(v,r)=><span style={{color:v>=10?'#ef4444':v>=5?'#f59e0b':'#475569',fontWeight:v>=5?700:400}}>{v}% <span style={{color:'#94a3b8',fontWeight:400,fontSize:11}}>({r.slack}/{r.total})</span></span>},
+          {title:'工作%',dataIndex:'work_pct',width:85,sorter:(a,b)=>(b.work_pct||0)-(a.work_pct||0),
+            render:v=><span style={{color:v>=60?'#16a34a':v>=30?'#475569':'#94a3b8',fontWeight:v>=60?700:400}}>{v}%</span>},
           {title:'视频',width:64,render:(_,r)=><span style={{color:r.cats['视频']?'#1677ff':'#cbd5e1'}}>{r.cats['视频']||0}</span>},
           {title:'社交',width:64,render:(_,r)=><span style={{color:r.cats['社交']?'#ec4899':'#cbd5e1'}}>{r.cats['社交']||0}</span>},
           {title:'购物',width:64,render:(_,r)=><span style={{color:r.cats['购物']?'#f59e0b':'#cbd5e1'}}>{r.cats['购物']||0}</span>},
@@ -714,7 +716,7 @@ function Config(){
   const toggleSys=async(on)=>{ await POST('/api/syslog/'+(on?'start':'stop')); message.success(on?'已启动':'已停止'); load(); };
   const uploadLog=f=>{ const fd=new FormData(); fd.append('file',f); message.loading({content:'导入中…',key:'up',duration:0});
     fetch('/api/ingest',{method:'POST',body:fd}).then(r=>r.json()).then(r=>message.success({content:'已导入 '+r.imported+' 条',key:'up',duration:2})); return false; };
-  const DM={sensitive_keywords:'敏感文件名关键词',recruitment_sites:'招聘网站域名',netdisk_domains:'网盘域名',personal_email_domains:'个人邮箱域名',job_search_terms:'求职搜索词',risk_search_terms:'高危搜索词'};
+  const DM={sensitive_keywords:'敏感文件名关键词',recruitment_sites:'招聘网站域名',netdisk_domains:'网盘域名',personal_email_domains:'个人邮箱域名',job_search_terms:'求职搜索词',risk_search_terms:'高危搜索词',work_domains:'工作网站白名单(算工作占比)'};
   return (<div><Monitor/><Row gutter={16} style={{marginTop:16}}>
     <Col span={12}>
       <Card className="card" title="模型配置（活动优先·失败自动切换）" size="small" style={{marginBottom:16}}>
