@@ -670,7 +670,7 @@ function Efficiency({goProfile}){
         onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
         columns={[
           {title:'员工',dataIndex:'employee',width:130,render:v=><a style={{fontWeight:500}}>{v}</a>},
-          {title:'摸鱼时长',dataIndex:'max_span',width:115,sorter:(a,b)=>(b.max_span||0)-(a.max_span||0),defaultSortOrder:'descend',
+          {title:'摸鱼时长',dataIndex:'max_span',width:115,sorter:(a,b)=>(b.max_span||0)-(a.max_span||0),
             render:v=>!v?'-':v>=60?<span style={{color:'#ef4444',fontWeight:700}}>{Math.floor(v/60)}小时{v%60}分</span>:<span style={{color:v>=30?'#f59e0b':'#94a3b8',fontWeight:v>=30?700:400}}>{v}分</span>},
           {title:'工作%',dataIndex:'work_pct',width:85,sorter:(a,b)=>(b.work_pct||0)-(a.work_pct||0),
             render:v=><span style={{color:v>=60?'#16a34a':v>=30?'#475569':'#94a3b8',fontWeight:v>=60?700:400}}>{v}%</span>},
