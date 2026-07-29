@@ -570,18 +570,21 @@ def ask(body: dict = Body(...)):
     question = (body.get("question") or "").strip()
     if not question:
         return {"answer": "请输入问题。", "action": "empty"}
-    route_sys = ("你是行为分析助手。把用户问题路由到查询动作,只输出 JSON {action, employee}。\n"
-                 "action: employee_risk(查某员工风险行为) / alerts(告警榜) / slack(摸鱼榜) / attendance(在岗情况) / recruitment(谁访问了招聘求职网站) / help(规则/用法说明) / chat(其他闲聊)。\n"
-                 "employee: 仅 employee_risk 时填员工姓名(从问题提取),其余留空。只输出 JSON。")
+    route_sys = ("你是行为分析助手。把用户问题路由到查询动作,只输出 JSON {action, employee, category}。\n"
+                 "action: employee_risk(查某员工风险行为) / alerts(告警榜) / slack(摸鱼榜) / attendance(在岗情况) / who_risk(谁访问了某类风险网站) / help(规则/用法说明) / chat(其他闲聊)。\n"
+                 "employee: 仅 employee_risk 时填员工姓名(从问题提取)。\n"
+                 "category: 仅 who_risk 时填, 取值 远程控制/网盘/邮箱/招聘/文件助手 之一(从问题判断是哪类风险)。\n"
+                 "只输出 JSON。")
     try:
         raw = llm_client.chat([{"role": "system", "content": route_sys}, {"role": "user", "content": question}],
                               max_tokens=120, timeout=60)
         v = llm_client.extract_json(raw) or {}
     except Exception:
         v = {}
-    action = v.get("action") if v.get("action") in ("employee_risk", "alerts", "slack", "attendance", "recruitment", "help", "chat") else "chat"
+    action = v.get("action") if v.get("action") in ("employee_risk", "alerts", "slack", "attendance", "who_risk", "help", "chat") else "chat"
     employee = (v.get("employee") or "").strip()
-    data_ctx = _ask_query(action, employee)
+    category = (v.get("category") or "").strip()
+    data_ctx = _ask_query(action, employee, category)
     sum_sys = ("你是企业员工行为分析助手,基于给定真实数据简洁回答用户问题。"
                "只基于数据、不编造;数据不足就直说。中文,要点清晰。")
     user_msg = f"用户问题: {question}\n\n查询数据:\n{data_ctx}" + ("\n\n请基于上述数据回答。" if data_ctx else "\n\n(无相关数据,可自由作答)")
@@ -593,7 +596,7 @@ def ask(body: dict = Body(...)):
     return {"answer": ans, "action": action}
 
 
-def _ask_query(action, employee):
+def _ask_query(action, employee, category=""):
     """按 action 复用现有查询逻辑,返回文本上下文喂总结 LLM。"""
     import detector
     from collections import Counter, defaultdict
@@ -635,16 +638,20 @@ def _ask_query(action, employee):
             if not top:
                 return "无摸鱼数据。"
             return "摸鱼榜 top10(工作时段娱乐占比):\n" + "\n".join(f"{e} 摸鱼{sn}/{tn} ({round(sn/tn*100)}%)" for e, sn, tn in top)
-        if action == "recruitment":
-            from collections import Counter
+        if action == "who_risk":
+            # category(远程控制/网盘/邮箱/招聘/文件助手) → risk_class 标签模糊匹配
+            cat_map = {"远程控制": "远程控制", "网盘": "网盘", "邮箱": "个人邮箱", "招聘": "招聘", "文件助手": "微信文件助手"}
+            key = next((k for k in cat_map if k in category), None)
+            target = cat_map.get(key, category) if key else category
             rcnt = Counter()
             for e in s.query(EventRow).filter(EventRow.category == "WEB").yield_per(2000):
                 dom = (e.raw or {}).get("domain") or ""
-                if dicts.risk_class(dom) == "招聘求职":
+                rc = dicts.risk_class(dom)
+                if rc and target and (target in rc or rc in target):
                     rcnt[e.employee_id] += 1
             if not rcnt:
-                return "近期无人访问招聘求职网站。"
-            return "访问招聘网站的员工(访问次数):\n" + "\n".join(f"{emp} {n}次" for emp, n in rcnt.most_common(20))
+                return f"近期无人访问{target or '该类'}网站。"
+            return f"访问{target}类网站的员工(访问次数):\n" + "\n".join(f"{emp} {n}次" for emp, n in rcnt.most_common(20))
         if action == "attendance":
             eh = defaultdict(set)
             for emp_id, occ in s.query(EventRow.employee_id, EventRow.occurred_at).yield_per(2000):
@@ -663,7 +670,7 @@ def _ask_query(action, employee):
         if action == "help":
             return ("系统能力: 安全告警(邮箱/网盘/文件助手/远程控制/招聘)、效率监控(视频/社交/购物/资讯/音乐摸鱼)、画像(风险行为/基线)。\n"
                     "规则: 个人邮箱/网盘公司禁止→访问即违规; 微信文件助手=外发; 远程控制降权; 招聘=求职意图。\n"
-                    "可问: 某员工风险/告警榜/摸鱼榜/在岗情况。")
+                    "可问: 某员工风险行为 / 告警榜 / 摸鱼榜 / 在岗情况 / 谁访问了网盘·邮箱·招聘·文件助手·远程控制。")
         return ""
     finally:
         s.close()
