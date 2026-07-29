@@ -95,7 +95,8 @@ function Legend(){ return <div className="legend">
   <span><i className="swatch" style={{background:'#ff4d4f'}}/>86-100 严重</span>
 </div>; }
 
-function ProfilePage({user, goBack}){
+const FROM_TITLE={computers:'用户视图',alerts:'告警管理',efficiency:'效率监控'};
+function ProfilePage({user, goBack, from}){
   const [data,setData]=useState(null);
   const trendRef=useRef(), hoursRef=useRef(), actRef=useRef();
   useEffect(()=>{ if(user) GET('/api/employees/'+encodeURIComponent(user)).then(setData); },[user]);
@@ -138,8 +139,12 @@ function ProfilePage({user, goBack}){
   const usbUsed=(p.channels_used||[]).includes('USB');
   const netdiskUsed=(p.channels_used||[]).some(c=>c==='NETWORK');
   return (<div>
-    <Button onClick={goBack} style={{marginBottom:12}}>← 返回</Button>
-    <Typography.Title level={4} style={{marginBottom:16}}>{user} <RiskBadge s={maxRisk}/></Typography.Title>
+    <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:16,fontSize:13}}>
+      <a onClick={goBack} style={{color:'#1677ff'}}>{FROM_TITLE[from]||'返回'}</a>
+      <span style={{color:'#cbd5e1'}}>›</span>
+      <Typography.Text strong style={{fontSize:16}}>{user}</Typography.Text>
+      <span style={{marginLeft:6}}><RiskBadge s={maxRisk}/></span>
+    </div>
     <Row gutter={16}>
       <Col span={5}><Card className="card"><Statistic title="历史事件" value={p.sample_count||evs.length}/></Card></Col>
       <Col span={5}><Card className="card"><Statistic title="研判次数" value={vs.length}/></Card></Col>
@@ -230,7 +235,7 @@ function ProfilePage({user, goBack}){
 }
 
 function App(){
-  const [key,setKey]=useState('dashboard'); const [profileUser,setProfileUser]=useState(null);
+  const [key,setKey]=useState('dashboard'); const [profileUser,setProfileUser]=useState(null); const [profileFrom,setProfileFrom]=useState('alerts');
   const [now,setNow]=useState('');
   useEffect(()=>{ const f=()=>setNow(new Date().toLocaleString('zh-CN',{hour12:false})); f(); const t=setInterval(f,1000); return ()=>clearInterval(t); },[]);
   const pollDetect=()=>{
@@ -275,12 +280,12 @@ function App(){
         </Header>
         <Content style={{margin:16}}>
           {key==='dashboard' && <Dashboard go={setKey}/>}
-          {key==='computers' && <Computers goProfile={(u)=>{setProfileUser(u);setKey('profile');}}/>}
-          {key==='alerts' && <Alerts goProfile={(u)=>{setProfileUser(u);setKey('profile');}}/>}
+          {key==='computers' && <Computers goProfile={(u)=>{setProfileFrom('computers');setProfileUser(u);setKey('profile');}}/>}
+          {key==='alerts' && <Alerts goProfile={(u)=>{setProfileFrom('alerts');setProfileUser(u);setKey('profile');}}/>}
           {key==='config' && <Config/>}
-          {key==='efficiency' && <Efficiency goProfile={(u)=>{setProfileUser(u);setKey('profile');}}/>}
+          {key==='efficiency' && <Efficiency goProfile={(u)=>{setProfileFrom('efficiency');setProfileUser(u);setKey('profile');}}/>}
           {key==='ask' && <Ask/>}
-          {key==='profile' && profileUser && <ProfilePage user={profileUser} goBack={()=>{setKey('alerts');setProfileUser(null);}}/>}
+          {key==='profile' && profileUser && <ProfilePage user={profileUser} from={profileFrom} goBack={()=>{setKey(profileFrom||'alerts');setProfileUser(null);}}/>}
         </Content>
       </Layout>
     </Layout>
@@ -289,7 +294,7 @@ function App(){
 }
 
 function Dashboard({go}){
-  const [st,setSt]=useState({}); const [vs,setVs]=useState([]); const [al,setAl]=useState([]); const [sys,setSys]=useState({}); const [cats,setCats]=useState({});
+  const [st,setSt]=useState({}); const [vs,setVs]=useState([]); const [al,setAl]=useState([]); const [sys,setSys]=useState({}); const [cats,setCats]=useState({}); const [eff,setEff]=useState([]);
   const pie=useRef(),bar=useRef(),trend=useRef(),catBar=useRef();
   const pieChart=useRef(null),barChart=useRef(null),trendChart=useRef(null),catChart=useRef(null);
   const load=async()=>{
@@ -298,6 +303,7 @@ function Dashboard({go}){
     setAl(await GETL('/api/alerts?limit=300'));  // 饼图需要更多数据
     setSys(await GET('/api/system/stats'));
     setCats(await GET('/api/category_stats'));
+    setEff(await GETL('/api/efficiency'));
   };
   useEffect(()=>{ load(); const t=setInterval(load,15000); return ()=>clearInterval(t); },[]);
   useEffect(()=>{
@@ -366,6 +372,14 @@ function Dashboard({go}){
       <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('alerts')}><div className="fv num" style={{color:'#ef4444'}}>{sysAl.today||0}</div><div className="fl">今日告警</div></div>
       <div className="flow-tail">画像 <b style={{color:'#1677ff'}}>{ago(sys.profile_updated_ts)}</b> 更新</div>
     </div>
+    <Row gutter={16} style={{marginTop:16}}>
+      {(()=>{const sp=eff.filter(r=>r.slack>0).length;const aw=eff.length?Math.round(eff.reduce((s,r)=>s+(r.work_pct||0),0)/eff.length):0;return <>
+        <Col span={6}><div className="tile alert" onClick={()=>go('alerts')}><div className="v num">{sysAl.today||0}</div><div className="l">风险告警</div><div className="arr">查看告警 ›</div></div></Col>
+        <Col span={6}><div className="tile" onClick={()=>go('efficiency')}><div className="v num">{sp}</div><div className="l">摸鱼人数</div><div className="arr">效率榜 ›</div></div></Col>
+        <Col span={6}><div className="tile" onClick={()=>go('efficiency')}><div className="v num">{aw}<span style={{fontSize:16,color:'#94a3b8'}}> %</span></div><div className="l">平均工作占比</div><div className="arr">效率榜 ›</div></div></Col>
+        <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{sys.employees||0}</div><div className="l">活跃用户</div><div className="arr">用户视图 ›</div></div></Col>
+      </>;})()}
+    </Row>
     <div style={{margin:'12px 2px'}}><Legend/></div>
     {(()=>{const crit=(sysAl.list||[]).filter(a=>a.risk_score>=86).length; return crit>0&&<Alert type="error" message={<span>⚠️ 严重告警 <b>{crit}</b> 人需要立即关注！</span>} style={{marginBottom:8}} showIcon/>;})()}
     {(st.alerts>0&&st.verdicts>0&&(st.alerts/st.verdicts>0.15))&&<Alert type="warning" message="基线建设中（冷启动期）— 告警偏多属正常，随时间推移会趋于稳定" style={{marginBottom:8}} showIcon/>}
