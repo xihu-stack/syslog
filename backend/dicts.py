@@ -171,7 +171,7 @@ def risk_patterns() -> list:
         ("网盘/云盘", list(get("netdisk_domains"))),                  # 公司禁止
         ("个人邮箱", list(get("personal_email_domains"))),            # 公司禁止
         ("招聘求职", list(get("recruitment_sites"))),
-        ("微信文件助手", ["filehelper", "file.qq.com", "传输助手", "filehelper.weixin"]),  # 微信传文件=外发;普通微信访问不算
+        ("微信文件助手", ["filehelper", "传输助手", "filehelper.weixin"]),  # 微信传文件=外发;去掉file.qq.com避免staticfile.qq.com(CDN)误伤
     ]
 
 
