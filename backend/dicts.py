@@ -50,7 +50,7 @@ DEFAULTS = {
         "音乐": ["music.163.com", "y.qq.com", "kugou.com", "kuwo.cn", "spotify.com", "music.apple.com"],
     },
     "work_domains": [
-        "office.com", "outlook.com", "m365.cloud.microsoft", "teams.cloud.microsoft",
+        "office.com", "outlook.com", "cloud.microsoft", "microsoftonline.com", "office365.com",
         "sharepoint.com", "onedrive.com", "azure.com",
         "bing.com", "baidu.com", "google.com", "so.com", "sogou.com",
         "cmbchina.com", "icbc.com.cn", "ccb.com", "boc.cn", "abchina.com", "unionpay.com",
