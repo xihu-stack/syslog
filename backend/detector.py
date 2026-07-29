@@ -44,7 +44,8 @@ SYSTEM_PROMPT = (
     "招聘网站 → job_seeking；远程控制 → baseline_deviation；普通微信/正常办公 → normal_work。\n"
     "若基线摘要含'已知正常行为(豁免)'，同类行为判 normal_work。\n\n"
     "只输出 JSON：intent(data_exfiltration|job_seeking|baseline_deviation|policy_violation|normal_work), "
-    "deviation(none|minor|major|severe), risk_score(0-100整数), explanation(一句中文), "
+    "deviation(none|minor|major|severe), risk_score(0-100整数), "
+    "explanation(一句中文,必须具体:含【域名+次数/频次+时段(凌晨/工作)+是否偏离个人基线】,禁止泛泛套话), "
     "channels(数组,取自 usb|netdisk|personal_email|upload|local|remote_control)。"
 )
 

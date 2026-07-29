@@ -152,8 +152,10 @@ def init_db() -> None:
 
 
 def upsert_event(session, ev) -> bool:
-    """按 event_hash 幂等写入一条标准事件；已存在返回 False。"""
+    """按 event_hash 幂等写入一条标准事件；已存在返回 False。访客(纯数字ID)不入库。"""
     from models import CanonicalEvent  # 局部导入，避免循环
+    if (ev.employee_id or "").isdigit():  # 访客(纯数字手机号/ID)不入库
+        return False
     h = ev.event_hash()
     if session.query(EventRow).filter_by(event_hash=h).first():
         return False
