@@ -93,8 +93,11 @@ def _listen(host, port):
                 pass
         except socket.timeout:
             continue
-        except OSError:
-            break
+        except OSError as _oe:
+            with _lock:
+                _state["error"] = f"监听OSError(重试不退出): {_oe}"
+            import time as _t; _t.sleep(1)
+            continue
     try:
         s.close()
     except OSError:
