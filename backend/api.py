@@ -19,12 +19,15 @@ import syslog_recv
 app = FastAPI(title="IP-Guard 员工行为分析")
 init_db()
 # 若上次启用了 syslog，自动恢复监听
-if dicts.get_setting("syslog_enabled", "0") == "1":
+_se = dicts.get_setting("syslog_enabled", "0")
+print("[startup] syslog_enabled =", _se)
+if _se == "1":
     try:
         syslog_recv.start(dicts.get_setting("syslog_host", "0.0.0.0"),
                           int(dicts.get_setting("syslog_port", "8514")))
+        print("[startup] syslog 自启成功, enabled =", syslog_recv.status().get("enabled"))
     except Exception as e:
-        print("syslog 自启失败:", e)
+        print("[startup] syslog 自启失败:", e)
 
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
