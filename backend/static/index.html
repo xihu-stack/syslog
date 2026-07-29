@@ -224,7 +224,7 @@ function ProfilePage({user, goBack, from}){
       <div className="tl" style={{maxHeight:300,overflow:'auto'}}>
         {(data.slack_sessions||[]).map((e,i)=><div className="it" key={i}>
           <span className="t">{(e.start||'').replace('T',' ').slice(5,16)} → {(e.end||'').slice(11,16)}</span>
-          <Tag color={e.duration>=60?'red':'orange'} style={{marginLeft:4,fontSize:10}}>{e.duration>=60?Math.floor(e.duration/60)+'h'+e.duration%60+'m':e.duration+'分'}</Tag>
+          <Tag color={e.duration>=60?'red':'orange'} style={{marginLeft:4,fontSize:10}}>{e.duration>=60?Math.floor(e.duration/60)+'h'+e.duration%60+'m':e.duration>0?e.duration+'分':'单次'}</Tag>
           <Tag color="purple" style={{fontSize:10}}>{e.cat}</Tag>
           <b> {(e.domains||[]).join(' / ')}</b>
           {e.count>1&&<span style={{color:'#94a3b8',fontSize:11}}> ({e.count}次访问)</span>}
@@ -663,6 +663,7 @@ function Efficiency({goProfile}){
   const slackTotal=rows.reduce((s,r)=>s+(r.slack||0),0);
   return (<div>
     <div className="sec-title">效率监控 · 工作时段(9-18点)摸鱼统计 · <span style={{fontSize:11,color:'#94a3b8'}}>每30秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()} · 摸鱼事件共 {slackTotal}</span></div>
+    {(()=>{const sm=rows.filter(r=>(r.max_span||0)>=30).sort((a,b)=>(b.max_span||0)-(a.max_span||0));return sm.length? <Alert type="warning" showIcon style={{marginBottom:12}} message={<span>连续摸鱼≥30分钟 <b style={{color:'#ef4444'}}>{sm.length}</b> 人(同首页KPI)：{sm.map(r=><Tag key={r.employee} color="red" style={{marginLeft:4}}>{r.employee} {r.max_span>=60?Math.floor(r.max_span/60)+'h'+r.max_span%60+'m':r.max_span+'分'}</Tag>)}</span>}/>:<Alert type="success" showIcon style={{marginBottom:12}} message="无人连续摸鱼≥30分钟"/>;})()}
     <Card className="card" size="small">
       <Table size="small" rowKey="employee" pagination={{pageSize:20,showTotal:t=>`共 ${t} 人`}} loading={loading} dataSource={rows}
         onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
