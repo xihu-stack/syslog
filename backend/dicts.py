@@ -167,7 +167,7 @@ def risk_patterns() -> list:
     return [
         ("远程控制", ["todesk", "teamviewer", "anydesk", "向日葵", "sunlogin", "rustdesk", "vnc"]),
         ("VPN/翻墙", ["privado", "clash", "clashverge", "shadowsocks", "v2ray", "trojan", "wireguard", "nordvpn", "expressvpn", "surfshark", "psiphon", "vmess", " Lantern"]),
-        ("代码外发", ["github", "gitlab", "gitee.com", "bitbucket", "gitpush", "coding.net"]),
+        ("代码外发", ["github", "gitlab.com", "gitee.com", "bitbucket.org", "coding.net"]),  # github子串覆盖github.io等;gitlab精确gitlab.com避免公司内部gitlab.xxx误当代码外发
         ("网盘/云盘", list(get("netdisk_domains"))),                  # 公司禁止
         ("个人邮箱", list(get("personal_email_domains"))),            # 公司禁止
         ("招聘求职", list(get("recruitment_sites"))),
