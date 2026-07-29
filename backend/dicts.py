@@ -53,6 +53,11 @@ _inited = False
 _cache: dict = {}
 
 
+def _copy_val(vals):
+    """list 浅拷贝; dict 原样返回(dict-typed 如 slack_domains 不能 list() 否则只剩 keys)。"""
+    return vals if isinstance(vals, dict) else list(vals)
+
+
 def _ensure():
     global _inited
     if _inited:
@@ -61,8 +66,11 @@ def _ensure():
     s = Session()
     try:
         for name, vals in DEFAULTS.items():
-            if not s.query(DictRow).filter_by(name=name).first():
-                s.add(DictRow(name=name, payload=list(vals)))
+            d = s.query(DictRow).filter_by(name=name).first()
+            if not d:
+                s.add(DictRow(name=name, payload=_copy_val(vals)))
+            elif isinstance(vals, dict) and not isinstance(d.payload, dict):
+                d.payload = _copy_val(vals)  # 旧bug曾把dict灌成list(只剩keys), 自动修复
         s.commit()
         _inited = True
     finally:
@@ -84,15 +92,16 @@ def get(name: str) -> list:
         s.close()
 
 
-def set_dict(name: str, vals: list) -> None:
+def set_dict(name: str, vals) -> None:
     _ensure()
     s = Session()
     try:
         d = s.query(DictRow).filter_by(name=name).first()
+        payload = _copy_val(vals)
         if d:
-            d.payload = list(vals)
+            d.payload = payload
         else:
-            s.add(DictRow(name=name, payload=list(vals)))
+            s.add(DictRow(name=name, payload=payload))
         s.commit()
     finally:
         s.close()
