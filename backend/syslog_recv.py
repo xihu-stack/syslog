@@ -61,6 +61,10 @@ def _listen(host, port):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)  # 允许rebind,避免旧socket泄漏时bind失败
+    except (AttributeError, OSError):
+        pass
+    try:
         s.bind((host, int(port)))
     except Exception as e:
         with _lock:
@@ -138,14 +142,19 @@ def stop():
     with _lock:
         _state["enabled"] = False
         sock = _state.get("sock")
+        thr = _state.get("thread")
+        _state["sock"] = None
     if _flush_timer:
         _flush_timer.cancel()
         _flush_timer = None
     if sock:
-        try:
-            sock.close()
-        except OSError:
-            pass
+        try: sock.close()
+        except OSError: pass
+    if thr:  # 等_listen线程退出(确保socket释放), 避免重启bind失败
+        try: thr.join(timeout=3)
+        except Exception: pass
+        with _lock:
+            _state["thread"] = None
     th = _state.get("thread")
     if th and th.is_alive():
         th.join(timeout=3)
