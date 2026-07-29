@@ -128,15 +128,29 @@ def employee(emp: str):
                 risk_evs.append(e)
             if len(risk_evs) >= 30:
                 break
-        slack_evs = []
+        # 摸鱼会话: 连续娱乐事件(60min内)聚合成一段,算时长(什么时候看/看什么/看多久)
+        _se = []
         for e in (s.query(EventRow).filter_by(employee_id=emp).filter(EventRow.category == "WEB")
-                  .order_by(desc(EventRow.occurred_at)).limit(300).all()):
+                  .order_by(desc(EventRow.occurred_at)).limit(500).all()):
             dom = (e.raw or {}).get("domain") or ""
             sc = dicts.slack_category(dom)
-            if sc:
-                slack_evs.append((e, sc))
-            if len(slack_evs) >= 30:
-                break
+            if sc and e.occurred_at:
+                _se.append((e.occurred_at, dom, sc))
+        _se.sort(key=lambda x: x[0])
+        sessions, cur = [], None
+        for occ, dom, sc in _se:
+            if cur and (occ - cur["end"]).total_seconds() <= 3600:
+                cur["end"] = occ; cur["domains"][dom] = cur["domains"].get(dom, 0) + 1; cur["count"] += 1
+            else:
+                if cur:
+                    sessions.append(cur)
+                cur = {"start": occ, "end": occ, "domains": {dom: 1}, "cat": sc, "count": 1}
+        if cur:
+            sessions.append(cur)
+        for ss in sessions:
+            ss["duration"] = int((ss["end"] - ss["start"]).total_seconds() / 60)
+            ss["domains"] = sorted(ss["domains"].keys())
+        sessions.sort(key=lambda x: -x["duration"])
         vs = (s.query(VerdictRow).filter_by(employee_id=emp)
               .order_by(desc(VerdictRow.window_start)).limit(20).all())
         return {
@@ -151,11 +165,12 @@ def employee(emp: str):
                 "risk_class": dicts.risk_class((e.raw or {}).get("domain") or ""),
                 "source": e.source or "",
             } for e in risk_evs],
-            "slack_events": [{
-                "occurred_at": e.occurred_at.isoformat() if e.occurred_at else None,
-                "category": sc, "domain": (e.raw or {}).get("domain") or "",
-                "source": e.source or "",
-            } for e, sc in slack_evs],
+            "slack_sessions": [{
+                "start": ss["start"].isoformat() if ss["start"] else None,
+                "end": ss["end"].isoformat() if ss["end"] else None,
+                "duration": ss["duration"], "cat": ss["cat"],
+                "domains": ss["domains"][:3], "count": ss["count"],
+            } for ss in sessions[:20]],
             "verdicts": [{"window_start": v.window_start.isoformat() if v.window_start else None,
                           "intent": v.intent, "risk_score": v.risk_score,
                           "explanation": v.explanation} for v in vs],

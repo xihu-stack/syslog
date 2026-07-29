@@ -220,14 +220,16 @@ function ProfilePage({user, goBack, from}){
         {!(data.risk_events||[]).length&&<div style={{color:'#9aa3b2',padding:24,textAlign:'center'}}>近期无风险行为</div>}
       </div>
     </Card>
-    <Card className="card" title={"摸鱼行为（"+(data.slack_events||[]).length+"）"} size="small" style={{marginTop:16}}>
+    <Card className="card" title={"摸鱼会话（"+(data.slack_sessions||[]).length+"段）"} size="small" style={{marginTop:16}}>
       <div className="tl" style={{maxHeight:300,overflow:'auto'}}>
-        {(data.slack_events||[]).map((e,i)=><div className="it" key={i}>
-          <span className="t">{fmt(e.occurred_at)}</span>
-          {e.category&&<Tag color="purple" style={{marginLeft:4,fontSize:10}}>{e.category}</Tag>}
-          <b> {e.domain}</b>
+        {(data.slack_sessions||[]).map((e,i)=><div className="it" key={i}>
+          <span className="t">{(e.start||'').replace('T',' ').slice(5,16)} → {(e.end||'').slice(11,16)}</span>
+          <Tag color={e.duration>=60?'red':'orange'} style={{marginLeft:4,fontSize:10}}>{e.duration>=60?Math.floor(e.duration/60)+'h'+e.duration%60+'m':e.duration+'分'}</Tag>
+          <Tag color="purple" style={{fontSize:10}}>{e.cat}</Tag>
+          <b> {(e.domains||[]).join(' / ')}</b>
+          {e.count>1&&<span style={{color:'#94a3b8',fontSize:11}}> ({e.count}次访问)</span>}
         </div>)}
-        {!(data.slack_events||[]).length&&<div style={{color:'#9aa3b2',padding:24,textAlign:'center'}}>近期无摸鱼行为</div>}
+        {!(data.slack_sessions||[]).length&&<div style={{color:'#9aa3b2',padding:24,textAlign:'center'}}>近期无摸鱼行为</div>}
       </div>
     </Card>
     {domains.length>0&&<Card className="card" title="常访问域名（按频率）" size="small" style={{marginTop:16}}>
