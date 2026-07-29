@@ -306,8 +306,8 @@ function App(){
 
 function Dashboard({go, goProfile}){
   const [st,setSt]=useState({}); const [vs,setVs]=useState([]); const [al,setAl]=useState([]); const [sys,setSys]=useState({}); const [cats,setCats]=useState({}); const [eff,setEff]=useState([]);
-  const pie=useRef(),bar=useRef(),trend=useRef(),catBar=useRef();
-  const pieChart=useRef(null),barChart=useRef(null),trendChart=useRef(null),catChart=useRef(null);
+  const pie=useRef(),bar=useRef(),trend=useRef(),alertTrend=useRef();
+  const pieChart=useRef(null),barChart=useRef(null),trendChart=useRef(null),alertTrendChart=useRef(null);
   const load=async()=>{
     GET('/api/stats').then(setSt);
     GETL('/api/verdicts?limit=300').then(setVs);
@@ -350,32 +350,22 @@ function Dashboard({go, goProfile}){
         series:[{type:'bar',data:vals,areaStyle:{color:'#1677ff22'},itemStyle:{color:'#1677ff',borderColor:'#fff'},name:'风险用户数'}]});} else { trend.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:40px">暂无风险趋势数据</div>'; }}
   },[vs, al]);
   useEffect(()=>{
-    const ct=cats.today||{};
-    if(Object.keys(ct).length&&catBar.current){
-      if(catChart.current){catChart.current.dispose();catChart.current=null;}
-      const top=Object.entries(ct).sort((a,b)=>b[1]-a[1]).slice(0,12);
-      const c=echarts.init(catBar.current); catChart.current=c;
-      const RISK_CAT={'IT行业':'#1677ff','新闻门户':'#52c41a','IT相关':'#13c2c2','搜索引擎':'#722ed1',
-        '银行网站':'#fa8c16','网上聊天':'#eb2f96','未识别应用':'#bfbfbf','其他网页邮件[HTTPS':'#faad14',
-        'IP站点':'#8c8c8c','网上银行':'#fa8c16','广告':'#f5222d','软件':'#87d068'};
-      c.setOption({tooltip:{trigger:'axis'},grid:{left:120,right:20,top:10,bottom:30},
-        xAxis:{type:'value',axisLabel:{color:'#9aa3b2'}},
-        yAxis:{type:'category',data:top.map(x=>x[0]).reverse(),axisLabel:{color:'#6b7280',fontSize:10,width:110,overflow:'truncate'}},
-        series:[{type:'bar',data:top.map(x=>x[1]).reverse(),
-          itemStyle:{color:top.map(x=>RISK_CAT[x[0]]||'#1677ff'),borderRadius:[0,4,4,0]},
-          label:{show:true,position:'right',color:'#9aa3b2',formatter:'{c}'}}]});
+    const days=sys.alerts_by_day||[];
+    if(days.length&&alertTrend.current){
+      if(alertTrendChart.current){alertTrendChart.current.dispose();alertTrendChart.current=null;}
+      const c=echarts.init(alertTrend.current); alertTrendChart.current=c;
+      c.setOption({tooltip:{trigger:'axis'},grid:{left:40,right:20,top:30,bottom:30},
+        xAxis:{type:'category',data:days.map(d=>d[0].slice(5)),axisLabel:{color:'#9aa3b2'}},
+        yAxis:{type:'value',axisLabel:{color:'#9aa3b2'}},
+        series:[{type:'bar',data:days.map(d=>d[1]),itemStyle:{color:'#1677ff',borderRadius:[4,4,0,0]},label:{show:true,position:'top',color:'#6b7280'}}]});
     }
-  },[cats]);
+  },[sys]);
   const SRC={"sangfor":"深信服","ipguard":"IP-Guard","":"未知"};
   const ev=(sys.events||{}), vd=(sys.verdicts||{}), sysAl=(sys.alerts||{}), src=(sys.sources||{});
   const ago=ts=>{if(!ts)return '-';const d=Math.floor((Date.now()/1000-ts)/60);if(d<1)return '刚刚';if(d<60)return d+'分钟前';const h=Math.floor(d/60);return h<24?h+'小时前':Math.floor(h/24)+'天前';};
   const sl=sys.syslog||{};
   return (<div>
     <div className="flowbar">
-      <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('config')}><div className="fv num">{sl.count||0}</div><div className="fl">实时接收</div></div>
-      <div className="flow-arrow">›</div>
-      <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('config')}><div className="fv num">{sl.ingested||0}</div><div className="fl">已入库</div></div>
-      <div className="flow-arrow">›</div>
       <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('computers')}><div className="fv num">{ev.today||0}</div><div className="fl">今日日志</div></div>
       <div className="flow-arrow">›</div>
       <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('alerts')}><div className="fv num">{vd.today||0}</div><div className="fl">过 AI 研判</div></div>
@@ -394,12 +384,9 @@ function Dashboard({go, goProfile}){
     <div style={{margin:'12px 2px'}}><Legend/></div>
     {(()=>{const crit=(sysAl.list||[]).filter(a=>a.risk_score>=86).length; return crit>0&&<Alert type="error" message={<span>⚠️ 严重告警 <b>{crit}</b> 人需要立即关注！</span>} style={{marginBottom:8}} showIcon/>;})()}
     {(st.alerts>0&&st.verdicts>0&&(st.alerts/st.verdicts>0.15))&&<Alert type="warning" message="基线建设中（冷启动期）— 告警偏多属正常，随时间推移会趋于稳定" style={{marginBottom:8}} showIcon/>}
-    <Row gutter={16}>
-      <Col span={10}><Card className="card" title="风险意图分布" size="small"><div ref={pie} style={{height:240}}></div></Card></Col>
-      <Col span={14}><Card className="card" title="高风险用户 TOP5" size="small"><div ref={bar} style={{height:200}}></div></Card></Col>
-    </Row>
+    <Card className="card" title="高风险用户 TOP5" size="small" style={{marginTop:16}}><div ref={bar} style={{height:220}}></div></Card>
     <Card className="card" title="风险用户数趋势（按10分钟，风险≥50的人数）" size="small" style={{marginTop:16}}><div ref={trend} style={{height:160}}></div></Card>
-    <Card className="card" title="今日网站分类 TOP12（深信服上网行为分类）" size="small" style={{marginTop:16}}><div ref={catBar} style={{height:220}}></div></Card>
+    <Card className="card" title="告警日趋势（近7天每日告警数）" size="small" style={{marginTop:16}}><div ref={alertTrend} style={{height:200}}></div></Card>
     {(()=>{
       const ag={};(sysAl.list||[]).forEach(a=>{if(!ag[a.employee])ag[a.employee]={key:a.employee,employee:a.employee,scenarios:[],maxRisk:0,summary:'',status:a.status};const g=ag[a.employee];const sc=INTENT[a.scenario]||a.scenario;if(!g.scenarios.includes(sc))g.scenarios.push(sc);if((a.risk_score||0)>g.maxRisk){g.maxRisk=a.risk_score;g.summary=a.summary;}});
       const ga=Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);

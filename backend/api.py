@@ -482,6 +482,18 @@ def system_stats():
         _lp = s.query(_f.max(ProfileRow.as_of)).scalar()
         profile_updated_ts = int(_lp.replace(tzinfo=timezone.utc).timestamp()) if _lp else None
 
+        # 告警日趋势(近7天 [date, count])
+        _day = {}
+        for _i in range(6, -1, -1):
+            _dk = (bj_now() - timedelta(days=_i)).date().isoformat()
+            _day[_dk] = 0
+        for _r in s.query(AlertRow).filter(AlertRow.created_at >= bj_now() - timedelta(days=7)).all():
+            if _r.created_at:
+                _k = _r.created_at.date().isoformat()
+                if _k in _day:
+                    _day[_k] += 1
+        alerts_by_day = list(_day.items())
+
         return {
             "events": {
                 "today": ev_today, "yesterday": ev_yesterday, "week": ev_week, "total": ev_total,
@@ -510,6 +522,7 @@ def system_stats():
             "detect": pipeline.detection_status(),
             "syslog": syslog_recv.status(),
             "profile_updated_ts": profile_updated_ts,
+            "alerts_by_day": alerts_by_day,
         }
     finally:
         s.close()
