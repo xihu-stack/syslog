@@ -650,6 +650,8 @@ function Efficiency({goProfile}){
           {title:'购物',width:64,render:(_,r)=><span style={{color:r.cats['购物']?'#f59e0b':'#cbd5e1'}}>{r.cats['购物']||0}</span>},
           {title:'资讯',width:64,render:(_,r)=><span style={{color:r.cats['资讯']?'#16a34a':'#cbd5e1'}}>{r.cats['资讯']||0}</span>},
           {title:'音乐',width:64,render:(_,r)=><span style={{color:r.cats['音乐']?'#8b5cf6':'#cbd5e1'}}>{r.cats['音乐']||0}</span>},
+          {title:'最长摸鱼',dataIndex:'max_span',width:100,sorter:(a,b)=>(b.max_span||0)-(a.max_span||0),
+            render:v=>!v?'-':v>=60?<span style={{color:'#ef4444',fontWeight:700}}>{Math.floor(v/60)}小时{v%60}分</span>:<span style={{color:v>=30?'#f59e0b':'#475569',fontWeight:v>=30?700:400}}>{v}分</span>},
           {title:'活跃天数',dataIndex:'active_days',width:90,sorter:(a,b)=>b.active_days-a.active_days,
             render:v=><span className="num" style={{color:v<=1?'#ef4444':'#475569',fontWeight:v<=1?700:400}}>{v}天</span>},
           {title:'在岗时段',width:120,render:(_,r)=><span style={{color:'#475569'}}>{r.hour_min===null||r.hour_min===undefined?'-':r.hour_min+'-'+r.hour_max+'点'}</span>},

@@ -497,20 +497,31 @@ def efficiency():
         emp = {}
         for e in rows:
             r = emp.setdefault(e.employee_id, {"total": 0, "slack": 0, "cats": Counter(),
-                                               "days": set(), "hours": set()})
+                                               "days": set(), "hours": set(), "stimes": []})
             r["total"] += 1
             if e.occurred_at:
                 r["days"].add(e.occurred_at.date()); r["hours"].add(e.occurred_at.hour)
             cat = dicts.slack_category((e.raw or {}).get("domain") or "")
             if cat and e.occurred_at and 9 <= e.occurred_at.hour < 18:
-                r["slack"] += 1; r["cats"][cat] += 1
+                r["slack"] += 1; r["cats"][cat] += 1; r["stimes"].append(e.occurred_at)
         out = []
         for k, r in emp.items():
             hours = sorted(r["hours"])
+            st = sorted(r["stimes"]); sp_s = sp_e = None; mx = 0.0  # 最长连续摸鱼(60min gap内)
+            for t in st:
+                if sp_e is not None and (t - sp_e).total_seconds() <= 3600:
+                    sp_e = t
+                else:
+                    if sp_e is not None:
+                        mx = max(mx, (sp_e - sp_s).total_seconds())
+                    sp_s = sp_e = t
+            if sp_e is not None:
+                mx = max(mx, (sp_e - sp_s).total_seconds())
             out.append({"employee": k, "total": r["total"], "slack": r["slack"],
                         "pct": round(r["slack"] / r["total"] * 100) if r["total"] else 0,
                         "cats": dict(r["cats"]), "active_days": len(r["days"]),
-                        "hour_min": hours[0] if hours else None, "hour_max": hours[-1] if hours else None})
+                        "hour_min": hours[0] if hours else None, "hour_max": hours[-1] if hours else None,
+                        "max_span": round(mx / 60)})
         out.sort(key=lambda x: -x["pct"])
         _eff_cache["data"] = out; _eff_cache["ts"] = time.time()
         return out
