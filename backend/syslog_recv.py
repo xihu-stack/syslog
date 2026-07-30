@@ -85,7 +85,7 @@ def _listen(host, port):
                     "from": addr[0],
                     "msg": text[:500],
                 })
-                _state["recent"] = _state["recent"][-50:]
+                _state["recent"] = _state["recent"][-500:]
             # 实时解析为标准事件
             try:
                 from parser_sangfor import parse_sangfor_syslog
