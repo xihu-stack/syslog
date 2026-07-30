@@ -29,6 +29,7 @@ def _flush_events():
     with _raw_lock:
         raws = _raw_buffer[:]
         _raw_buffer = []
+    print(f"[flush] events={len(events)} raws={len(raws)}", flush=True)
     # 原始报文持久化(不管parse成功否)
     if raws:
         try:
