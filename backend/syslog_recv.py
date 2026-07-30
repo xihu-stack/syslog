@@ -23,14 +23,10 @@ _flush_count = 0
 def _flush_events():
     """把缓冲的事件聚合入库 + 建画像 + 触发增量研判。原始报文也持久化。"""
     global _event_buffer
-    print("[flush-enter]", flush=True)
-    with _buf_lock:
-        events = _event_buffer[:]
-        _event_buffer = []
-    print(f"[flush-buf] events={len(events)}", flush=True)
+    events = _event_buffer[:]
+    _event_buffer = []
     raws = _raw_buffer[:]
     _raw_buffer = []
-    print(f"[flush-raw] raws={len(raws)}", flush=True)
     # 原始报文持久化(不管parse成功否)
     if raws:
         try:
@@ -114,8 +110,7 @@ def _listen(host, port):
                 from parser_sangfor import parse_sangfor_syslog
                 ev = parse_sangfor_syslog(text)
                 if ev:
-                    with _buf_lock:
-                        _event_buffer.append(ev)
+                    _event_buffer.append(ev)
             except Exception:
                 pass
             # 存原始报文(持久化, 不管parse成功否) — 供前端查看深信服推送了什么
