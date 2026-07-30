@@ -62,6 +62,7 @@ def _flush_events():
 
 def _flush_loop():
     """每30秒刷新一次事件缓冲（收到 syslog 后近实时入库+研判）。每小时清理一次过期事件。"""
+    print("[flush-loop] 启动", flush=True)
     global _flush_timer, _flush_count
     _flush_events()
     _flush_count += 1
@@ -146,6 +147,7 @@ def start(host, port):
     t = threading.Thread(target=_listen, args=(host, int(port)), daemon=True)
     _state["thread"] = t
     t.start()
+    print("[start] _listen线程已启动, 即将调_flush_loop", flush=True)
     _flush_loop()
 
 
