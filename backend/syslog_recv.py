@@ -105,6 +105,9 @@ def _listen(host, port):
                     "msg": text[:500],
                 })
                 _state["recent"] = _state["recent"][-500:]
+            # raw 先存(紧贴recent,确保跑到) — 供前端查看深信服推送了什么
+            _raw_buffer.append({"log_type": "", "user": "", "app": "", "msg": text[:1000]})
+            print(f"[raw-listen] +1 buf={len(_raw_buffer)}", flush=True)
             # 实时解析为标准事件
             try:
                 from parser_sangfor import parse_sangfor_syslog
@@ -113,18 +116,6 @@ def _listen(host, port):
                     _event_buffer.append(ev)
             except Exception:
                 pass
-            # 存原始报文(持久化, 不管parse成功否) — 供前端查看深信服推送了什么
-            try:
-                import re as _re
-                _rl = {"log_type": "", "user": "", "app": "", "msg": text[:1000]}
-                for _k in ("log_type", "user", "app"):
-                    _m = _re.search(r"\[" + _k + r":([^\]]+)\]", text)
-                    if _m:
-                        _rl[_k] = _m.group(1).strip()
-                _raw_buffer.append(_rl)
-                print(f"[raw-listen] +1 buffer={len(_raw_buffer)}", flush=True)
-            except Exception as _rerr:
-                print(f"[raw-listen-fail] {_rerr}", flush=True)
         except socket.timeout:
             continue
         except OSError as _oe:
