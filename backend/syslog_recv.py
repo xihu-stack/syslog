@@ -105,14 +105,13 @@ def _listen(host, port):
         try:
             data, addr = s.recvfrom(65535)
             text = data.decode("utf-8", "replace")
-            with _lock:
-                _state["count"] += 1
-                _state["recent"].append({
-                    "t": datetime.datetime.now().strftime("%H:%M:%S"),
-                    "from": addr[0],
-                    "msg": text[:500],
-                })
-                _state["recent"] = _state["recent"][-500:]
+            _state["count"] += 1
+            _state["recent"].append({
+                "t": datetime.datetime.now().strftime("%H:%M:%S"),
+                "from": addr[0],
+                "msg": text[:500],
+            })
+            _state["recent"] = _state["recent"][-500:]
             # raw 先存(紧贴recent,确保跑到) — 供前端查看深信服推送了什么
             _raw_buffer.append({"log_type": "", "user": "", "app": "", "msg": text[:1000]})
             print(f"[raw-listen] +1 buf={len(_raw_buffer)}", flush=True)
