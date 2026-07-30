@@ -113,9 +113,14 @@ def parse_sangfor_syslog(raw_msg: str):
 
     user = _clean_user(fields.get("user", ""))
     url = (fields.get("url") or "").strip()
-    if not user or not url or url == "-":
-        return None
-    domain = url_domain(url)
+    app = (fields.get("app") or "").strip()
+    if not user or ((not url or url == "-") and not app):
+        return None  # 既没url也没app才丢弃
+    if not url or url == "-":
+        url = app  # other_log: 无url,用app当域名(应用访问记录,如Outlook/Teams)
+        domain = app
+    else:
+        domain = url_domain(url)
     # syslog 里 app=网站分类(IT行业)，site=位置(未定义位置)
     category = fields.get("app", "") or fields.get("site", "")
     return CanonicalEvent(
