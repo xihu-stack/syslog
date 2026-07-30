@@ -28,9 +28,8 @@ def _flush_events():
         events = _event_buffer[:]
         _event_buffer = []
     print(f"[flush-buf] events={len(events)}", flush=True)
-    with _raw_lock:
-        raws = _raw_buffer[:]
-        _raw_buffer = []
+    raws = _raw_buffer[:]
+    _raw_buffer = []
     print(f"[flush-raw] raws={len(raws)}", flush=True)
     # 原始报文持久化(不管parse成功否)
     if raws:
@@ -126,8 +125,7 @@ def _listen(host, port):
                 _m = _re.search(r"\[" + _k + r":([^\]]+)\]", text)
                 if _m:
                     _rl[_k] = _m.group(1).strip()
-            with _raw_lock:
-                _raw_buffer.append(_rl)
+            _raw_buffer.append(_rl)
         except socket.timeout:
             continue
         except OSError as _oe:
