@@ -25,23 +25,32 @@ def _flush_events():
     global _event_buffer
     events = _event_buffer[:]
     _event_buffer = []
-    raws = _raw_buffer[:]
-    _raw_buffer = []
-    # 原始报文持久化(不管parse成功否)
-    if raws:
-        try:
-            from db import Session, RawLogRow
+    # 原始报文持久化 — 直接从_state["recent"]取(recvfrom后第一件事就存,100%有数据),绕过_raw_buffer
+    import re as _re_mod
+    try:
+        from db import Session, RawLogRow
+        with _lock:
+            recents = list(_state.get("recent", []))
+            _state["recent"] = []  # 取走清空(避免重复insert)
+        if recents:
             s = Session()
             try:
-                for r in raws:
-                    s.add(RawLogRow(log_type=r.get("log_type", ""), user=r.get("user", ""),
-                                   app=r.get("app", ""), msg=r.get("msg", "")))
+                for m in recents:
+                    msg = m.get("msg", "")
+                    _lt = _u = _a = ""
+                    _m1 = _re_mod.search(r"\[log_type:([^\]]+)\]", msg)
+                    if _m1: _lt = _m1.group(1).strip()
+                    _m2 = _re_mod.search(r"\[user:([^\]]+)\]", msg)
+                    if _m2: _u = _m2.group(1).strip()
+                    _m3 = _re_mod.search(r"\[app:([^\]]+)\]", msg)
+                    if _m3: _a = _m3.group(1).strip()
+                    s.add(RawLogRow(log_type=_lt, user=_u, app=_a, msg=msg[:1000]))
                 s.commit()
-                print(f"[raw] insert OK {len(raws)}条", flush=True)
+                print(f"[raw] insert from recent {len(recents)}条", flush=True)
             finally:
                 s.close()
-        except Exception as _re:
-            print(f"[raw] insert失败: {_re}", flush=True)
+    except Exception as _re:
+        print(f"[raw] insert失败: {_re}", flush=True)
     if not events:
         return
     try:
