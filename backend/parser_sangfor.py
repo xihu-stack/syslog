@@ -133,6 +133,7 @@ def parse_sangfor_syslog(raw_msg: str):
              "src_ip": fields.get("host_ip", ""), "dst_ip": fields.get("dst_ip", ""),
              "app": fields.get("app", ""), "serv": fields.get("serv", ""),
              "title": fields.get("title", ""), "net_action": fields.get("net_action", ""),
+             "keyword_original": fields.get("keyword_original", ""),
              "visit_count": 1})
 
 

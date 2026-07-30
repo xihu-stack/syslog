@@ -224,6 +224,10 @@ def should_trigger(window, dev, baseline) -> bool:
                 return True
             if tier == "mid" and _is_off_hours(e.occurred_at):  # 远程控制+凌晨/深夜→触发
                 return True
+            # 搜索关键词(深信服keyword_original)匹配求职/高危→触发研判
+            _kw = ((e.raw or {}).get("keyword_original") or "").strip()
+            if _kw and (_search_risky(_kw) or any(t in _kw for t in dicts.get("job_search_terms"))):
+                return True
     # 频次异常:外发通道工作时段密集访问(deviation算的channel_burst)
     if dev and "channel_burst" in dev:
         return True
