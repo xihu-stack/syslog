@@ -46,7 +46,7 @@ def ingest_file(path: str) -> int:
                             s.query(EventRow.event_hash).filter(EventRow.event_hash.in_(batch)).all())
         added = 0
         for e, h in zip(events, hashes):
-            if h in existing:
+            if h in existing or (e.employee_id or "").isdigit():  # 跳过已存在 + 访客(纯数字)
                 continue
             s.add(EventRow(event_hash=h, occurred_at=e.occurred_at, employee_id=e.employee_id,
                            device_id=e.device_id, category=e.category, action=e.action,
@@ -74,7 +74,7 @@ def ingest_events(events) -> int:
                             s.query(EventRow.event_hash).filter(EventRow.event_hash.in_(hashes[i:i + 400])).all())
         added = 0
         for e, h in zip(events, hashes):
-            if h in existing:
+            if h in existing or (e.employee_id or "").isdigit():  # 跳过已存在 + 访客(纯数字)
                 continue
             s.add(EventRow(event_hash=h, occurred_at=e.occurred_at, employee_id=e.employee_id,
                            device_id=e.device_id, category=e.category, action=e.action,
