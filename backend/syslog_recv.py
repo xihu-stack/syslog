@@ -29,9 +29,8 @@ def _flush_events():
     import re as _re_mod
     try:
         from db import Session, RawLogRow
-        with _lock:
-            recents = list(_state.get("recent", []))
-            _state["recent"] = []  # 取走清空(避免重复insert)
+        recents = list(_state.get("recent", []))
+        _state["recent"] = []  # 取走清空(避免重复insert)
         if recents:
             s = Session()
             try:
