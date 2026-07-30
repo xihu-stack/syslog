@@ -39,10 +39,11 @@ def _flush_events():
                     s.add(RawLogRow(log_type=r.get("log_type", ""), user=r.get("user", ""),
                                    app=r.get("app", ""), msg=r.get("msg", "")))
                 s.commit()
+                print(f"[raw] insert OK {len(raws)}条", flush=True)
             finally:
                 s.close()
-        except Exception:
-            pass
+        except Exception as _re:
+            print(f"[raw] insert失败: {_re}", flush=True)
     if not events:
         return
     try:
