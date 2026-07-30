@@ -281,6 +281,7 @@ function App(){
             {key:'alerts',label:<span><i className="fa-solid fa-bell" style={{marginRight:8,width:16}}></i>告警管理</span>},
             {key:'efficiency',label:<span><i className="fa-solid fa-chart-column" style={{marginRight:8,width:16}}></i>效率监控</span>},
             {key:'ask',label:<span><i className="fa-solid fa-robot" style={{marginRight:8,width:16}}></i>AI 问答</span>},
+            {key:'rawlogs',label:<span><i className="fa-solid fa-file-lines" style={{marginRight:8,width:16}}></i>原始日志</span>},
             {key:'config',label:<span><i className="fa-solid fa-gear" style={{marginRight:8,width:16}}></i>系统设置</span>},
           ]}/>
       </Sider>
@@ -294,7 +295,7 @@ function App(){
               <a onClick={()=>{setKey(profileFrom||'alerts');setProfileUser(null);}} style={{color:'var(--ink3)',fontSize:14}}>{FROM_TITLE[profileFrom]||'告警管理'}</a>
               <span style={{color:'#cbd5e1',fontSize:14}}>›</span>
               <Typography.Text strong style={{fontSize:18}}>{profileUser}</Typography.Text>
-            </>) : (<Typography.Title level={4} style={{margin:0}}>{({dashboard:'监控大屏',computers:'用户视图',alerts:'告警管理',efficiency:'效率监控',ask:'AI 问答',config:'系统设置'})[key]}</Typography.Title>)}
+            </>) : (<Typography.Title level={4} style={{margin:0}}>{({dashboard:'监控大屏',computers:'用户视图',alerts:'告警管理',efficiency:'效率监控',ask:'AI 问答',rawlogs:'原始日志',config:'系统设置'})[key]}</Typography.Title>)}
           </div>
           <Space>
             <Typography.Text style={{color:'var(--ink3)',fontSize:12,marginRight:4,fontVariantNumeric:'tabular-nums'}}>{now}</Typography.Text>
@@ -307,6 +308,7 @@ function App(){
           {key==='dashboard' && <Dashboard go={setKey} goProfile={(u)=>{setProfileFrom('dashboard');setProfileUser(u);setKey('profile');}}/>}
           {key==='computers' && <Computers goProfile={(u)=>{setProfileFrom('computers');setProfileUser(u);setKey('profile');}}/>}
           {key==='alerts' && <Alerts goProfile={(u)=>{setProfileFrom('alerts');setProfileUser(u);setKey('profile');}}/>}
+          {key==='rawlogs' && <RawLogs/>}
           {key==='config' && <Config/>}
           {key==='efficiency' && <Efficiency goProfile={(u)=>{setProfileFrom('efficiency');setProfileUser(u);setKey('profile');}}/>}
           {key==='ask' && <Ask/>}
@@ -686,6 +688,43 @@ function Efficiency({goProfile}){
     </Card>
     <Alert type="info" showIcon style={{marginTop:12}}
       message="摸鱼 = 工作时段(9-18点)访问 视频/社交/购物/资讯/音乐 类网站。占比≥10%标红、≥5%标橙。活跃天数≤1 可能未在岗/未用电脑。已排除淘宝、头条等 SDK 埋点请求。"/>
+  </div>);
+}
+
+function RawLogs(){
+  const [rows,setRows]=useState([]); const [loading,setLoading]=useState(true);
+  const [logType,setLogType]=useState(''); const [uq,setUq]=useState('');
+  const load=async()=>{
+    setLoading(true);
+    const params=new URLSearchParams();
+    if(logType) params.set('log_type',logType);
+    if(uq) params.set('user',uq);
+    params.set('limit','200');
+    const r=await GET('/api/raw_logs?'+params.toString());
+    setRows(Array.isArray(r)?r:[]); setLoading(false);
+  };
+  useEffect(()=>{load();},[]);
+  return (<div>
+    <div className="sec-title">原始日志 · 深信服推送的报文原文（按时间倒序） · <span style={{fontSize:11,color:'#94a3b8'}}>看 log_type 分布: url(访问,有域名) / flux(流量,无域名)</span></div>
+    <Card className="card" size="small">
+      <Space style={{marginBottom:8}}>
+        <Select value={logType||undefined} style={{width:130}} allowClear placeholder="日志类型" onChange={v=>setLogType(v||'')}>
+          <Select.Option value="url">url (URL访问,含域名)</Select.Option>
+          <Select.Option value="flux">flux (流量统计,无域名)</Select.Option>
+        </Select>
+        <Input.Search placeholder="搜用户" allowClear style={{width:140}} onSearch={load} onChange={e=>setUq(e.target.value)} />
+        <Button type="primary" onClick={load}>查询</Button>
+        <span style={{fontSize:11,color:'#94a3b8'}}>共 {rows.length} 条（最多200）</span>
+      </Space>
+      <Table size="small" rowKey="id" pagination={{pageSize:20,showTotal:t=>'共 '+t+' 条'}} loading={loading} dataSource={rows}
+        columns={[
+          {title:'接收时间',dataIndex:'received_at',width:150,render:v=><span style={{fontSize:11,color:'#475569'}}>{(v||'').replace('T',' ').slice(0,19)}</span>},
+          {title:'类型',dataIndex:'log_type',width:80,render:v=><Tag color={v==='url'?'blue':'default'}>{v||'?'}</Tag>},
+          {title:'用户',dataIndex:'user',width:100},
+          {title:'应用',dataIndex:'app',width:110,render:v=><span style={{fontSize:11}}>{v||'-'}</span>},
+          {title:'报文原文',dataIndex:'msg',render:v=><span style={{fontFamily:'Consolas,monospace',fontSize:11,color:'#475569',wordBreak:'break-all',display:'block',maxHeight:60,overflow:'auto'}}>{v}</span>},
+        ]}/>
+    </Card>
   </div>);
 }
 

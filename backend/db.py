@@ -132,6 +132,17 @@ class ExceptionRow(Base):
     expires_at = Column(DateTime, nullable=True)  # null=永久
 
 
+class RawLogRow(Base):
+    """原始 syslog 报文(持久化, 供前端按时间查看深信服推送了什么)。"""
+    __tablename__ = "raw_logs"
+    id = Column(Integer, primary_key=True)
+    received_at = Column(DateTime, index=True, default=bj_now)
+    log_type = Column(String)    # flux / url / ...
+    user = Column(String, index=True)
+    app = Column(String)         # 应用分类
+    msg = Column(Text)           # 报文原文(截断1000)
+
+
 # ---------------- 工具 ----------------
 
 def init_db() -> None:

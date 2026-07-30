@@ -14,18 +14,37 @@ _state = {
 _lock = threading.Lock()
 _event_buffer = []
 _buf_lock = threading.Lock()
+_raw_buffer = []
+_raw_lock = threading.Lock()
 _flush_timer = None
 _flush_count = 0
 
 
 def _flush_events():
-    """把缓冲的事件聚合入库 + 建画像 + 触发增量研判。"""
+    """把缓冲的事件聚合入库 + 建画像 + 触发增量研判。原始报文也持久化。"""
     global _event_buffer
     with _buf_lock:
-        if not _event_buffer:
-            return
         events = _event_buffer[:]
         _event_buffer = []
+    with _raw_lock:
+        raws = _raw_buffer[:]
+        _raw_buffer = []
+    # 原始报文持久化(不管parse成功否)
+    if raws:
+        try:
+            from db import Session, RawLogRow
+            s = Session()
+            try:
+                for r in raws:
+                    s.add(RawLogRow(log_type=r.get("log_type", ""), user=r.get("user", ""),
+                                   app=r.get("app", ""), msg=r.get("msg", "")))
+                s.commit()
+            finally:
+                s.close()
+        except Exception:
+            pass
+    if not events:
+        return
     try:
         import pipeline
         n = pipeline.ingest_events(events)
@@ -95,6 +114,15 @@ def _listen(host, port):
                         _event_buffer.append(ev)
             except Exception:
                 pass
+            # 存原始报文(持久化, 不管parse成功否) — 供前端查看深信服推送了什么
+            import re as _re
+            _rl = {"log_type": "", "user": "", "app": "", "msg": text[:1000]}
+            for _k in ("log_type", "user", "app"):
+                _m = _re.search(r"\[" + _k + r":([^\]]+)\]", text)
+                if _m:
+                    _rl[_k] = _m.group(1).strip()
+            with _raw_lock:
+                _raw_buffer.append(_rl)
         except socket.timeout:
             continue
         except OSError as _oe:

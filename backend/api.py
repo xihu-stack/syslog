@@ -10,7 +10,7 @@ from fastapi import Body, FastAPI, File, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import desc, func
 
-from db import (AlertRow, EventRow, ExceptionRow, FeedbackRow, ProfileRow, Session, VerdictRow, bj_now, init_db, json_field)
+from db import (AlertRow, EventRow, ExceptionRow, FeedbackRow, ProfileRow, RawLogRow, Session, VerdictRow, bj_now, init_db, json_field)
 import pipeline
 import profiles
 import dicts
@@ -832,6 +832,29 @@ def rules_apply(body: dict = Body(...)):
             cur.append(domain)
         dicts.set_dict(target, cur)
     return {"ok": True, "target": target, "domain": domain, "cat": cat}
+
+
+# ---------------- 原始日志查看 ----------------
+@app.get("/api/raw_logs")
+def raw_logs(start: str | None = None, end: str | None = None, log_type: str | None = None,
+             user: str | None = None, limit: int = 100):
+    """原始 syslog 报文查询(按时间/log_type/user筛选),供前端查看深信服推送了什么。"""
+    s = Session()
+    try:
+        q = s.query(RawLogRow)
+        if start:
+            q = q.filter(RawLogRow.received_at >= start)
+        if end:
+            q = q.filter(RawLogRow.received_at <= end)
+        if log_type:
+            q = q.filter(RawLogRow.log_type == log_type)
+        if user:
+            q = q.filter(RawLogRow.user.contains(user))
+        rows = q.order_by(desc(RawLogRow.received_at)).limit(min(limit, 500)).all()
+        return [{"id": r.id, "received_at": r.received_at.isoformat() if r.received_at else None,
+                 "log_type": r.log_type, "user": r.user, "app": r.app, "msg": r.msg} for r in rows]
+    finally:
+        s.close()
 
 
 # ---------------- 托管前端（放最后，避免拦截 /api）----------------
