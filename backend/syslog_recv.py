@@ -114,13 +114,17 @@ def _listen(host, port):
             except Exception:
                 pass
             # 存原始报文(持久化, 不管parse成功否) — 供前端查看深信服推送了什么
-            import re as _re
-            _rl = {"log_type": "", "user": "", "app": "", "msg": text[:1000]}
-            for _k in ("log_type", "user", "app"):
-                _m = _re.search(r"\[" + _k + r":([^\]]+)\]", text)
-                if _m:
-                    _rl[_k] = _m.group(1).strip()
-            _raw_buffer.append(_rl)
+            try:
+                import re as _re
+                _rl = {"log_type": "", "user": "", "app": "", "msg": text[:1000]}
+                for _k in ("log_type", "user", "app"):
+                    _m = _re.search(r"\[" + _k + r":([^\]]+)\]", text)
+                    if _m:
+                        _rl[_k] = _m.group(1).strip()
+                _raw_buffer.append(_rl)
+                print(f"[raw-listen] +1 buffer={len(_raw_buffer)}", flush=True)
+            except Exception as _rerr:
+                print(f"[raw-listen-fail] {_rerr}", flush=True)
         except socket.timeout:
             continue
         except OSError as _oe:
