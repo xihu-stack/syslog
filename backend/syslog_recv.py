@@ -23,13 +23,15 @@ _flush_count = 0
 def _flush_events():
     """把缓冲的事件聚合入库 + 建画像 + 触发增量研判。原始报文也持久化。"""
     global _event_buffer
+    print("[flush-enter]", flush=True)
     with _buf_lock:
         events = _event_buffer[:]
         _event_buffer = []
+    print(f"[flush-buf] events={len(events)}", flush=True)
     with _raw_lock:
         raws = _raw_buffer[:]
         _raw_buffer = []
-    print(f"[flush] events={len(events)} raws={len(raws)}", flush=True)
+    print(f"[flush-raw] raws={len(raws)}", flush=True)
     # 原始报文持久化(不管parse成功否)
     if raws:
         try:
