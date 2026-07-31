@@ -708,9 +708,9 @@ function RawLogs(){
     <div className="sec-title">原始日志 · 深信服推送的报文原文（按时间倒序） · <span style={{fontSize:11,color:'#94a3b8'}}>看 log_type 分布: url(访问,有域名) / flux(流量,无域名)</span></div>
     <Card className="card" size="small">
       <Space style={{marginBottom:8}}>
-        <Select value={logType||undefined} style={{width:130}} allowClear placeholder="日志类型" onChange={v=>setLogType(v||'')}>
-          <Select.Option value="url">url (URL访问,含域名)</Select.Option>
-          <Select.Option value="flux">flux (流量统计,无域名)</Select.Option>
+        <Select value={logType||undefined} style={{width:160}} allowClear placeholder="日志类型" onChange={v=>setLogType(v||'')}>
+          <Select.Option value="url">url (URL访问)</Select.Option>
+          <Select.Option value="other_log">other_log (APP/DNS)</Select.Option>
         </Select>
         <Input.Search placeholder="搜用户" allowClear style={{width:140}} onSearch={load} onChange={e=>setUq(e.target.value)} />
         <Button type="primary" onClick={load}>查询</Button>
