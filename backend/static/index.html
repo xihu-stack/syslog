@@ -699,7 +699,7 @@ function RawLogs(){
     const params=new URLSearchParams();
     if(logType) params.set('log_type',logType);
     if(uq) params.set('user',uq);
-    params.set('limit','200');
+    params.set('limit','2000');
     const r=await GET('/api/raw_logs?'+params.toString());
     setRows(Array.isArray(r)?r:[]); setLoading(false);
   };

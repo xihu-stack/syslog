@@ -850,7 +850,7 @@ def raw_logs(start: str | None = None, end: str | None = None, log_type: str | N
             q = q.filter(RawLogRow.log_type == log_type)
         if user:
             q = q.filter(RawLogRow.user.contains(user))
-        rows = q.order_by(desc(RawLogRow.received_at)).limit(min(limit, 500)).all()
+        rows = q.order_by(desc(RawLogRow.received_at)).limit(min(limit, 5000)).all()
         return [{"id": r.id, "received_at": r.received_at.isoformat() if r.received_at else None,
                  "log_type": r.log_type, "user": r.user, "app": r.app, "msg": r.msg} for r in rows]
     finally:
