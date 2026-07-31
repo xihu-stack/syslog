@@ -75,7 +75,7 @@
 <script>window.onerror=function(m,s,l,c,e){var d=document.getElementById('root');if(d)d.innerHTML='<div style="padding:30px;color:#c0392b;font-family:monospace;white-space:pre-wrap">前端出错：'+(e&&e.stack||m)+'\n\n请截图发我。</div>';return false;};</script>
 <script type="text/babel">
 const { Layout, Menu, Card, Row, Col, Table, Tag, Button, Input, Form, message, Select, Modal,
-        Space, Upload, Divider, Typography, Badge, Empty, Descriptions, Alert, Radio, ConfigProvider, Statistic, Tooltip, Progress, Tabs } = antd;
+        Space, Upload, Divider, Typography, Badge, Empty, Descriptions, Alert, Radio, ConfigProvider, Statistic, Tooltip, Progress, Tabs, DatePicker } = antd;
 const { Sider, Header, Content } = Layout;
 const { useState, useEffect, useRef } = React;
 
@@ -692,29 +692,34 @@ function Efficiency({goProfile}){
 }
 
 function RawLogs(){
-  const [rows,setRows]=useState([]); const [loading,setLoading]=useState(true);
-  const [logType,setLogType]=useState(''); const [uq,setUq]=useState('');
+  const [rows,setRows]=useState([]); const [total,setTotal]=useState(0); const [loading,setLoading]=useState(true);
+  const [logType,setLogType]=useState(''); const [uq,setUq]=useState(''); const [kw,setKw]=useState(''); const [dr,setDr]=useState(null);
   const load=async()=>{
     setLoading(true);
     const params=new URLSearchParams();
     if(logType) params.set('log_type',logType);
     if(uq) params.set('user',uq);
+    if(kw) params.set('kw',kw);
+    if(dr&&dr[0]) params.set('start',dr[0].format('YYYY-MM-DD 00:00:00'));
+    if(dr&&dr[1]) params.set('end',dr[1].format('YYYY-MM-DD 23:59:59'));
     params.set('limit','2000');
     const r=await GET('/api/raw_logs?'+params.toString());
-    setRows(Array.isArray(r)?r:[]); setLoading(false);
+    setRows((r&&r.items)||[]); setTotal((r&&r.total)||0); setLoading(false);
   };
   useEffect(()=>{load();},[]);
   return (<div>
-    <div className="sec-title">原始日志 · 深信服推送的报文原文（按时间倒序） · <span style={{fontSize:11,color:'#94a3b8'}}>看 log_type 分布: url(访问,有域名) / flux(流量,无域名)</span></div>
+    <div className="sec-title">原始日志 · 深信服推送的报文原文（共 {total} 条） · <span style={{fontSize:11,color:'#94a3b8'}}>url=网站访问 other_log=APP/DNS</span></div>
     <Card className="card" size="small">
-      <Space style={{marginBottom:8}}>
+      <Space style={{marginBottom:8}} wrap>
+        <DatePicker.RangePicker value={dr} onChange={v=>setDr(v)} placeholder={['开始日期','结束日期']} />
         <Select value={logType||undefined} style={{width:160}} allowClear placeholder="日志类型" onChange={v=>setLogType(v||'')}>
           <Select.Option value="url">url (URL访问)</Select.Option>
           <Select.Option value="other_log">other_log (APP/DNS)</Select.Option>
         </Select>
-        <Input.Search placeholder="搜用户" allowClear style={{width:140}} onSearch={load} onChange={e=>setUq(e.target.value)} />
+        <Input placeholder="搜用户" allowClear style={{width:120}} value={uq} onChange={e=>setUq(e.target.value)} onPressEnter={load} />
+        <Input placeholder="关键词(报文内容)" allowClear style={{width:160}} value={kw} onChange={e=>setKw(e.target.value)} onPressEnter={load} />
         <Button type="primary" onClick={load}>查询</Button>
-        <span style={{fontSize:11,color:'#94a3b8'}}>共 {rows.length} 条（最多200）</span>
+        <span style={{fontSize:11,color:'#475569'}}>共 {total} 条（显示 {rows.length}）</span>
       </Space>
       <Table size="small" rowKey="id" pagination={{pageSize:20,showTotal:t=>'共 '+t+' 条'}} loading={loading} dataSource={rows}
         columns={[
