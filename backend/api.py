@@ -777,7 +777,7 @@ def rules_suggest():
                    "weibo", "zhihu", "douban", "game", "novel", "comic")
         for e in s.query(EventRow).filter(EventRow.category == "WEB").yield_per(2000):
             d = (e.raw or {}).get("domain") or ""
-            if d and not dicts.risk_class(d) and not dicts.slack_category(d):
+            if d and not dicts.risk_class(d) and not dicts.slack_category(d) and not dicts.work_category(d):
                 unclass[d] += 1
                 if any(k in d.lower() for k in RISK_KW):
                     kw_hits.add(d)
