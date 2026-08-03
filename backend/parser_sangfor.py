@@ -155,9 +155,6 @@ def parse_sangfor(path: str):
         wb = openpyxl.load_workbook(path, data_only=True)
         events = []
         for ws in wb.worksheets:
-            rows = [[(c.value if c.value is not None else "") for c in row]
-                    for row in ws.iter_rows(values_only=False)]
-            # 取每行每列的值
             data = [[(c.value if c.value is not None else "") for c in row] for row in ws.iter_rows()]
             events.extend(_parse_rows(data))
         return events

@@ -14,8 +14,6 @@ _state = {
 _lock = threading.Lock()
 _event_buffer = []
 _buf_lock = threading.Lock()
-_raw_buffer = []
-_raw_lock = threading.Lock()
 _flush_timer = None
 _flush_count = 0
 
@@ -25,7 +23,7 @@ def _flush_events():
     global _event_buffer
     events = _event_buffer[:]
     _event_buffer = []
-    # 原始报文持久化 — 直接从_state["recent"]取(recvfrom后第一件事就存,100%有数据),绕过_raw_buffer
+    # 原始报文持久化 — 直接从_state["recent"]取(recvfrom后第一件事就存,100%有数据)
     import re as _re_mod
     try:
         from db import Session, RawLogRow
@@ -112,9 +110,6 @@ def _listen(host, port):
                 "msg": text[:500],
             })
             _state["recent"] = _state["recent"][-500:]
-            # raw 先存(紧贴recent,确保跑到) — 供前端查看深信服推送了什么
-            _raw_buffer.append({"log_type": "", "user": "", "app": "", "msg": text[:1000]})
-            print(f"[raw-listen] +1 buf={len(_raw_buffer)}", flush=True)
             # 实时解析为标准事件
             try:
                 from parser_sangfor import parse_sangfor_syslog

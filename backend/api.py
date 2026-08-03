@@ -206,10 +206,17 @@ def computers():
 async def ingest(file: UploadFile = File(...)):
     """上传 xlsx/csv → 批量导入 → 建画像 → 异步启动研判（立即返回，前端轮询进度）。"""
     suffix = os.path.splitext(file.filename or "")[1] or ".xlsx"
-    tmp = os.path.join(tempfile.gettempdir(), f"ipg_upload{suffix}")
-    with open(tmp, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    n = pipeline.ingest_file(tmp)
+    fd, tmp = tempfile.mkstemp(suffix=suffix)  # 唯一名,避免并发上传互相覆盖
+    os.close(fd)
+    try:
+        with open(tmp, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+        n = pipeline.ingest_file(tmp)
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
     profiles.build_profiles()
     st = pipeline.start_detection()  # 单飞异步研判，不阻塞请求
     return {"imported": n, "detection": st}
@@ -465,9 +472,9 @@ def system_stats():
         st_rows = s.query(AlertRow.status, _f.count(AlertRow.id)).group_by(AlertRow.status).all()
         alert_status = {r[0]: r[1] for r in st_rows}
 
-        # 豁免
+        # 豁免(expires_at 按 utcnow 写入,这里同源比较,不能用北京时间的 now)
         ex_count = s.query(ExceptionRow).filter(
-            (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > now)
+            (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > datetime.utcnow())
         ).count()
 
         # 数据库大小
