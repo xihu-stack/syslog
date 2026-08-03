@@ -175,6 +175,20 @@ def risk_patterns() -> list:
     ]
 
 
+def _match_domain(domain: str, pat: str) -> bool:
+    """域名匹配：含点的模式按域名后缀匹配(d==p 或 d 以 "."+p 结尾)，避免
+    mail.qq.com 误伤 exmail.qq.com(企业邮箱)、linkedin.com 误伤
+    linkedin.com.cdn.cloudflare.net(CDN)等子串误命中；无点的关键词仍用
+    子串匹配(todesk→authds.todesk.com、filehelper→szfilehelper.weixin.qq.com、
+    github→github.io)。"""
+    if not pat:
+        return False
+    p = pat.lower()
+    if "." in p:
+        return domain == p or domain.endswith("." + p)
+    return p in domain
+
+
 def risk_class(domain: str):
     """域名 → 高风险类别中文标签（如"远程控制"/"网盘/云盘"）；非高风险返回 None。"""
     d = (domain or "").lower()
@@ -182,7 +196,7 @@ def risk_class(domain: str):
         return None
     for label, pats in risk_patterns():
         for p in pats:
-            if p and p.lower() in d:
+            if _match_domain(d, p):
                 return label
     return None
 

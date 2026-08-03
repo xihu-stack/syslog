@@ -472,9 +472,11 @@ def system_stats():
         st_rows = s.query(AlertRow.status, _f.count(AlertRow.id)).group_by(AlertRow.status).all()
         alert_status = {r[0]: r[1] for r in st_rows}
 
-        # 豁免(expires_at 按 utcnow 写入,这里同源比较,不能用北京时间的 now)
+        # 豁免(expires_at 按 naive UTC 写入,这里同源比较;用 timezone-aware 再剥离 tz,
+        # 避免 utcnow() 在 Py3.12 的 DeprecationWarning 刷日志)
+        _utc_now = datetime.now(timezone.utc).replace(tzinfo=None)
         ex_count = s.query(ExceptionRow).filter(
-            (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > datetime.utcnow())
+            (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > _utc_now)
         ).count()
 
         # 数据库大小
