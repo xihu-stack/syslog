@@ -393,7 +393,7 @@ function Dashboard({go, goProfile}){
       <div className="flow-tail">画像 <b style={{color:'#4f46e5'}}>{ago(sys.profile_updated_ts)}</b> 更新</div>
     </div>
     <Row gutter={16} style={{marginTop:16}}>
-      {(()=>{const sp=eff.filter(r=>(r.max_span||0)>=30).length;const aw=eff.length?Math.round(eff.reduce((s,r)=>s+(r.work_pct||0),0)/eff.length):0;const tStr=new Date().toLocaleDateString('sv-SE');const alertPpl=new Set((al||[]).filter(a=>(a.window_start||'').slice(0,10)===tStr).map(a=>a.employee)).size;return <>
+      {(()=>{const sp=eff.filter(r=>(r.max_span||0)>=30).length;const aw=eff.length?Math.round(eff.reduce((s,r)=>s+(r.work_pct||0),0)/eff.length):0;const tStr=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});const alertPpl=new Set((al||[]).filter(a=>(a.window_start||'').slice(0,10)===tStr).map(a=>a.employee)).size;return <>
         <Col span={6}><div className="tile alert" onClick={()=>go('alerts',{today:true})}><div className="v num">{alertPpl||0}</div><div className="l">今日告警用户 · {sysAl.today||0}条</div><div className="arr">查看告警 ›</div></div></Col>
         <Col span={6}><div className="tile" onClick={()=>go('efficiency')}><div className="v num">{sp}</div><div className="l">摸鱼人数</div><div className="arr">效率榜 ›</div></div></Col>
         <Col span={6}><div className="tile" onClick={()=>go('efficiency')}><div className="v num">{aw}<span style={{fontSize:16,color:'#94a3b8'}}> %</span></div><div className="l">平均工作占比</div><div className="arr">效率榜 ›</div></div></Col>
@@ -401,7 +401,7 @@ function Dashboard({go, goProfile}){
       </>;})()}
     </Row>
     <div style={{margin:'12px 2px'}}><Legend/></div>
-    {(()=>{const tStr=new Date().toLocaleDateString('sv-SE');const crit=(al||[]).filter(a=>(a.window_start||'').slice(0,10)===tStr&&a.risk_score>=86).length; return crit>0&&<Alert type="error" message={<span>⚠️ 今日严重告警(86+) <b>{crit}</b> 条需立即关注</span>} style={{marginBottom:8}} showIcon/>;})()}
+    {(()=>{const tStr=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});const crit=(al||[]).filter(a=>(a.window_start||'').slice(0,10)===tStr&&a.risk_score>=86).length; return crit>0&&<Alert type="error" message={<span>⚠️ 今日严重告警(86+) <b>{crit}</b> 条需立即关注</span>} style={{marginBottom:8}} showIcon/>;})()}
     {(st.alerts>0&&st.verdicts>0&&(st.alerts/st.verdicts>0.15))&&<Alert type="warning" message="基线建设中（冷启动期）— 告警偏多属正常，随时间推移会趋于稳定" style={{marginBottom:8}} showIcon/>}
     <Card className="card" title="高风险用户 TOP5" size="small" style={{marginTop:16}}><div ref={bar} style={{height:220}}></div></Card>
     <Card className="card" title="风险用户数趋势（按10分钟，风险≥50的人数）" size="small" style={{marginTop:16}}><div ref={trend} style={{height:160}}></div></Card>
@@ -422,17 +422,11 @@ function Dashboard({go, goProfile}){
 }
 
 function Computers({goProfile,filter}){
-  const isToday=filter&&filter.today; const tStr=new Date().toLocaleDateString('sv-SE');
+  const isToday=filter&&filter.today; const tStr=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});
   const [rows,setRows]=useState([]); const [uq,setUq]=useState(''); const [riskFilter,setRiskFilter]=useState('all');
   const [lastUpd,setLastUpd]=useState(null); const [loading,setLoading]=useState(true); const [excs,setExcs]=useState([]);
   const load=async()=>{const [r,ex]=await Promise.all([GETL('/api/computers'),GET('/api/exceptions')]);setRows(r);setExcs(Array.isArray(ex)?ex:((ex&&ex.items)||[]));setLastUpd(new Date());setLoading(false);};
   useEffect(()=>{ load(); const t=setInterval(load,15000); return ()=>clearInterval(t); },[]);
-  const summary={
-    total: rows.length,
-    alert: rows.filter(r=>(r.alert_count||0)>0).length,
-    high: rows.filter(r=>(r.max_risk||0)>=61).length,
-    clean: rows.filter(r=>(r.alert_count||0)===0).length,
-  };
   const exMap={}; excs.forEach(e=>{const k=e.employee; if(k){(exMap[k]=exMap[k]||[]).push(INTENT[e.signal_type]||e.signal_type);}});
   const filtered=rows.filter(r=>{
     if(isToday&&!(r.last_seen||'').slice(0,10)===tStr)return false;
@@ -442,12 +436,19 @@ function Computers({goProfile,filter}){
     if(riskFilter==='clean'&&(r.alert_count>0))return false;
     return true;
   });
+  const summary={
+    total: filtered.length,
+    alert: filtered.filter(r=>(r.alert_count||0)>0).length,
+    high: filtered.filter(r=>(r.max_risk||0)>=61).length,
+    clean: filtered.filter(r=>(r.alert_count||0)===0).length,
+  };
+  const todayEvents=filtered.reduce((s,r)=>s+(r.event_count_today||0),0);
   return (<div>
     <Row gutter={20} style={{marginBottom:16}}>
-      <Col span={6}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title="总用户" value={summary.total} valueStyle={{fontSize:18}}/></Card></Col>
+      <Col span={6}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title={isToday?'今日事件':'总用户'} value={isToday?todayEvents:summary.total} valueStyle={{fontSize:18}}/></Card></Col>
       <Col span={6}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title="有告警" value={summary.alert} valueStyle={{fontSize:18}}/></Card></Col>
       <Col span={6}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title="高危(61+)" value={summary.high} valueStyle={{fontSize:18,color:'#ef4444'}}/></Card></Col>
-      <Col span={6}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title="无告警" value={summary.clean} valueStyle={{fontSize:18}}/></Card></Col>
+      <Col span={6}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title={isToday?'今日活跃':'无告警'} value={isToday?summary.total:summary.clean} valueStyle={{fontSize:18}}/></Card></Col>
     </Row>
     <Card className="card" size="small">
       <Space style={{marginBottom:8}}>
@@ -480,7 +481,7 @@ function Computers({goProfile,filter}){
           {title:'风险',dataIndex:'max_risk',width:90,render:v=><RiskBadge s={v}/>},
           {title:'告警',dataIndex:'alert_count',width:60,
             render:v=>v>0?<Tag color="red" style={{cursor:'pointer'}}>{v}条</Tag>:<span style={{color:'#d9d9d9'}}>—</span>},
-          {title:'事件',dataIndex:'event_count',width:70,render:v=><span className="num" style={{color:'#6b7280'}}>{v}</span>},
+          {title:isToday?'今日事件':'事件',width:80,render:(_,r)=><span className="num" style={{color:'#6b7280'}}>{isToday?(r.event_count_today||0):(r.event_count||0)}</span>},
           {title:'最近活动',dataIndex:'last_seen',width:130,render:fmt},
           {title:'',width:50,render:()=><span style={{color:'#bcc6d6',fontSize:11}}>▸</span>}
         ]}/>
@@ -489,7 +490,7 @@ function Computers({goProfile,filter}){
 }
 
 function Alerts({goProfile,filter}){
-  const isToday=filter&&filter.today; const tStr=new Date().toLocaleDateString('sv-SE');
+  const isToday=filter&&filter.today; const tStr=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});
   const [rows,setRows]=useState([]); const [showAll,setShowAll]=useState(false); const [q,setQ]=useState(''); const [lvl,setLvl]=useState('all');
   const [scenario,setScenario]=useState('all');
   const [lastUpd,setLastUpd]=useState(null); const [loading,setLoading]=useState(true);
@@ -592,7 +593,7 @@ function Alerts({goProfile,filter}){
 }
 
 function Verdicts({goProfile,filter}){
-  const isToday=filter&&filter.today; const tStr=new Date().toLocaleDateString('sv-SE');
+  const isToday=filter&&filter.today; const tStr=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});
   const [rows,setRows]=useState([]); const [q,setQ]=useState(''); const [lvl,setLvl]=useState('all'); const [aisel,setAisel]=useState('all');
   const [lastUpd,setLastUpd]=useState(null); const [loading,setLoading]=useState(true);
   const load=async()=>{const r=await GETL('/api/verdicts?limit=500');setRows(r);setLastUpd(new Date());setLoading(false);};

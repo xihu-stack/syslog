@@ -194,7 +194,12 @@ def computers():
               s.query(VerdictRow.employee_id, func.max(VerdictRow.risk_score)).group_by(VerdictRow.employee_id).all()}
         al = {r[0]: r[1] for r in
               s.query(AlertRow.employee_id, func.count(AlertRow.id)).group_by(AlertRow.employee_id).all()}
-        out = [{"computer": e, "event_count": c, "last_seen": (t.isoformat() if t else None),
+        _today = bj_now().replace(hour=0, minute=0, second=0, microsecond=0)
+        et = {r[0]: r[1] for r in
+              s.query(EventRow.employee_id, func.count(EventRow.id))
+              .filter(EventRow.occurred_at >= _today).group_by(EventRow.employee_id).all()}
+        out = [{"computer": e, "event_count": c, "event_count_today": et.get(e, 0),
+                "last_seen": (t.isoformat() if t else None),
                 "max_risk": vr.get(e), "alert_count": al.get(e, 0)} for e, c, t in ev]
         out.sort(key=lambda x: -(x["max_risk"] or 0))
         return out
