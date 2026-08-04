@@ -429,7 +429,7 @@ function Computers({goProfile,filter}){
   useEffect(()=>{ load(); const t=setInterval(load,15000); return ()=>clearInterval(t); },[]);
   const exMap={}; excs.forEach(e=>{const k=e.employee; if(k){(exMap[k]=exMap[k]||[]).push(INTENT[e.signal_type]||e.signal_type);}});
   const filtered=rows.filter(r=>{
-    if(isToday&&!(r.last_seen||'').slice(0,10)===tStr)return false;
+    if(isToday&&(r.last_seen||'').slice(0,10)!==tStr)return false;
     if(uq&&!(r.computer||'').toLowerCase().includes(uq.toLowerCase()))return false;
     if(riskFilter==='alert'&&!(r.alert_count>0))return false;
     if(riskFilter==='high'&&(r.max_risk||0)<61)return false;
@@ -526,7 +526,7 @@ function Alerts({goProfile,filter}){
       </Space>
       <Table size="small" rowKey="key" pagination={{pageSize:14,showTotal:t=>`共 ${t} 条`}} loading={loading} dataSource={(()=>{
         const filtered=rows.filter(v=>{
-          if(isToday&&!(v.window_start||'').slice(0,10)===tStr)return false;
+          if(isToday&&(v.window_start||'').slice(0,10)!==tStr)return false;
           if(!showAll&&!isToday&&v.status!=='NEW')return false;
           if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;
           if(lvl==='crit'&&v.risk_score<86)return false;
@@ -599,7 +599,7 @@ function Verdicts({goProfile,filter}){
   const load=async()=>{const r=await GETL('/api/verdicts?limit=500');setRows(r);setLastUpd(new Date());setLoading(false);};
   useEffect(()=>{load();const t=setInterval(load,15000);return ()=>clearInterval(t);},[]);
   const filtered=rows.filter(v=>{
-    if(isToday&&!(v.window_start||'').slice(0,10)===tStr)return false;
+    if(isToday&&(v.window_start||'').slice(0,10)!==tStr)return false;
     if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;
     if(lvl==='crit'&&v.risk_score<86)return false;
     if(lvl==='high'&&(v.risk_score<61||v.risk_score>85))return false;
