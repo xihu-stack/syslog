@@ -102,7 +102,7 @@ function Legend(){ return <div className="legend">
   <span><i className="swatch" style={{background:'#ff4d4f'}}/>86-100 严重</span>
 </div>; }
 
-const FROM_TITLE={computers:'用户视图',alerts:'告警管理',efficiency:'效率监控',dashboard:'监控大屏'};
+const FROM_TITLE={computers:'用户视图',alerts:'告警管理',verdicts:'研判记录',efficiency:'效率监控',dashboard:'监控大屏'};
 function ProfilePage({user, goBack, from}){
   const [data,setData]=useState(null);
   const trendRef=useRef(), hoursRef=useRef(), actRef=useRef();
@@ -249,6 +249,7 @@ function ProfilePage({user, goBack, from}){
 
 function App(){
   const [key,setKey]=useState('dashboard'); const [profileUser,setProfileUser]=useState(null); const [profileFrom,setProfileFrom]=useState('alerts');
+  const [filter,setFilter]=useState({}); const navigate=(k,f={})=>{setFilter(f);setKey(k);};
   const [now,setNow]=useState('');
   useEffect(()=>{ const f=()=>setNow(new Date().toLocaleString('zh-CN',{hour12:false})); f(); const t=setInterval(f,1000); return ()=>clearInterval(t); },[]);
   const pollDetect=()=>{
@@ -274,11 +275,12 @@ function App(){
     <Layout style={{minHeight:'100vh'}}>
       <Sider width={200} style={{background:'#fff',borderRight:'1px solid #e8eef7'}}>
         <div className="logo"><span className="ic"><i className="fa-solid fa-chart-line"></i></span>用户行为分析系统</div>
-        <Menu mode="inline" selectedKeys={[key==='profile'?(profileFrom||'alerts'):key]} onClick={e=>setKey(e.key)} style={{borderRight:'none'}}
+        <Menu mode="inline" selectedKeys={[key==='profile'?(profileFrom||'alerts'):key]} onClick={e=>navigate(e.key)} style={{borderRight:'none'}}
           items={[
             {key:'dashboard',label:<span><i className="fa-solid fa-gauge-high" style={{marginRight:8,width:16}}></i>监控大屏</span>},
             {key:'computers',label:<span><i className="fa-solid fa-users" style={{marginRight:8,width:16}}></i>用户视图</span>},
             {key:'alerts',label:<span><i className="fa-solid fa-bell" style={{marginRight:8,width:16}}></i>告警管理</span>},
+            {key:'verdicts',label:<span><i className="fa-solid fa-scale-balanced" style={{marginRight:8,width:16}}></i>研判记录</span>},
             {key:'efficiency',label:<span><i className="fa-solid fa-chart-column" style={{marginRight:8,width:16}}></i>效率监控</span>},
             {key:'ask',label:<span><i className="fa-solid fa-robot" style={{marginRight:8,width:16}}></i>AI 问答</span>},
             {key:'rawlogs',label:<span><i className="fa-solid fa-file-lines" style={{marginRight:8,width:16}}></i>原始日志</span>},
@@ -289,13 +291,13 @@ function App(){
         <Header style={{background:'#fff',borderBottom:'1px solid var(--line)',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 20px',height:56}}>
           <div style={{display:'flex',alignItems:'center',gap:12}}>
             <div className="brand-bar"></div>
-            {key!=='dashboard' && <a onClick={()=>setKey('dashboard')} style={{color:'var(--ink3)',fontSize:14}}>监控大屏</a>}
+            {key!=='dashboard' && <a onClick={()=>navigate('dashboard')} style={{color:'var(--ink3)',fontSize:14}}>监控大屏</a>}
             {key!=='dashboard' && <span style={{color:'#cbd5e1',fontSize:14}}>›</span>}
             {key==='profile' ? (<>
-              <a onClick={()=>{setKey(profileFrom||'alerts');setProfileUser(null);}} style={{color:'var(--ink3)',fontSize:14}}>{FROM_TITLE[profileFrom]||'告警管理'}</a>
+              <a onClick={()=>{navigate(profileFrom||'alerts');setProfileUser(null);}} style={{color:'var(--ink3)',fontSize:14}}>{FROM_TITLE[profileFrom]||'告警管理'}</a>
               <span style={{color:'#cbd5e1',fontSize:14}}>›</span>
               <Typography.Text strong style={{fontSize:18}}>{profileUser}</Typography.Text>
-            </>) : (<Typography.Title level={4} style={{margin:0}}>{({dashboard:'监控大屏',computers:'用户视图',alerts:'告警管理',efficiency:'效率监控',ask:'AI 问答',rawlogs:'原始日志',config:'系统设置'})[key]}</Typography.Title>)}
+            </>) : (<Typography.Title level={4} style={{margin:0}}>{({dashboard:'监控大屏',computers:'用户视图',alerts:'告警管理',verdicts:'研判记录',efficiency:'效率监控',ask:'AI 问答',rawlogs:'原始日志',config:'系统设置'})[key]}</Typography.Title>)}
           </div>
           <Space>
             <Typography.Text style={{color:'var(--ink3)',fontSize:12,marginRight:4,fontVariantNumeric:'tabular-nums'}}>{now}</Typography.Text>
@@ -305,9 +307,10 @@ function App(){
           </Space>
         </Header>
         <Content style={{margin:16}}>
-          {key==='dashboard' && <Dashboard go={setKey} goProfile={(u)=>{setProfileFrom('dashboard');setProfileUser(u);setKey('profile');}}/>}
-          {key==='computers' && <Computers goProfile={(u)=>{setProfileFrom('computers');setProfileUser(u);setKey('profile');}}/>}
-          {key==='alerts' && <Alerts goProfile={(u)=>{setProfileFrom('alerts');setProfileUser(u);setKey('profile');}}/>}
+          {key==='dashboard' && <Dashboard go={navigate} goProfile={(u)=>{setProfileFrom('dashboard');setProfileUser(u);setKey('profile');}}/>}
+          {key==='computers' && <Computers filter={filter} goProfile={(u)=>{setProfileFrom('computers');setProfileUser(u);setKey('profile');}}/>}
+          {key==='alerts' && <Alerts filter={filter} goProfile={(u)=>{setProfileFrom('alerts');setProfileUser(u);setKey('profile');}}/>}
+          {key==='verdicts' && <Verdicts filter={filter} goProfile={(u)=>{setProfileFrom('verdicts');setProfileUser(u);setKey('profile');}}/>}
           {key==='rawlogs' && <RawLogs/>}
           {key==='config' && <Config/>}
           {key==='efficiency' && <Efficiency goProfile={(u)=>{setProfileFrom('efficiency');setProfileUser(u);setKey('profile');}}/>}
@@ -382,23 +385,23 @@ function Dashboard({go, goProfile}){
   const sl=sys.syslog||{};
   return (<div>
     <div className="flowbar">
-      <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('computers')}><div className="fv num">{ev.today||0}</div><div className="fl">今日日志</div></div>
+      <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('computers',{today:true})}><div className="fv num">{ev.today||0}</div><div className="fl">今日日志</div></div>
       <div className="flow-arrow">›</div>
-      <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('alerts')}><div className="fv num">{vd.today||0}</div><div className="fl">过 AI 研判</div></div>
+      <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('verdicts',{today:true})}><div className="fv num">{vd.today||0}</div><div className="fl">过 AI 研判</div></div>
       <div className="flow-arrow">›</div>
-      <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('alerts')}><div className="fv num" style={{color:'#ef4444'}}>{sysAl.today||0}</div><div className="fl">今日告警</div></div>
+      <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('alerts',{today:true})}><div className="fv num" style={{color:'#ef4444'}}>{sysAl.today||0}</div><div className="fl">今日告警</div></div>
       <div className="flow-tail">画像 <b style={{color:'#4f46e5'}}>{ago(sys.profile_updated_ts)}</b> 更新</div>
     </div>
     <Row gutter={16} style={{marginTop:16}}>
-      {(()=>{const sp=eff.filter(r=>(r.max_span||0)>=30).length;const aw=eff.length?Math.round(eff.reduce((s,r)=>s+(r.work_pct||0),0)/eff.length):0;const alertPpl=new Set((sysAl.list||[]).map(a=>a.employee)).size;return <>
-        <Col span={6}><div className="tile alert" onClick={()=>go('alerts')}><div className="v num">{alertPpl||0}</div><div className="l">风险告警 · {sysAl.today||0}条</div><div className="arr">查看告警 ›</div></div></Col>
+      {(()=>{const sp=eff.filter(r=>(r.max_span||0)>=30).length;const aw=eff.length?Math.round(eff.reduce((s,r)=>s+(r.work_pct||0),0)/eff.length):0;const tStr=new Date().toLocaleDateString('sv-SE');const alertPpl=new Set((al||[]).filter(a=>(a.window_start||'').slice(0,10)===tStr).map(a=>a.employee)).size;return <>
+        <Col span={6}><div className="tile alert" onClick={()=>go('alerts',{today:true})}><div className="v num">{alertPpl||0}</div><div className="l">今日告警用户 · {sysAl.today||0}条</div><div className="arr">查看告警 ›</div></div></Col>
         <Col span={6}><div className="tile" onClick={()=>go('efficiency')}><div className="v num">{sp}</div><div className="l">摸鱼人数</div><div className="arr">效率榜 ›</div></div></Col>
         <Col span={6}><div className="tile" onClick={()=>go('efficiency')}><div className="v num">{aw}<span style={{fontSize:16,color:'#94a3b8'}}> %</span></div><div className="l">平均工作占比</div><div className="arr">效率榜 ›</div></div></Col>
-        <Col span={6}><div className="tile" onClick={()=>go('computers')}><div className="v num">{sys.employees||0}</div><div className="l">活跃用户</div><div className="arr">用户视图 ›</div></div></Col>
+        <Col span={6}><div className="tile" onClick={()=>go('computers',{today:true})}><div className="v num">{sys.employees||0}</div><div className="l">今日活跃用户</div><div className="arr">用户视图 ›</div></div></Col>
       </>;})()}
     </Row>
     <div style={{margin:'12px 2px'}}><Legend/></div>
-    {(()=>{const crit=(sysAl.list||[]).filter(a=>a.risk_score>=86).length; return crit>0&&<Alert type="error" message={<span>⚠️ 严重告警 <b>{crit}</b> 人需要立即关注！</span>} style={{marginBottom:8}} showIcon/>;})()}
+    {(()=>{const tStr=new Date().toLocaleDateString('sv-SE');const crit=(al||[]).filter(a=>(a.window_start||'').slice(0,10)===tStr&&a.risk_score>=86).length; return crit>0&&<Alert type="error" message={<span>⚠️ 今日严重告警(86+) <b>{crit}</b> 条需立即关注</span>} style={{marginBottom:8}} showIcon/>;})()}
     {(st.alerts>0&&st.verdicts>0&&(st.alerts/st.verdicts>0.15))&&<Alert type="warning" message="基线建设中（冷启动期）— 告警偏多属正常，随时间推移会趋于稳定" style={{marginBottom:8}} showIcon/>}
     <Card className="card" title="高风险用户 TOP5" size="small" style={{marginTop:16}}><div ref={bar} style={{height:220}}></div></Card>
     <Card className="card" title="风险用户数趋势（按10分钟，风险≥50的人数）" size="small" style={{marginTop:16}}><div ref={trend} style={{height:160}}></div></Card>
@@ -406,7 +409,7 @@ function Dashboard({go, goProfile}){
     {(()=>{
       const ag={};(sysAl.list||[]).forEach(a=>{if(!ag[a.employee])ag[a.employee]={key:a.employee,employee:a.employee,scenarios:[],maxRisk:0,summary:'',status:a.status};const g=ag[a.employee];const sc=INTENT[a.scenario]||a.scenario;if(!g.scenarios.includes(sc))g.scenarios.push(sc);if((a.risk_score||0)>g.maxRisk){g.maxRisk=a.risk_score;g.summary=a.summary;}});
       const ga=Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);
-      return <Card className="card" style={{marginTop:16}} title={'最新告警（'+ga.length+'人）'} size="small" extra={<a onClick={()=>go('alerts')} style={{fontSize:12}}>全部 →</a>}>
+      return <Card className="card" style={{marginTop:16}} title={'高风险告警 TOP5'} size="small" extra={<a onClick={()=>go('alerts')} style={{fontSize:12}}>全部 →</a>}>
         {ga.length? <Table size="small" rowKey="key" pagination={false} dataSource={ga.slice(0,5)} onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
           columns={[{title:'用户',dataIndex:'employee',width:110},
             {title:'风险场景',dataIndex:'scenarios',render:v=><Space wrap size={[4,4]}>{v.map(s=><Tag key={s} style={{fontSize:11}} color={'blue'}>{s}</Tag>)}</Space>},
@@ -418,7 +421,8 @@ function Dashboard({go, goProfile}){
   </div>);
 }
 
-function Computers({goProfile}){
+function Computers({goProfile,filter}){
+  const isToday=filter&&filter.today; const tStr=new Date().toLocaleDateString('sv-SE');
   const [rows,setRows]=useState([]); const [uq,setUq]=useState(''); const [riskFilter,setRiskFilter]=useState('all');
   const [lastUpd,setLastUpd]=useState(null); const [loading,setLoading]=useState(true); const [excs,setExcs]=useState([]);
   const load=async()=>{const [r,ex]=await Promise.all([GETL('/api/computers'),GET('/api/exceptions')]);setRows(r);setExcs(Array.isArray(ex)?ex:((ex&&ex.items)||[]));setLastUpd(new Date());setLoading(false);};
@@ -431,6 +435,7 @@ function Computers({goProfile}){
   };
   const exMap={}; excs.forEach(e=>{const k=e.employee; if(k){(exMap[k]=exMap[k]||[]).push(INTENT[e.signal_type]||e.signal_type);}});
   const filtered=rows.filter(r=>{
+    if(isToday&&!(r.last_seen||'').slice(0,10)===tStr)return false;
     if(uq&&!(r.computer||'').toLowerCase().includes(uq.toLowerCase()))return false;
     if(riskFilter==='alert'&&!(r.alert_count>0))return false;
     if(riskFilter==='high'&&(r.max_risk||0)<61)return false;
@@ -446,6 +451,7 @@ function Computers({goProfile}){
     </Row>
     <Card className="card" size="small">
       <Space style={{marginBottom:8}}>
+        {isToday&&<Tag color="blue">仅今日活跃用户</Tag>}
         <Input.Search placeholder="搜索用户名" allowClear style={{width:180}} onChange={e=>setUq(e.target.value)} />
         <Select defaultValue="all" style={{width:110}} onChange={setRiskFilter}>
           <Select.Option value="all">全部</Select.Option>
@@ -482,7 +488,8 @@ function Computers({goProfile}){
   </div>);
 }
 
-function Alerts({goProfile}){
+function Alerts({goProfile,filter}){
+  const isToday=filter&&filter.today; const tStr=new Date().toLocaleDateString('sv-SE');
   const [rows,setRows]=useState([]); const [showAll,setShowAll]=useState(false); const [q,setQ]=useState(''); const [lvl,setLvl]=useState('all');
   const [scenario,setScenario]=useState('all');
   const [lastUpd,setLastUpd]=useState(null); const [loading,setLoading]=useState(true);
@@ -497,7 +504,7 @@ function Alerts({goProfile}){
   const scenSet=[...new Set(rows.map(r=>r.scenario).filter(Boolean))];
   return (<div>
     <div className="sec-title" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-      <span>告警管理 · 按用户合并 · 点击用户名查看画像 · <span style={{fontSize:11,color:'#9aa3b2'}}>每15秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()}</span></span>
+      <span>告警管理{isToday?' · 仅今日':''} · 按用户合并 · 点击用户名查看画像 · <span style={{fontSize:11,color:'#9aa3b2'}}>每15秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()}</span></span>
       <Space><Legend/>
         <label style={{fontSize:12,color:'#6b7280',cursor:'pointer',userSelect:'none'}}><input type="checkbox" checked={showAll} onChange={e=>setShowAll(e.target.checked)} style={{marginRight:4,cursor:'pointer'}}/>显示已处理</label>
       </Space>
@@ -518,7 +525,8 @@ function Alerts({goProfile}){
       </Space>
       <Table size="small" rowKey="key" pagination={{pageSize:14,showTotal:t=>`共 ${t} 条`}} loading={loading} dataSource={(()=>{
         const filtered=rows.filter(v=>{
-          if(!showAll&&v.status!=='NEW')return false;
+          if(isToday&&!(v.window_start||'').slice(0,10)===tStr)return false;
+          if(!showAll&&!isToday&&v.status!=='NEW')return false;
           if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;
           if(lvl==='crit'&&v.risk_score<86)return false;
           if(lvl==='high'&&(v.risk_score<61||v.risk_score>85))return false;
@@ -580,6 +588,54 @@ function Alerts({goProfile}){
       <Alert type="info" showIcon style={{marginTop:12}}
         message={"将豁免「"+(INTENT[fpModal.intent]||fpModal.intent)+"」场景，其他场景仍正常监控。AI会记住此标签。"} />
     </Modal>
+  </div>);
+}
+
+function Verdicts({goProfile,filter}){
+  const isToday=filter&&filter.today; const tStr=new Date().toLocaleDateString('sv-SE');
+  const [rows,setRows]=useState([]); const [q,setQ]=useState(''); const [lvl,setLvl]=useState('all'); const [aisel,setAisel]=useState('all');
+  const [lastUpd,setLastUpd]=useState(null); const [loading,setLoading]=useState(true);
+  const load=async()=>{const r=await GETL('/api/verdicts?limit=500');setRows(r);setLastUpd(new Date());setLoading(false);};
+  useEffect(()=>{load();const t=setInterval(load,15000);return ()=>clearInterval(t);},[]);
+  const filtered=rows.filter(v=>{
+    if(isToday&&!(v.window_start||'').slice(0,10)===tStr)return false;
+    if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;
+    if(lvl==='crit'&&v.risk_score<86)return false;
+    if(lvl==='high'&&(v.risk_score<61||v.risk_score>85))return false;
+    if(lvl==='mid'&&(v.risk_score<31||v.risk_score>60))return false;
+    if(aisel==='ai'&&!v.ai_participated)return false;
+    if(aisel==='fallback'&&v.ai_participated)return false;
+    return true;
+  });
+  const aiCnt=rows.filter(v=>v.ai_participated).length;
+  return (<div>
+    <div className="sec-title">研判记录 · AI 对每个可疑行为窗口的判定（告警 = 其中风险≥50 的子集）{isToday?' · 仅今日 ':''} · <span style={{fontSize:11,color:'#9aa3b2'}}>每15秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()} · 显示{filtered.length}条（AI {aiCnt} / 兜底 {rows.length-aiCnt}）</span></div>
+    <Card className="card" size="small">
+      <Space style={{marginBottom:8}} wrap>
+        <Input.Search placeholder="搜索用户" allowClear style={{width:180}} onChange={e=>setQ(e.target.value)} />
+        <Select value={lvl} style={{width:120}} onChange={setLvl}>
+          <Select.Option value="all">全部风险</Select.Option>
+          <Select.Option value="crit">严重86+</Select.Option>
+          <Select.Option value="high">高危61-85</Select.Option>
+          <Select.Option value="mid">关注31-60</Select.Option>
+        </Select>
+        <Select value={aisel} style={{width:120}} onChange={setAisel}>
+          <Select.Option value="all">全部来源</Select.Option>
+          <Select.Option value="ai">AI 判定</Select.Option>
+          <Select.Option value="fallback">规则兜底</Select.Option>
+        </Select>
+      </Space>
+      <Table size="small" rowKey="id" pagination={{pageSize:14,showTotal:t=>'共 '+t+' 条'}} loading={loading} dataSource={filtered}
+        onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
+        columns={[
+          {title:'用户',dataIndex:'employee',width:110},
+          {title:'时间',dataIndex:'window_start',width:140,render:v=><span style={{fontSize:11,color:'#6b7280'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
+          {title:'意图',dataIndex:'intent',width:110,render:v=><Tag color="blue">{INTENT[v]||v}</Tag>},
+          {title:'风险',dataIndex:'risk_score',width:90,render:v=><RiskBadge s={v}/>},
+          {title:'来源',dataIndex:'ai_participated',width:80,render:v=><Tag color={v?'green':'default'}>{v?'AI':'兜底'}</Tag>},
+          {title:'说明',dataIndex:'explanation',render:v=><Tooltip title={v}><span style={{display:'inline-block',maxWidth:320,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',verticalAlign:'bottom'}}>{v||'-'}</span></Tooltip>},
+        ]}/>
+    </Card>
   </div>);
 }
 
