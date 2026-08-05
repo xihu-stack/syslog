@@ -634,7 +634,7 @@ def efficiency_summary():
             EventRow.category == "WEB", EventRow.occurred_at >= since).all()
         emp_slack = defaultdict(list)
         for emp_id, occ, cnt, dom in rows:
-            if not occ:
+            if not occ or (emp_id or "").isdigit():  # 跳过无时间 + 访客(纯数字ID)
                 continue
             cat = dicts.slack_category(dom or "")
             if cat and (9 <= occ.hour < 12 or 14 <= occ.hour < 18):
