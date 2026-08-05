@@ -392,10 +392,10 @@ function Dashboard({go, goProfile}){
       <div className="flow-tail">画像 <b style={{color:'#4f46e5'}}>{ago(sys.profile_updated_ts)}</b> 更新</div>
     </div>
     <Row gutter={16} style={{marginTop:16}}>
-      {(()=>{const sp=eff.filter(r=>(r.max_span||0)>=30).length;const aw=eff.length?Math.round(eff.reduce((s,r)=>s+(r.work_pct||0),0)/eff.length):0;const tStr=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});const alertPpl=new Set((al||[]).filter(a=>(a.window_start||'').slice(0,10)===tStr).map(a=>a.employee)).size;return <>
+      {(()=>{const sp=eff.length?eff.filter(r=>(r.max_span||0)>=30).length:'—';const aw=eff.length?Math.round(eff.reduce((s,r)=>s+(r.work_pct||0),0)/eff.length):null;const tStr=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});const alertPpl=new Set((al||[]).filter(a=>(a.window_start||'').slice(0,10)===tStr).map(a=>a.employee)).size;return <>
         <Col span={6}><div className="tile alert" onClick={()=>go('alerts',{today:true})}><div className="v num">{alertPpl||0}</div><div className="l">今日告警用户 · {sysAl.today||0}条</div><div className="arr">查看告警 ›</div></div></Col>
         <Col span={6}><div className="tile" onClick={()=>go('efficiency')}><div className="v num">{sp}</div><div className="l">摸鱼人数</div><div className="arr">效率榜 ›</div></div></Col>
-        <Col span={6}><div className="tile" onClick={()=>go('efficiency')}><div className="v num">{aw}<span style={{fontSize:16,color:'#94a3b8'}}> %</span></div><div className="l">平均工作占比</div><div className="arr">效率榜 ›</div></div></Col>
+        <Col span={6}><div className="tile" onClick={()=>go('efficiency')}><div className="v num">{aw===null?'—':aw}{aw!==null&&<span style={{fontSize:16,color:'#94a3b8'}}> %</span>}</div><div className="l">平均工作占比</div><div className="arr">效率榜 ›</div></div></Col>
         <Col span={6}><div className="tile" onClick={()=>go('computers',{today:true})}><div className="v num">{sys.employees||0}</div><div className="l">今日活跃用户</div><div className="arr">用户视图 ›</div></div></Col>
       </>;})()}
     </Row>
