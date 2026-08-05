@@ -135,7 +135,7 @@ function ProfilePage({user, goBack, from}){
   if(!data) return <Card className="card"><div style={{padding:40,textAlign:'center',color:'#9aa3b2'}}>加载中...</div></Card>;
   const vs=data.verdicts||[];
   const evs=data.events||[];
-  const maxRisk=vs.length?Math.max(...vs.map(v=>v.risk_score||0)):0;
+  const maxRisk=data.max_risk!=null?data.max_risk:(vs.length?Math.max(...vs.map(v=>v.risk_score||0)):0);
   const p=data.profile||{};
   const domains=p.common_domains||[];
   const _cc=data.category_counts||{}; const _sc=data.source_counts||{};
@@ -146,8 +146,8 @@ function ProfilePage({user, goBack, from}){
   const netdiskUsed=(p.channels_used||[]).some(c=>c==='NETWORK');
   return (<div>
     <Row gutter={16}>
-      <Col span={5}><Card className="card"><Statistic title="历史事件" value={p.sample_count||evs.length}/></Card></Col>
-      <Col span={5}><Card className="card"><Statistic title="研判次数" value={vs.length}/></Card></Col>
+      <Col span={5}><Card className="card"><Statistic title="历史事件" value={catTot||p.sample_count||evs.length}/></Card></Col>
+      <Col span={5}><Card className="card"><Statistic title="研判次数" value={data.verdict_count!=null?data.verdict_count:vs.length}/></Card></Col>
       <Col span={5}><Card className="card"><Statistic title="最高风险" value={maxRisk} valueStyle={{color:LVL(maxRisk).c}}/></Card></Col>
       <Col span={5}><Card className="card"><Statistic title="观察天数" value={p.active_days||new Set(evs.map(e=>(e.occurred_at||'').slice(0,10))).size}/></Card></Col>
       <Col span={4}><Card className="card"><Statistic title="常用通道" value={(p.channels_used||[]).map(c=>({USB:'U盘',NETWORK:'网络/共享',LOCAL:'本地'}[c]||c)).join(' / ')||'-'}/></Card></Col>
@@ -523,7 +523,7 @@ function Alerts({goProfile,filter}){
           {scenSet.map(s=><Select.Option key={s} value={s}>{INTENT[s]||s}</Select.Option>)}
         </Select>}
       </Space>
-      <Table size="small" rowKey="key" pagination={{pageSize:14,showTotal:t=>`共 ${t} 条`}} loading={loading} dataSource={(()=>{
+      <Table size="small" rowKey="key" pagination={{pageSize:14,showTotal:t=>`共 ${t} 人（按用户合并）`}} loading={loading} dataSource={(()=>{
         const filtered=rows.filter(v=>{
           if(isToday&&(v.window_start||'').slice(0,10)!==tStr)return false;
           if(!showAll&&!isToday&&v.status!=='NEW')return false;

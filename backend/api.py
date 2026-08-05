@@ -162,10 +162,15 @@ def employee(emp: str):
                       .filter(EventRow.employee_id == emp).group_by(EventRow.category).all()}
         src_counts = {src: n for src, n in s.query(EventRow.source, func.count(EventRow.id))
                       .filter(EventRow.employee_id == emp).group_by(EventRow.source).all()}
+        # 全量研判统计(不受 vs limit 20 影响,供画像研判次数/最高风险)
+        vd_total = s.query(func.count(VerdictRow.id)).filter(VerdictRow.employee_id == emp).scalar() or 0
+        vd_max = s.query(func.max(VerdictRow.risk_score)).filter(VerdictRow.employee_id == emp).scalar()
         return {
             "employee": emp,
             "category_counts": cat_counts,
             "source_counts": src_counts,
+            "verdict_count": vd_total,
+            "max_risk": vd_max,
             "profile": p.payload if p else None,
             "profile_summary": (profiles.summarize_for_llm(p.payload) if p else None) or "样本不足，按通用可疑度判断",
             "events": [_event_dict(e) for e in evs],
