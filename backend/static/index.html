@@ -138,11 +138,10 @@ function ProfilePage({user, goBack, from}){
   const maxRisk=vs.length?Math.max(...vs.map(v=>v.risk_score||0)):0;
   const p=data.profile||{};
   const domains=p.common_domains||[];
-  const sangforCnt=evs.filter(e=>e.source==='sangfor').length;
-  const ipguardCnt=evs.filter(e=>e.source==='ipguard').length;
-  const docCnt=evs.filter(e=>e.category==='DOC').length;
-  const webCnt=evs.filter(e=>e.category==='WEB').length;
-  const searchCnt=evs.filter(e=>e.category==='SEARCH').length;
+  const _cc=data.category_counts||{}; const _sc=data.source_counts||{};
+  const docCnt=_cc.DOC||0; const webCnt=_cc.WEB||0; const searchCnt=_cc.SEARCH||0;
+  const sangforCnt=(_sc.sangfor||0)+(_sc['']||0); const ipguardCnt=_sc.ipguard||0;
+  const catTot=docCnt+webCnt+searchCnt; const srcTot=sangforCnt+ipguardCnt;
   const usbUsed=(p.channels_used||[]).includes('USB');
   const netdiskUsed=(p.channels_used||[]).some(c=>c==='NETWORK');
   return (<div>
@@ -167,7 +166,7 @@ function ProfilePage({user, goBack, from}){
       ]} columns={[
         {title:'类型',dataIndex:'label'},
         {title:'数量',dataIndex:'val',render:(v,r)=><span style={{fontWeight:600,color:r.color}}>{v}</span>},
-        {title:'占比',render:(_,r)=>evs.length?<span style={{color:'#9aa3b2'}}>{Math.round(r.val/evs.length*100)}%</span>:'-'},
+        {title:'占比',render:(_,r)=>catTot?<span style={{color:'#9aa3b2'}}>{Math.round(r.val/catTot*100)}%</span>:'-'},
       ]}/>
       <div style={{marginTop:12}}>
         <Typography.Text type="secondary" style={{fontSize:12}}>操作类型 Top8：</Typography.Text>
@@ -183,7 +182,7 @@ function ProfilePage({user, goBack, from}){
       ]} columns={[
         {title:'来源',dataIndex:'label'},
         {title:'数量',dataIndex:'val',render:(v,r)=><span style={{fontWeight:600,color:r.color}}>{v}</span>},
-        {title:'占比',render:(_,r)=>evs.length?<span style={{color:'#9aa3b2'}}>{Math.round(r.val/evs.length*100)}%</span>:'-'},
+        {title:'占比',render:(_,r)=>srcTot?<span style={{color:'#9aa3b2'}}>{Math.round(r.val/srcTot*100)}%</span>:'-'},
       ]}/>
       <div style={{marginTop:12,padding:8,background:'#f6f8fb',borderRadius:6}}>
         <Typography.Text type="secondary" style={{fontSize:12}}>外发通道：</Typography.Text>
@@ -722,14 +721,16 @@ function Efficiency({goProfile}){
   useEffect(()=>{load();const t=setInterval(load,30000);return ()=>clearInterval(t);},[]);
   const slackTotal=rows.reduce((s,r)=>s+(r.slack||0),0);
   return (<div>
-    <div className="sec-title">效率监控 · 工作时段(9-18点)摸鱼统计 · <span style={{fontSize:11,color:'#94a3b8'}}>每30秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()} · 摸鱼事件共 {slackTotal}</span></div>
-    {(()=>{const sm=rows.filter(r=>(r.max_span||0)>=30).sort((a,b)=>(b.max_span||0)-(a.max_span||0));return sm.length? <Alert type="warning" showIcon style={{marginBottom:12}} message={<span>连续摸鱼≥30分钟 <b style={{color:'#ef4444'}}>{sm.length}</b> 人(同首页KPI)：{sm.map(r=><Tag key={r.employee} color="red" style={{marginLeft:4}}>{r.employee} {r.max_span>=60?Math.floor(r.max_span/60)+'h'+r.max_span%60+'m':r.max_span+'分'}</Tag>)}</span>}/>:<Alert type="success" showIcon style={{marginBottom:12}} message="无人连续摸鱼≥30分钟"/>;})()}
+    <div className="sec-title">效率监控 · 工作时段(9-12,14-18 排除午休)访问构成 · <span style={{fontSize:11,color:'#94a3b8'}}>每30秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()} · 摸鱼访问共 {slackTotal} 次</span></div>
+    {(()=>{const sm=rows.filter(r=>(r.max_span||0)>=30).sort((a,b)=>(b.max_span||0)-(a.max_span||0));return sm.length? <Alert type="warning" showIcon style={{marginBottom:12}} message={<span>最长摸鱼跨度≥30分钟 <b style={{color:'#ef4444'}}>{sm.length}</b> 人(同首页KPI)：{sm.map(r=><Tag key={r.employee} color="red" style={{marginLeft:4}}>{r.employee} {r.max_span>=60?Math.floor(r.max_span/60)+'h'+r.max_span%60+'m':r.max_span+'分'}</Tag>)}</span>}/>:<Alert type="success" showIcon style={{marginBottom:12}} message="无人最长摸鱼跨度≥30分钟"/>;})()}
     <Card className="card" size="small">
       <Table size="small" rowKey="employee" pagination={{pageSize:20,showTotal:t=>`共 ${t} 人`}} loading={loading} dataSource={rows}
         onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
         columns={[
           {title:'员工',dataIndex:'employee',width:130,render:v=><a style={{fontWeight:500}}>{v}</a>},
-          {title:'摸鱼时长',dataIndex:'max_span',width:115,sorter:(a,b)=>(b.max_span||0)-(a.max_span||0),
+          {title:'摸鱼次数',dataIndex:'slack',width:90,sorter:(a,b)=>(b.slack||0)-(a.slack||0),
+            render:v=><span style={{color:v>=50?'#ef4444':v>=20?'#f59e0b':'#94a3b8',fontWeight:v>=20?700:400}}>{v||0}</span>},
+          {title:'最长跨度',dataIndex:'max_span',width:115,sorter:(a,b)=>(b.max_span||0)-(a.max_span||0),
             render:v=>!v?'-':v>=60?<span style={{color:'#ef4444',fontWeight:700}}>{Math.floor(v/60)}小时{v%60}分</span>:<span style={{color:v>=30?'#f59e0b':'#94a3b8',fontWeight:v>=30?700:400}}>{v}分</span>},
           {title:'工作%',dataIndex:'work_pct',width:85,sorter:(a,b)=>(b.work_pct||0)-(a.work_pct||0),
             render:v=><span style={{color:v>=60?'#16a34a':v>=30?'#475569':'#94a3b8',fontWeight:v>=60?700:400}}>{v}%</span>},
@@ -744,7 +745,7 @@ function Efficiency({goProfile}){
         ]}/>
     </Card>
     <Alert type="info" showIcon style={{marginTop:12}}
-      message="摸鱼 = 工作时段(9-18点)访问 视频/社交/购物/资讯/音乐 类网站。占比≥10%标红、≥5%标橙。活跃天数≤1 可能未在岗/未用电脑。已排除淘宝、头条等 SDK 埋点请求。"/>
+      message="统计口径:仅工作时段(9-12、14-18,排除午休)访问。摸鱼次数=该时段娱乐类(视频/社交/购物/资讯/音乐)访问次数;最长跨度=娱乐事件首末间隔(60分钟内连成一段),反映持续范围、非纯观看时长;工作%=工作网站访问占工时总访问。已排除 SDK 埋点。"/>
   </div>);
 }
 

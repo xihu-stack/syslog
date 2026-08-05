@@ -157,8 +157,15 @@ def employee(emp: str):
         sessions.sort(key=lambda x: -x["duration"])
         vs = (s.query(VerdictRow).filter_by(employee_id=emp)
               .order_by(desc(VerdictRow.window_start)).limit(20).all())
+        # 全量分类/来源统计(供画像事件分类/数据来源卡,不用50条样本)
+        cat_counts = {c: n for c, n in s.query(EventRow.category, func.count(EventRow.id))
+                      .filter(EventRow.employee_id == emp).group_by(EventRow.category).all()}
+        src_counts = {src: n for src, n in s.query(EventRow.source, func.count(EventRow.id))
+                      .filter(EventRow.employee_id == emp).group_by(EventRow.source).all()}
         return {
             "employee": emp,
+            "category_counts": cat_counts,
+            "source_counts": src_counts,
             "profile": p.payload if p else None,
             "profile_summary": (profiles.summarize_for_llm(p.payload) if p else None) or "样本不足，按通用可疑度判断",
             "events": [_event_dict(e) for e in evs],
@@ -546,7 +553,7 @@ _eff_cache = {"data": None, "ts": 0}
 
 @app.get("/api/efficiency")
 def efficiency():
-    """工作效率统计: 每员工工作时段(9-18)摸鱼(视频/社交/购物/资讯/音乐)+在岗天数/时段。"""
+    """工作效率统计: 每员工工作时段(9-12,14-18 排除午休)访问构成(摸鱼/工作)+在岗天数/时段。"""
     import time
     if _eff_cache["data"] is not None and time.time() - _eff_cache["ts"] < 60:
         return _eff_cache["data"]
@@ -556,17 +563,20 @@ def efficiency():
         rows = s.query(EventRow).filter(EventRow.category == "WEB").all()
         emp = {}
         for e in rows:
-            r = emp.setdefault(e.employee_id, {"total": 0, "slack": 0, "work": 0, "cats": Counter(),
+            r = emp.setdefault(e.employee_id, {"wh": 0, "slack": 0, "work": 0, "cats": Counter(),
                                                "days": set(), "hours": set(), "stimes": []})
-            r["total"] += 1
             if e.occurred_at:
                 r["days"].add(e.occurred_at.date()); r["hours"].add(e.occurred_at.hour)
             dom = (e.raw or {}).get("domain") or ""
+            cnt = e.count or 1
             cat = dicts.slack_category(dom)
-            if cat and e.occurred_at and (9 <= e.occurred_at.hour < 12 or 14 <= e.occurred_at.hour < 18):  # 工作时间,排除午休12-14
-                r["slack"] += 1; r["cats"][cat] += 1; r["stimes"].append(e.occurred_at)
-            elif not cat and not dicts.risk_class(dom) and dicts.work_category(dom):
-                r["work"] += 1
+            # 只统计工作时段(9-12,14-18,排除午休)的访问构成;非工时事件仅计入在岗天数/时段
+            if e.occurred_at and (9 <= e.occurred_at.hour < 12 or 14 <= e.occurred_at.hour < 18):
+                r["wh"] += cnt
+                if cat:
+                    r["slack"] += cnt; r["cats"][cat] += cnt; r["stimes"].append(e.occurred_at)
+                elif not dicts.risk_class(dom) and dicts.work_category(dom):
+                    r["work"] += cnt
         out = []
         for k, r in emp.items():
             hours = sorted(r["hours"])
@@ -580,12 +590,13 @@ def efficiency():
                     sp_s = sp_e = t
             if sp_e is not None:
                 mx = max(mx, (sp_e - sp_s).total_seconds())
-            out.append({"employee": k, "total": r["total"], "slack": r["slack"],
-                        "pct": round(r["slack"] / r["total"] * 100, 1) if r["total"] else 0,
+            wh = r["wh"]
+            out.append({"employee": k, "total": wh, "slack": r["slack"],
+                        "pct": round(r["slack"] / wh * 100, 1) if wh else 0,
                         "cats": dict(r["cats"]), "active_days": len(r["days"]),
                         "hour_min": hours[0] if hours else None, "hour_max": hours[-1] if hours else None,
                         "max_span": round(mx / 60), "work": r["work"],
-                        "work_pct": round(r["work"] / r["total"] * 100) if r["total"] else 0})
+                        "work_pct": round(r["work"] / wh * 100, 1) if wh else 0})
         out.sort(key=lambda x: -(x.get("max_span") or 0))
         _eff_cache["data"] = out; _eff_cache["ts"] = time.time()
         return out
