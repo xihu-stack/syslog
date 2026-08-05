@@ -312,7 +312,7 @@ function App(){
           {key==='verdicts' && <Verdicts filter={filter} goProfile={(u)=>{setProfileFrom('verdicts');setProfileUser(u);setKey('profile');}}/>}
           {key==='rawlogs' && <RawLogs/>}
           {key==='config' && <Config/>}
-          {key==='efficiency' && <Efficiency filter={filter} goProfile={(u)=>{setProfileFrom('efficiency');setProfileUser(u);setKey('profile');}}/>}
+          {key==='efficiency' && <Efficiency goProfile={(u)=>{setProfileFrom('efficiency');setProfileUser(u);setKey('profile');}}/>}
           {key==='ask' && <Ask/>}
           {key==='profile' && profileUser && <ProfilePage user={profileUser} from={profileFrom} goBack={()=>{setKey(profileFrom||'alerts');setProfileUser(null);}}/>}
         </Content>
@@ -394,7 +394,7 @@ function Dashboard({go, goProfile}){
     <Row gutter={16} style={{marginTop:16}}>
       {(()=>{const sp=eff.length?eff.filter(r=>(r.max_span||0)>=30).length:'—';const aw=eff.length?Math.round(eff.reduce((s,r)=>s+(r.work_pct||0),0)/eff.length):null;const tStr=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});const alertPpl=new Set((al||[]).filter(a=>(a.window_start||'').slice(0,10)===tStr).map(a=>a.employee)).size;return <>
         <Col span={6}><div className="tile alert" onClick={()=>go('alerts',{today:true})}><div className="v num">{sysAl.today||0}</div><div className="l">今日告警 · 涉及 {alertPpl||0} 人</div><div className="arr">查看告警 ›</div></div></Col>
-        <Col span={6}><div className="tile" onClick={()=>go('efficiency',{slackMin:30})}><div className="v num">{sp}</div><div className="l">摸鱼人数</div><div className="arr">效率榜 ›</div></div></Col>
+        <Col span={6}><div className="tile" onClick={()=>go('efficiency')}><div className="v num">{sp}</div><div className="l">摸鱼人数</div><div className="arr">效率榜 ›</div></div></Col>
         <Col span={6}><div className="tile" onClick={()=>go('efficiency')}><div className="v num">{aw===null?'—':aw}{aw!==null&&<span style={{fontSize:16,color:'#94a3b8'}}> %</span>}</div><div className="l">平均工作占比</div><div className="arr">效率榜 ›</div></div></Col>
         <Col span={6}><div className="tile" onClick={()=>go('computers',{today:true})}><div className="v num">{sys.employees||0}</div><div className="l">今日活跃用户</div><div className="arr">用户视图 ›</div></div></Col>
       </>;})()}
@@ -696,39 +696,26 @@ function Monitor(){
   </div>);
 }
 
-function Efficiency({goProfile,filter}){
-  const [rows,setRows]=useState([]); const [loading,setLoading]=useState(true); const [lastUpd,setLastUpd]=useState(null);
-  const load=async()=>{setRows(await GETL('/api/efficiency'));setLastUpd(new Date());setLoading(false);};
-  useEffect(()=>{load();const t=setInterval(load,30000);return ()=>clearInterval(t);},[]);
-  const slackTotal=rows.reduce((s,r)=>s+(r.slack||0),0);
-  const slackMin=(filter&&filter.slackMin)||0; const shown=slackMin?rows.filter(r=>(r.max_span||0)>=slackMin):rows;
+function Efficiency({goProfile}){
+  const [items,setItems]=useState(null); const [loading,setLoading]=useState(false); const [msg,setMsg]=useState('');
+  const gen=async()=>{
+    setLoading(true); setMsg('');
+    const r=await GET('/api/efficiency/summary');
+    setItems((r&&r.items)||[]);
+    if(r&&r.msg) setMsg(r.msg);
+    setLoading(false);
+  };
   return (<div>
-    <div className="sec-title">效率监控 · 工作时段(9-12,14-18 排除午休)访问构成 · <span style={{fontSize:11,color:'#94a3b8'}}>每30秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()} · 摸鱼访问共 {slackTotal} 次</span></div>
-    {(()=>{const sm=rows.filter(r=>(r.max_span||0)>=30).sort((a,b)=>(b.max_span||0)-(a.max_span||0));return sm.length? <Alert type="warning" showIcon style={{marginBottom:12}} message={<span>最长摸鱼跨度≥30分钟 <b style={{color:'#ef4444'}}>{sm.length}</b> 人(同首页KPI)：{sm.map(r=><Tag key={r.employee} color="red" style={{marginLeft:4}}>{r.employee} {r.max_span>=60?Math.floor(r.max_span/60)+'h'+r.max_span%60+'m':r.max_span+'分'}</Tag>)}</span>}/>:<Alert type="success" showIcon style={{marginBottom:12}} message="无人最长摸鱼跨度≥30分钟"/>;})()}
-    {slackMin>0&&<div style={{marginBottom:8}}><Tag color="red">仅显示最长跨度≥{slackMin}分钟 ({shown.length}人 / 共{rows.length}人)</Tag></div>}
-    <Card className="card" size="small">
-      <Table size="small" rowKey="employee" pagination={{pageSize:20,showTotal:t=>`共 ${t} 人`}} loading={loading} dataSource={shown}
-        onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
-        columns={[
-          {title:'员工',dataIndex:'employee',width:130,render:v=><a style={{fontWeight:500}}>{v}</a>},
-          {title:'摸鱼次数',dataIndex:'slack',width:90,sorter:(a,b)=>(b.slack||0)-(a.slack||0),
-            render:v=><span style={{color:v>=50?'#ef4444':v>=20?'#f59e0b':'#94a3b8',fontWeight:v>=20?700:400}}>{v||0}</span>},
-          {title:'最长跨度',dataIndex:'max_span',width:115,sorter:(a,b)=>(b.max_span||0)-(a.max_span||0),
-            render:v=>!v?'-':v>=60?<span style={{color:'#ef4444',fontWeight:700}}>{Math.floor(v/60)}小时{v%60}分</span>:<span style={{color:v>=30?'#f59e0b':'#94a3b8',fontWeight:v>=30?700:400}}>{v}分</span>},
-          {title:'工作%',dataIndex:'work_pct',width:85,sorter:(a,b)=>(b.work_pct||0)-(a.work_pct||0),
-            render:v=><span style={{color:v>=60?'#16a34a':v>=30?'#475569':'#94a3b8',fontWeight:v>=60?700:400}}>{v}%</span>},
-          {title:'视频',width:64,render:(_,r)=><span style={{color:r.cats['视频']?'#4f46e5':'#cbd5e1'}}>{r.cats['视频']||0}</span>},
-          {title:'社交',width:64,render:(_,r)=><span style={{color:r.cats['社交']?'#ec4899':'#cbd5e1'}}>{r.cats['社交']||0}</span>},
-          {title:'购物',width:64,render:(_,r)=><span style={{color:r.cats['购物']?'#f59e0b':'#cbd5e1'}}>{r.cats['购物']||0}</span>},
-          {title:'资讯',width:64,render:(_,r)=><span style={{color:r.cats['资讯']?'#16a34a':'#cbd5e1'}}>{r.cats['资讯']||0}</span>},
-          {title:'音乐',width:64,render:(_,r)=><span style={{color:r.cats['音乐']?'#8b5cf6':'#cbd5e1'}}>{r.cats['音乐']||0}</span>},
-          {title:'活跃天数',dataIndex:'active_days',width:90,sorter:(a,b)=>b.active_days-a.active_days,
-            render:v=><span className="num" style={{color:v<=1?'#ef4444':'#475569',fontWeight:v<=1?700:400}}>{v}天</span>},
-          {title:'在岗时段',width:120,render:(_,r)=><span style={{color:'#475569'}}>{r.hour_min===null||r.hour_min===undefined?'-':r.hour_min+'-'+r.hour_max+'点'}</span>},
-        ]}/>
-    </Card>
-    <Alert type="info" showIcon style={{marginTop:12}}
-      message="统计口径:仅工作时段(9-12、14-18,排除午休)访问。摸鱼次数=该时段娱乐类(视频/社交/购物/资讯/音乐)访问次数;最长跨度=娱乐事件首末间隔(60分钟内连成一段),反映持续范围、非纯观看时长;工作%=工作网站访问占工时总访问。已排除 SDK 埋点。"/>
+    <div className="sec-title">效率监控 · 近7天工作时段摸鱼 · AI 总结谁在什么时候干了什么影响效率 · <span style={{fontSize:11,color:'#94a3b8'}}>结果缓存10分钟</span></div>
+    <div style={{marginBottom:12}}><Button type="primary" loading={loading} onClick={gen}><i className="fa-solid fa-robot" style={{marginRight:6}}></i>{items?'重新生成':'生成 AI 摸鱼总结'}</Button></div>
+    {loading&&<Card className="card"><div style={{padding:40,textAlign:'center',color:'#94a3b8'}}>AI 正在分析近7天摸鱼数据,约10-20秒…</div></Card>}
+    {!loading&&items&&items.length===0&&<Card className="card"><Empty description={msg||'近7天工作时段无明显摸鱼'} style={{padding:40}}/></Card>}
+    {!loading&&items&&items.length>0&&<Row gutter={[16,16]}>
+      {items.map((it,i)=><Col key={i} span={12}><Card className="card" size="small" onClick={()=>goProfile&&goProfile(it.employee)} style={{cursor:'pointer'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}><i className="fa-solid fa-user" style={{color:'#4f46e5'}}></i><b style={{fontSize:15}}>{it.employee}</b></div>
+        <Typography.Text style={{fontSize:13,lineHeight:1.7}}>{it.summary}</Typography.Text>
+      </Card></Col>)}
+    </Row>}
   </div>);
 }
 

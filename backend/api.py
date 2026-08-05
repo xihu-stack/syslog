@@ -555,6 +555,7 @@ def system_stats():
 
 
 _eff_cache = {"data": None, "ts": 0}
+_eff_summary_cache = {"data": None, "ts": 0}
 
 @app.get("/api/efficiency")
 def efficiency():
@@ -612,6 +613,66 @@ def efficiency():
         out.sort(key=lambda x: -(x.get("max_span") or 0))
         _eff_cache["data"] = out; _eff_cache["ts"] = time.time()
         return out
+    finally:
+        s.close()
+
+
+@app.get("/api/efficiency/summary")
+def efficiency_summary():
+    """近7天工作时段摸鱼 → AI 按人总结(谁什么时候干了什么影响效率)。结果缓存10分钟。"""
+    import time as _time, json as _json, re as _re
+    import llm_client
+    if _eff_summary_cache["data"] is not None and _time.time() - _eff_summary_cache["ts"] < 600:
+        return {"items": _eff_summary_cache["data"], "cached": True}
+    from collections import defaultdict, Counter
+    from datetime import timedelta
+    s = Session()
+    try:
+        since = bj_now() - timedelta(days=7)
+        dom_expr = json_field(EventRow.raw, 'domain')
+        rows = s.query(EventRow.employee_id, EventRow.occurred_at, EventRow.count, dom_expr).filter(
+            EventRow.category == "WEB", EventRow.occurred_at >= since).all()
+        emp_slack = defaultdict(list)
+        for emp_id, occ, cnt, dom in rows:
+            if not occ:
+                continue
+            cat = dicts.slack_category(dom or "")
+            if cat and (9 <= occ.hour < 12 or 14 <= occ.hour < 18):
+                emp_slack[emp_id].append((occ, cat, cnt or 1))
+        # 预筛(≥3次)控成本;按天×类别压缩成文本喂 AI
+        lines = []
+        for emp, evs in emp_slack.items():
+            if len(evs) < 3:
+                continue
+            by_day = defaultdict(Counter)
+            for occ, cat, cnt in evs:
+                by_day[occ.strftime("%m-%d")][cat] += cnt
+            parts = ["%s %s" % (d, "、".join("%s%d次" % (c, n) for c, n in cats.most_common()))
+                     for d, cats in sorted(by_day.items())]
+            lines.append("%s: %s" % (emp, "; ".join(parts)))
+        if not lines:
+            return {"items": [], "msg": "近7天工作时段无明显摸鱼行为"}
+        ctx = "\n".join(lines[:60])
+        prompt = ("你是企业员工效率分析助手。基于下面员工近7天【工作时段(9-12,14-18)】的摸鱼(娱乐访问)数据,"
+                  "挑出真正影响工作效率的行为,按人用一句话总结:谁、什么时段、干了什么(网站类别)、大概多久或几次。"
+                  "只挑值得说的(重度/反复),忽略零星1-2次。不编造数据外的内容。"
+                  "只输出 JSON 数组 [{\"employee\",\"summary\"}],summary 是一句中文。\n\n数据:\n" + ctx)
+        try:
+            raw = llm_client.chat([{"role": "system", "content": prompt}, {"role": "user", "content": "请输出 JSON。"}],
+                                  max_tokens=2000, timeout=120)
+        except Exception as e:
+            return {"items": [], "msg": "AI 总结失败: %s" % e}
+        m = _re.search(r"\[.*\]", raw, _re.S)
+        items = []
+        if m:
+            try:
+                items = _json.loads(m.group(0))
+            except Exception:
+                items = []
+        items = [{"employee": str(it.get("employee", "")).strip(), "summary": str(it.get("summary", "")).strip()}
+                 for it in items if it.get("employee") and it.get("summary")]
+        _eff_summary_cache["data"] = items; _eff_summary_cache["ts"] = _time.time()
+        return {"items": items}
     finally:
         s.close()
 
