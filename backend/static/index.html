@@ -312,7 +312,7 @@ function App(){
           {key==='verdicts' && <Verdicts filter={filter} goProfile={(u)=>{setProfileFrom('verdicts');setProfileUser(u);setKey('profile');}}/>}
           {key==='rawlogs' && <RawLogs/>}
           {key==='config' && <Config/>}
-          {key==='efficiency' && <Efficiency goProfile={(u)=>{setProfileFrom('efficiency');setProfileUser(u);setKey('profile');}}/>}
+          {key==='efficiency' && <Efficiency filter={filter} goProfile={(u)=>{setProfileFrom('efficiency');setProfileUser(u);setKey('profile');}}/>}
           {key==='ask' && <Ask/>}
           {key==='profile' && profileUser && <ProfilePage user={profileUser} from={profileFrom} goBack={()=>{setKey(profileFrom||'alerts');setProfileUser(null);}}/>}
         </Content>
@@ -394,7 +394,7 @@ function Dashboard({go, goProfile}){
     <Row gutter={16} style={{marginTop:16}}>
       {(()=>{const sp=eff.length?eff.filter(r=>(r.max_span||0)>=30).length:'—';const aw=eff.length?Math.round(eff.reduce((s,r)=>s+(r.work_pct||0),0)/eff.length):null;const tStr=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});const alertPpl=new Set((al||[]).filter(a=>(a.window_start||'').slice(0,10)===tStr).map(a=>a.employee)).size;return <>
         <Col span={6}><div className="tile alert" onClick={()=>go('alerts',{today:true})}><div className="v num">{sysAl.today||0}</div><div className="l">今日告警 · 涉及 {alertPpl||0} 人</div><div className="arr">查看告警 ›</div></div></Col>
-        <Col span={6}><div className="tile" onClick={()=>go('efficiency')}><div className="v num">{sp}</div><div className="l">摸鱼人数</div><div className="arr">效率榜 ›</div></div></Col>
+        <Col span={6}><div className="tile" onClick={()=>go('efficiency',{slackMin:30})}><div className="v num">{sp}</div><div className="l">摸鱼人数</div><div className="arr">效率榜 ›</div></div></Col>
         <Col span={6}><div className="tile" onClick={()=>go('efficiency')}><div className="v num">{aw===null?'—':aw}{aw!==null&&<span style={{fontSize:16,color:'#94a3b8'}}> %</span>}</div><div className="l">平均工作占比</div><div className="arr">效率榜 ›</div></div></Col>
         <Col span={6}><div className="tile" onClick={()=>go('computers',{today:true})}><div className="v num">{sys.employees||0}</div><div className="l">今日活跃用户</div><div className="arr">用户视图 ›</div></div></Col>
       </>;})()}
@@ -502,6 +502,8 @@ function Alerts({goProfile,filter}){
     POST('/api/verdicts/'+fpModal.vid+'/false_positive?reason='+encodeURIComponent(fpModal.reason)+'&signal_type='+fpModal.intent+'&expires_days='+(fpModal.reason==='临时项目'?'30':'0')).then(()=>{ message.success('已标记误报，后续同类不再告警'); setFpModal({...fpModal,open:false}); load(); });
   };
   const scenSet=[...new Set(rows.map(r=>r.scenario).filter(Boolean))];
+  const agData=(()=>{const filtered=rows.filter(v=>{if(isToday&&(v.window_start||'').slice(0,10)!==tStr)return false;if(!showAll&&!isToday&&v.status!=='NEW')return false;if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;if(lvl==='crit'&&v.risk_score<86)return false;if(lvl==='high'&&(v.risk_score<61||v.risk_score>85))return false;if(lvl==='mid'&&(v.risk_score<31||v.risk_score>60))return false;if(scenario!=='all'&&v.scenario!==scenario)return false;return true;});const ag={};filtered.forEach(v=>{if(!ag[v.employee])ag[v.employee]={key:v.employee,employee:v.employee,scenarios:[],maxRisk:0,count:0,latest:v.window_start,summary:'',verdict_id:v.verdict_id,intent:v.scenario};const g=ag[v.employee];const sc=INTENT[v.scenario]||v.scenario;if(!g.scenarios.find(s=>s.label===sc))g.scenarios.push({label:sc,risk:v.risk_score});if((v.risk_score||0)>g.maxRisk){g.maxRisk=v.risk_score;g.summary=v.summary;g.verdict_id=v.verdict_id;g.intent=v.scenario;}g.count++;if(v.window_start>g.latest)g.latest=v.window_start;});return Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);})();
+  const alertN=agData.reduce((s,g)=>s+(g.count||0),0);
   return (<div>
     <div className="sec-title" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
       <span>告警管理{isToday?' · 仅今日':''} · 按用户合并 · 点击用户名查看画像 · <span style={{fontSize:11,color:'#9aa3b2'}}>每15秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()}</span></span>
@@ -523,28 +525,7 @@ function Alerts({goProfile,filter}){
           {scenSet.map(s=><Select.Option key={s} value={s}>{INTENT[s]||s}</Select.Option>)}
         </Select>}
       </Space>
-      <Table size="small" rowKey="key" pagination={{pageSize:14,showTotal:t=>`共 ${t} 人（按用户合并）`}} loading={loading} dataSource={(()=>{
-        const filtered=rows.filter(v=>{
-          if(isToday&&(v.window_start||'').slice(0,10)!==tStr)return false;
-          if(!showAll&&!isToday&&v.status!=='NEW')return false;
-          if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;
-          if(lvl==='crit'&&v.risk_score<86)return false;
-          if(lvl==='high'&&(v.risk_score<61||v.risk_score>85))return false;
-          if(lvl==='mid'&&(v.risk_score<31||v.risk_score>60))return false;
-          if(scenario!=='all'&&v.scenario!==scenario)return false;
-          return true;
-        });
-        const ag={};
-        filtered.forEach(v=>{
-          if(!ag[v.employee])ag[v.employee]={key:v.employee,employee:v.employee,scenarios:[],maxRisk:0,count:0,latest:v.window_start,summary:'',verdict_id:v.verdict_id,intent:v.scenario};
-          const g=ag[v.employee];
-          const sc=INTENT[v.scenario]||v.scenario;
-          if(!g.scenarios.find(s=>s.label===sc))g.scenarios.push({label:sc,risk:v.risk_score});
-          if((v.risk_score||0)>g.maxRisk){g.maxRisk=v.risk_score;g.summary=v.summary;g.verdict_id=v.verdict_id;g.intent=v.scenario;}
-          g.count++; if(v.window_start>g.latest)g.latest=v.window_start;
-        });
-        return Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);
-      })()}
+      <Table size="small" rowKey="key" pagination={{pageSize:14,showTotal:t=>`共 ${alertN} 条 / ${t} 人（按用户合并）`}} loading={loading} dataSource={agData}
         columns={[
           {title:'用户',dataIndex:'employee',width:100,render:v=><a onClick={(e)=>{e.stopPropagation();goProfile(v);}} style={{cursor:'pointer'}}>{v}</a>},
           {title:'风险场景',dataIndex:'scenarios',render:v=><Space wrap size={[4,4]}>{v.map(s=><Tag key={s.label} style={{fontSize:11}} color={s.risk>=86?'red':s.risk>=61?'orange':s.risk>=31?'gold':'blue'}>{s.label} {s.risk}</Tag>)}</Space>},
@@ -715,16 +696,18 @@ function Monitor(){
   </div>);
 }
 
-function Efficiency({goProfile}){
+function Efficiency({goProfile,filter}){
   const [rows,setRows]=useState([]); const [loading,setLoading]=useState(true); const [lastUpd,setLastUpd]=useState(null);
   const load=async()=>{setRows(await GETL('/api/efficiency'));setLastUpd(new Date());setLoading(false);};
   useEffect(()=>{load();const t=setInterval(load,30000);return ()=>clearInterval(t);},[]);
   const slackTotal=rows.reduce((s,r)=>s+(r.slack||0),0);
+  const slackMin=(filter&&filter.slackMin)||0; const shown=slackMin?rows.filter(r=>(r.max_span||0)>=slackMin):rows;
   return (<div>
     <div className="sec-title">效率监控 · 工作时段(9-12,14-18 排除午休)访问构成 · <span style={{fontSize:11,color:'#94a3b8'}}>每30秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()} · 摸鱼访问共 {slackTotal} 次</span></div>
     {(()=>{const sm=rows.filter(r=>(r.max_span||0)>=30).sort((a,b)=>(b.max_span||0)-(a.max_span||0));return sm.length? <Alert type="warning" showIcon style={{marginBottom:12}} message={<span>最长摸鱼跨度≥30分钟 <b style={{color:'#ef4444'}}>{sm.length}</b> 人(同首页KPI)：{sm.map(r=><Tag key={r.employee} color="red" style={{marginLeft:4}}>{r.employee} {r.max_span>=60?Math.floor(r.max_span/60)+'h'+r.max_span%60+'m':r.max_span+'分'}</Tag>)}</span>}/>:<Alert type="success" showIcon style={{marginBottom:12}} message="无人最长摸鱼跨度≥30分钟"/>;})()}
+    {slackMin>0&&<div style={{marginBottom:8}}><Tag color="red">仅显示最长跨度≥{slackMin}分钟 ({shown.length}人 / 共{rows.length}人)</Tag></div>}
     <Card className="card" size="small">
-      <Table size="small" rowKey="employee" pagination={{pageSize:20,showTotal:t=>`共 ${t} 人`}} loading={loading} dataSource={rows}
+      <Table size="small" rowKey="employee" pagination={{pageSize:20,showTotal:t=>`共 ${t} 人`}} loading={loading} dataSource={shown}
         onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
         columns={[
           {title:'员工',dataIndex:'employee',width:130,render:v=><a style={{fontWeight:500}}>{v}</a>},
