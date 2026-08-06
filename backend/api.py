@@ -480,10 +480,10 @@ def system_stats():
         vd_fallback = s.query(VerdictRow).filter(VerdictRow.ai_participated == 0).count()
 
         # 告警（今日/昨日/总量）
-        al_today = s.query(AlertRow).filter(AlertRow.created_at >= today_start).count()
+        al_today = s.query(AlertRow).filter(AlertRow.window_start >= today_start).count()
         al_yesterday = s.query(AlertRow).filter(
-            AlertRow.created_at >= yesterday_start,
-            AlertRow.created_at < today_start
+            AlertRow.window_start >= yesterday_start,
+            AlertRow.window_start < today_start
         ).count()
         al_total = s.query(AlertRow).count()
         st_rows = s.query(AlertRow.status, _f.count(AlertRow.id)).group_by(AlertRow.status).all()
@@ -513,9 +513,9 @@ def system_stats():
         for _i in range(6, -1, -1):
             _dk = (bj_now() - timedelta(days=_i)).date().isoformat()
             _day[_dk] = 0
-        for _r in s.query(AlertRow).filter(AlertRow.created_at >= bj_now() - timedelta(days=7)).all():
-            if _r.created_at:
-                _k = _r.created_at.date().isoformat()
+        for _r in s.query(AlertRow).filter(AlertRow.window_start >= bj_now() - timedelta(days=7)).all():
+            if _r.window_start:
+                _k = _r.window_start.date().isoformat()
                 if _k in _day:
                     _day[_k] += 1
         alerts_by_day = list(_day.items())
@@ -799,7 +799,11 @@ def _ask_query(action, employee, category=""):
             rows = s.query(AlertRow).order_by(desc(AlertRow.risk_score), desc(AlertRow.created_at)).limit(10).all()
             if not rows:
                 return "当前无告警。"
-            return "告警 top10:\n" + "\n".join(f"{a.employee_id} | {a.scenario} | R{a.risk_score} | {a.summary}" for a in rows)
+            _today = bj_now().replace(hour=0, minute=0, second=0, microsecond=0)
+            _td = s.query(AlertRow).filter(AlertRow.window_start >= _today).order_by(desc(AlertRow.risk_score)).limit(15).all()
+            lines = ["告警 top10(全时段,按风险):"] + [f"  {a.employee_id} | {a.scenario} | R{a.risk_score}" for a in rows]
+            lines += ["", f"今日告警 {len(_td)} 条(按行为时间):"] + [f"  {a.employee_id} | {a.scenario} | R{a.risk_score} | {a.summary}" for a in _td] if _td else ["", "今日告警: 0 条"]
+            return "\n".join(lines)
         if action == "slack":
             et = Counter(); es = Counter()
             for e in s.query(EventRow).filter(EventRow.category == "WEB").yield_per(2000):

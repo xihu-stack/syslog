@@ -606,7 +606,7 @@ function Verdicts({goProfile,filter}){
           <Select.Option value="fallback">规则兜底</Select.Option>
         </Select>
       </Space>
-      <Table size="small" rowKey="id" pagination={{pageSize:14,showTotal:t=>'共 '+t+' 条'}} loading={loading} dataSource={filtered}
+      <Table size="small" rowKey="id" pagination={{pageSize:14,showTotal:t=>`共 ${t} 条${t>=500?' (仅显示最近500条)':''}`}} loading={loading} dataSource={filtered}
         onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
         columns={[
           {title:'用户',dataIndex:'employee',width:110},
