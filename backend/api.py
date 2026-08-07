@@ -97,12 +97,29 @@ def list_verdicts(employee: str | None = None, limit: int = 100):
 
 
 @app.get("/api/alerts")
-def list_alerts(severity: str | None = None, limit: int = 100):
+def list_alerts(severity: str | None = None, limit: int = 200, when: str | None = None, status: str | None = None):
+    """告警列表。when(today/yesterday/week) 与 status(NEW/handled) 在 SQL 层过滤，
+    避免按 risk 排序 + limit 时把今日/未处理告警截断（大屏人数与条数曾因此不一致）。"""
+    from datetime import timedelta
     s = Session()
     try:
         q = s.query(AlertRow).order_by(desc(AlertRow.risk_score), desc(AlertRow.created_at))
         if severity:
             q = q.filter(AlertRow.severity == severity)
+        if status == "NEW":
+            q = q.filter(AlertRow.status == "NEW")
+        elif status == "handled":          # CONFIRMED / FP / CLOSED 等一切非 NEW
+            q = q.filter(AlertRow.status != "NEW")
+        if when in ("today", "yesterday", "week"):
+            _n = bj_now()
+            _today = _n - timedelta(hours=_n.hour, minutes=_n.minute, seconds=_n.second, microseconds=_n.microsecond)
+            if when == "today":
+                q = q.filter(AlertRow.window_start >= _today)
+            elif when == "yesterday":
+                q = q.filter(AlertRow.window_start >= _today - timedelta(days=1),
+                             AlertRow.window_start < _today)
+            else:                           # week 近7天
+                q = q.filter(AlertRow.window_start >= _today - timedelta(days=7))
         return [{
             "id": r.id, "employee": r.employee_id, "scenario": r.scenario,
             "severity": r.severity, "risk_score": r.risk_score, "summary": r.summary,
@@ -488,6 +505,10 @@ def system_stats():
         al_total = s.query(AlertRow).count()
         st_rows = s.query(AlertRow.status, _f.count(AlertRow.id)).group_by(AlertRow.status).all()
         alert_status = {r[0]: r[1] for r in st_rows}
+        # 今日告警涉及人数（distinct employee，window_start 今日）—— 与条数同源，
+        # 供大屏"涉及 N 人"。不再由前端从有限(risk 排序 limit)列表推算，避免被截断。
+        al_today_people = s.query(_f.count(_f.distinct(AlertRow.employee_id))).filter(
+            AlertRow.window_start >= today_start).scalar() or 0
 
         # 豁免(expires_at 按 naive UTC 写入,这里同源比较;用 timezone-aware 再剥离 tz,
         # 避免 utcnow() 在 Py3.12 的 DeprecationWarning 刷日志)
@@ -536,7 +557,8 @@ def system_stats():
                 "today": vd_today, "yesterday": vd_yesterday, "total": vd_total, "ai": vd_ai, "fallback": vd_fallback,
             },
             "alerts": {
-                "today": al_today, "yesterday": al_yesterday, "total": al_total, "status": alert_status,
+                "today": al_today, "yesterday": al_yesterday, "total": al_total,
+                "today_people": al_today_people, "status": alert_status,
                 "list": [{
                     "employee": r.employee_id, "scenario": r.scenario,
                     "risk_score": r.risk_score, "status": r.status, "summary": r.summary,
