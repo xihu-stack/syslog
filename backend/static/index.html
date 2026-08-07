@@ -418,7 +418,7 @@ function Dashboard({go, goProfile}){
       </>;})()}
     </Row>
     <div style={{margin:'12px 2px'}}><Legend/></div>
-    {(()=>{const tStr=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});const crit=(al||[]).filter(a=>(a.window_start||'').slice(0,10)===tStr&&a.risk_score>=86).length; return crit>0&&<Alert type="error" message={<span>⚠️ 今日严重告警(86+) <b>{crit}</b> 条需立即关注</span>} style={{marginBottom:8}} showIcon/>;})()}
+    {(sysAl.today_critical>0)&&<Alert type="error" message={<span>⚠️ 今日严重告警(86+) <b>{sysAl.today_critical}</b> 条需立即关注</span>} style={{marginBottom:8}} showIcon/>}
     {(st.alerts>0&&st.verdicts>0&&(st.alerts/st.verdicts>0.15))&&<Alert type="warning" message="基线建设中（冷启动期）— 告警偏多属正常，随时间推移会趋于稳定" style={{marginBottom:8}} showIcon/>}
     <Card className="card" title="高风险用户 TOP5" size="small" style={{marginTop:16}}><div ref={bar} style={{height:220}}></div></Card>
     <Card className="card" title="风险用户数趋势（按10分钟，风险≥50的人数）" size="small" style={{marginTop:16}}><div ref={trend} style={{height:160}}></div></Card>

@@ -510,6 +510,10 @@ def system_stats():
         # 供大屏"涉及 N 人"。不再由前端从有限(risk 排序 limit)列表推算，避免被截断。
         al_today_people = s.query(_f.count(_f.distinct(AlertRow.employee_id))).filter(
             AlertRow.window_start >= today_start).scalar() or 0
+        # 今日严重告警(86+)条数——供大屏"今日严重告警"N 值。SQL 层计数，避免前端从
+        # risk 排序 limit 的样本推算、超过样本量时漏算。
+        al_today_critical = s.query(AlertRow).filter(
+            AlertRow.window_start >= today_start, AlertRow.risk_score >= 86).count()
 
         # 豁免(expires_at 按 naive UTC 写入,这里同源比较;用 timezone-aware 再剥离 tz,
         # 避免 utcnow() 在 Py3.12 的 DeprecationWarning 刷日志)
@@ -535,7 +539,9 @@ def system_stats():
         for _i in range(6, -1, -1):
             _dk = (bj_now() - timedelta(days=_i)).date().isoformat()
             _day[_dk] = 0
-        for _r in s.query(AlertRow).filter(AlertRow.window_start >= bj_now() - timedelta(days=7)).all():
+        # 过滤下界与上方 _day 的 key 对齐：key 是"今天自然日往前 6 天"，
+        # 下界也用 today_start-6d（最老一天 00:00），否则最老一柱只有[此刻,23:59]的数据，系统性偏低。
+        for _r in s.query(AlertRow).filter(AlertRow.window_start >= today_start - timedelta(days=6)).all():
             if _r.window_start:
                 _k = _r.window_start.date().isoformat()
                 if _k in _day:
@@ -559,7 +565,7 @@ def system_stats():
             },
             "alerts": {
                 "today": al_today, "yesterday": al_yesterday, "total": al_total,
-                "today_people": al_today_people, "status": alert_status,
+                "today_people": al_today_people, "today_critical": al_today_critical, "status": alert_status,
                 "list": [{
                     "employee": r.employee_id, "scenario": r.scenario,
                     "risk_score": r.risk_score, "status": r.status, "summary": r.summary,
@@ -717,7 +723,9 @@ def category_stats():
             if until:
                 q = q.filter(EventRow.occurred_at < until)
             rows = q.group_by(app).all()
-            return {r[0] or "未识别": r[1] for r in rows if r[0]}
+            # 原写法 `if r[0]` 把 app 为空的事件整组丢弃，使 "未识别" 分支永远走不到——
+            # 意图(给空 app 归"未识别")与实现矛盾。去掉过滤，让空 app 正确归入"未识别"。
+            return {(r[0] or "未识别"): r[1] for r in rows}
 
         today = cat_count(today_start)
         yesterday = cat_count(yesterday_start, today_start)
@@ -800,32 +808,36 @@ def _ask_query(action, employee, category=""):
     try:
         if action == "employee_risk" and employee:
             p = s.query(ProfileRow).filter_by(employee_id=employee).first()
+            # 扫该员工全部事件统计风险行为真实条数：原 limit(500)+break15 会把"风险行为 N 条"
+            # 算成 ≤15，喂给 AI 的总数是错的。这是按需问答非轮询，全量扫描可接受；
+            # risk_class / WriteActions 是 Python 判定，无法下推 SQL。
             risk_evs = []
             for e in (s.query(EventRow).filter_by(employee_id=employee)
-                      .order_by(desc(EventRow.occurred_at)).limit(500).all()):
+                      .order_by(desc(EventRow.occurred_at)).all()):
                 dom = (e.raw or {}).get("domain") or ""
                 if (e.category == "WEB" and dicts.risk_class(dom)) or \
                    (e.category == "DOC" and e.action in detector.WRITE_ACTIONS):
                     risk_evs.append(e)
-                if len(risk_evs) >= 15:
-                    break
+            vs_total = s.query(VerdictRow).filter_by(employee_id=employee).count()
             vs = s.query(VerdictRow).filter_by(employee_id=employee).order_by(desc(VerdictRow.window_start)).limit(10).all()
             lines = [f"员工 {employee}:",
                      f"画像: {profiles.summarize_for_llm(p.payload) if p else '无画像'}",
-                     f"风险行为 {len(risk_evs)} 条:"]
+                     f"风险行为 {len(risk_evs)} 条(最近 {min(len(risk_evs), 10)} 条):"]
             for e in risk_evs[:10]:
                 dom = (e.raw or {}).get("domain") or e.target_value
                 lines.append(f"  {e.occurred_at} | {dicts.risk_class(dom) or e.action} | {dom}")
-            lines.append(f"研判 {len(vs)} 条: " + "; ".join(f"{v.intent} R{v.risk_score}" for v in vs[:8]))
+            lines.append(f"研判 {vs_total} 条(最近 {min(vs_total, 8)} 条): " + "; ".join(f"{v.intent} R{v.risk_score}" for v in vs[:8]))
             return "\n".join(lines)
         if action == "alerts":
             rows = s.query(AlertRow).order_by(desc(AlertRow.risk_score), desc(AlertRow.created_at)).limit(10).all()
             if not rows:
                 return "当前无告警。"
             _today = bj_now().replace(hour=0, minute=0, second=0, microsecond=0)
+            # 条数单独 count（原用 len(limit15 列表) 当总数，>15 条时喂给 AI 的数是错的）
+            _td_count = s.query(AlertRow).filter(AlertRow.window_start >= _today).count()
             _td = s.query(AlertRow).filter(AlertRow.window_start >= _today).order_by(desc(AlertRow.risk_score)).limit(15).all()
             lines = ["告警 top10(全时段,按风险):"] + [f"  {a.employee_id} | {a.scenario} | R{a.risk_score}" for a in rows]
-            lines += ["", f"今日告警 {len(_td)} 条(按行为时间):"] + [f"  {a.employee_id} | {a.scenario} | R{a.risk_score} | {a.summary}" for a in _td] if _td else ["", "今日告警: 0 条"]
+            lines += ["", f"今日告警 {_td_count} 条(按行为时间):"] + [f"  {a.employee_id} | {a.scenario} | R{a.risk_score} | {a.summary}" for a in _td] if _td else ["", f"今日告警: {_td_count} 条"]
             return "\n".join(lines)
         if action == "slack":
             et = Counter(); es = Counter()
