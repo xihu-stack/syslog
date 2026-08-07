@@ -486,11 +486,12 @@ def system_stats():
         ev_week = sum(src_week.values())
         ev_total = s.query(EventRow).count()
 
-        # 研判量（今日/昨日/总量）
-        vd_today = s.query(VerdictRow).filter(VerdictRow.created_at >= today_start).count()
+        # 研判量（今日/昨日/总量）—— "今日"按 window_start（行为时间）计，
+        # 与告警同源、与研判页 isToday 过滤一致，避免 created_at（判定写入时间）跨天漂移。
+        vd_today = s.query(VerdictRow).filter(VerdictRow.window_start >= today_start).count()
         vd_yesterday = s.query(VerdictRow).filter(
-            VerdictRow.created_at >= yesterday_start,
-            VerdictRow.created_at < today_start
+            VerdictRow.window_start >= yesterday_start,
+            VerdictRow.window_start < today_start
         ).count()
         vd_total = s.query(VerdictRow).count()
         vd_ai = s.query(VerdictRow).filter(VerdictRow.ai_participated == 1).count()
