@@ -44,15 +44,19 @@
   .logo::after{content:"";position:absolute;left:16px;right:16px;bottom:0;height:1px;background:linear-gradient(90deg,transparent,var(--line),transparent);}
   .logo .ic{font-size:22px;line-height:1;}
   /* ===== KPI tile ===== */
-  .tile{position:relative;background:var(--surface);border-radius:var(--r);padding:22px 24px;cursor:pointer;transition:all .25s cubic-bezier(.4,0,.2,1);overflow:hidden;box-shadow:var(--sh-sm);}
+  .tile{position:relative;background:var(--surface);border-radius:var(--r);padding:20px 22px;cursor:pointer;transition:all .25s cubic-bezier(.4,0,.2,1);overflow:hidden;box-shadow:var(--sh-sm);}
   .tile:hover{box-shadow:var(--sh-md);transform:translateY(-2px);}
   .tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--brand);border-radius:0 2px 2px 0;opacity:0;transition:opacity .25s;}
   .tile:hover::before{opacity:1;}
+  .tile .ic{position:absolute;right:18px;top:18px;width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:15px;background:var(--brand-soft);color:var(--brand);}
   .tile .v{font-size:var(--fs-xl);font-weight:700;color:var(--ink);letter-spacing:-.6px;line-height:1;}
   .tile.alert .v{color:var(--danger);}
   .tile.alert::before{background:var(--danger);opacity:1;}
+  .tile.alert .ic{background:var(--danger-soft);color:var(--danger);}
   .tile .l{color:var(--ink2);font-size:var(--fs-sm);margin-top:10px;letter-spacing:.2px;font-weight:500;}
-  .tile .arr{position:absolute;right:16px;bottom:14px;color:var(--ink3);font-size:var(--fs-xs);opacity:.7;}
+  .tile .sub{color:var(--ink3);font-size:var(--fs-xs);margin-top:3px;font-weight:400;}
+  .tile .arr{position:absolute;right:16px;bottom:14px;color:var(--ink3);font-size:var(--fs-xs);opacity:0;transition:opacity .2s;}
+  .tile:hover .arr{opacity:.7;}
   /* ===== 漏斗卡(用户视图) ===== */
   .uc-card{background:var(--surface);border-top:3px solid var(--ink4);border-radius:var(--r);padding:18px 20px;cursor:pointer;transition:all .25s cubic-bezier(.4,0,.2,1);box-shadow:var(--sh-sm);position:relative;}
   .uc-card:hover{box-shadow:var(--sh-md);transform:translateY(-2px);}
@@ -460,33 +464,48 @@ function Dashboard({go, goProfile}){
   const ev=(sys.events||{}), vd=(sys.verdicts||{}), sysAl=(sys.alerts||{}), src=(sys.sources||{});
   const ago=ts=>{if(!ts)return '-';const d=Math.floor((Date.now()/1000-ts)/60);if(d<1)return '刚刚';if(d<60)return d+'分钟前';const h=Math.floor(d/60);return h<24?h+'小时前':Math.floor(h/24)+'天前';};
   const sl=sys.syslog||{};
+  const sp=eff.length?eff.filter(r=>(r.max_span||0)>=30).length:'—';
+  const aw=eff.length?Math.round(eff.reduce((s,r)=>s+(r.work_pct||0),0)/eff.length):null;
+  const KPIS=[
+    {k:'alert', icon:'fa-bell', v:sysAl.today||0, l:'今日告警', sub:'涉及 '+(sysAl.today_people||0)+' 人 · '+(sysAl.today_critical||0)+' 严重', go:()=>go('alerts',{today:true}), danger:true},
+    {k:'eff1', icon:'fa-mug-hot', v:sp, l:'摸鱼人数', sub:'工作时段 max_span≥30min', go:()=>go('efficiency')},
+    {k:'eff2', icon:'fa-briefcase', v:(aw===null?'—':aw+(aw!==null?'%':'')), l:'平均工作占比', sub:'全员工时效率', go:()=>go('efficiency')},
+    {k:'user', icon:'fa-users', v:sys.employees||0, l:'今日活跃', sub:'共 '+(sys.events||{}).total+' 万事件', go:()=>go('computers',{today:true})},
+  ];
   return (<div>
-    <div className="flowbar">
-      <div className="flow-item" onClick={()=>go('computers',{today:true})}><div className="fv num">{ev.today||0}</div><div className="fl">今日日志</div></div>
-      <div className="flow-arrow"><i className="fa-solid fa-angle-right"></i></div>
-      <div className="flow-item" onClick={()=>go('verdicts',{today:true})}><div className="fv num">{vd.today||0}</div><div className="fl">过 AI 研判</div></div>
-      <div className="flow-arrow"><i className="fa-solid fa-angle-right"></i></div>
-      <div className="flow-item" onClick={()=>go('alerts',{today:true})}><div className="fv num" style={{color:'var(--danger)'}}>{sysAl.today||0}</div><div className="fl">今日告警</div></div>
-      <div className="flow-tail">画像 <b style={{color:'var(--brand)'}}>{ago(sys.profile_updated_ts)}</b> 更新</div>
-    </div>
-    <Row gutter={16} style={{marginTop:16}}>
-      {(()=>{const sp=eff.length?eff.filter(r=>(r.max_span||0)>=30).length:'—';const aw=eff.length?Math.round(eff.reduce((s,r)=>s+(r.work_pct||0),0)/eff.length):null;return <>
-        <Col span={6}><div className="tile alert" onClick={()=>go('alerts',{today:true})}><div className="v num">{sysAl.today||0}</div><div className="l">今日告警 · 涉及 {sysAl.today_people||0} 人</div><div className="arr">查看告警 ›</div></div></Col>
-        <Col span={6}><div className="tile" onClick={()=>go('efficiency')}><div className="v num">{sp}</div><div className="l">摸鱼人数</div><div className="arr">效率榜 ›</div></div></Col>
-        <Col span={6}><div className="tile" onClick={()=>go('efficiency')}><div className="v num">{aw===null?'—':aw}{aw!==null&&<span style={{fontSize:16,color:'#94a3b8'}}> %</span>}</div><div className="l">平均工作占比</div><div className="arr">效率榜 ›</div></div></Col>
-        <Col span={6}><div className="tile" onClick={()=>go('computers',{today:true})}><div className="v num">{sys.employees||0}</div><div className="l">今日活跃用户</div><div className="arr">用户视图 ›</div></div></Col>
-      </>;})()}
+    <Row gutter={[16,16]}>
+      {KPIS.map(c=>(
+        <Col span={6} key={c.k}>
+          <div className={'tile'+(c.danger?' alert':'')} onClick={c.go}>
+            <div className="ic"><i className={'fa-solid '+c.icon}></i></div>
+            <div className="v num">{c.v}</div>
+            <div className="l">{c.l}</div>
+            <div className="sub">{c.sub}</div>
+            <div className="arr">查看 ›</div>
+          </div>
+        </Col>
+      ))}
     </Row>
-    <div style={{margin:'12px 2px'}}><Legend/></div>
-    {(sysAl.today_critical>0)&&<Alert type="error" message={<span>⚠️ 今日严重告警(86+) <b>{sysAl.today_critical}</b> 条需立即关注</span>} style={{marginBottom:8}} showIcon/>}
-    {(st.alerts>0&&st.verdicts>0&&(st.alerts/st.verdicts>0.15))&&<Alert type="warning" message="基线建设中（冷启动期）— 告警偏多属正常，随时间推移会趋于稳定" style={{marginBottom:8}} showIcon/>}
-    <Card className="card" title="高风险用户 TOP5" size="small" style={{marginTop:16}}><div ref={bar} style={{height:220}}></div></Card>
-    <Card className="card" title="风险用户数趋势（按10分钟，风险≥50的人数）" size="small" style={{marginTop:16}}><div ref={trend} style={{height:160}}></div></Card>
-    <Card className="card" title="告警日趋势（近7天每日告警数）" size="small" style={{marginTop:16}}><div ref={alertTrend} style={{height:200}}></div></Card>
+    <Row gutter={[16,16]} style={{marginTop:16}}>
+      <Col span={16}>
+        <div style={{marginBottom:10,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <div><span className="brand-bar"></span><b style={{fontSize:14}}>风险态势</b><span style={{color:'var(--ink3)',fontSize:11,marginLeft:10}}>高风险用户 TOP5 · 风险≥50 趋势</span></div>
+          <Legend/>
+        </div>
+        <Card className="card" size="small" style={{marginBottom:16}} bodyStyle={{padding:'12px 18px'}}><div ref={bar} style={{height:200}}></div></Card>
+        <Card className="card" size="small" bodyStyle={{padding:'12px 18px'}}><div style={{color:'var(--ink2)',fontSize:11,marginBottom:4}}>风险用户数趋势（按10分钟，风险≥50的人数）</div><div ref={trend} style={{height:140}}></div></Card>
+      </Col>
+      <Col span={8}>
+        <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警日趋势</b><span style={{color:'var(--ink3)',fontSize:11,marginLeft:10}}>近7天</span></div>
+        <Card className="card" size="small" bodyStyle={{padding:'12px 18px'}}><div ref={alertTrend} style={{height:188}}></div></Card>
+      </Col>
+    </Row>
+    {(sysAl.today_critical>0)&&<Alert type="error" message={<span>⚠️ 今日严重告警(86+) <b>{sysAl.today_critical}</b> 条需立即关注</span>} style={{marginBottom:8,marginTop:8}} showIcon/>}
+    {(st.alerts>0&&st.verdicts>0&&(st.alerts/st.verdicts>0.15))&&<Alert type="warning" message="基线建设中（冷启动期）— 告警偏多属正常，随时间推移会趋于稳定" style={{marginBottom:8,marginTop:8}} showIcon/>}
     {(()=>{
       const ag={};(sysAl.list||[]).forEach(a=>{if(!ag[a.employee])ag[a.employee]={key:a.employee,employee:a.employee,scenario:'',scenarios:[],maxRisk:0,summary:'',status:a.status};const g=ag[a.employee];const sc=INTENT[a.scenario]||a.scenario;if(!g.scenarios.includes(sc))g.scenarios.push(sc);if((a.risk_score||0)>g.maxRisk){g.maxRisk=a.risk_score;g.summary=a.summary;g.scenario=sc;}});
       const ga=Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);
-      return <Card className="card" style={{marginTop:16}} title={<span><span className="brand-bar"></span>高风险告警 TOP5</span>} size="small" extra={<a onClick={()=>go('alerts')} style={{fontSize:12,color:'var(--brand)'}}>全部 →</a>}>
+      return <Card className="card" style={{marginTop:16}} title={<span><span className="brand-bar"></span>高风险告警 TOP5</span>} size="small" extra={<a onClick={()=>go('alerts')}>全部 →</a>}>
         {ga.length? <Table size="small" rowKey="key" pagination={false} dataSource={ga.slice(0,5)} onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
           columns={[{title:'用户',dataIndex:'employee',width:100,render:v=><span style={{fontWeight:600}}>{v}</span>},
             {title:'风险场景',dataIndex:'scenario',width:90,render:(v,r)=>{const L=LVL(r.maxRisk);return <Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40'}}>{v}</Tag>}},
