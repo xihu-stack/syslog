@@ -14,93 +14,124 @@
 <script src="/libs/babel.js"></script>
 <style>
   :root{
-    /* 中性色(单一 slate 体系,不再混 #9aa3b2/#6b7280) */
+    /* 中性色 slate */
     --ink:#0f172a; --ink2:#475569; --ink3:#94a3b8; --ink4:#e2e8f0;
-    --line:#eef2f7; --bg:#f8fafc; --surface:#ffffff;
-    /* 品牌(靛紫,更柔和) */
+    --line:#eef2f7; --bg:#f6f8fb; --surface:#ffffff;
+    /* 品牌靛紫 */
     --brand:#6366f1; --brand-soft:#eef2ff; --brand-deep:#4f46e5;
-    /* 语义(单一体系,不再混 #ff4d4f/#fa8c16/#52c41a) */
+    /* 语义 */
     --danger:#ef4444; --danger-soft:#fef2f2;
     --warn:#f59e0b; --warn-soft:#fffbeb;
     --orange:#f97316; --orange-soft:#fff7ed;
     --ok:#22c55e; --ok-soft:#f0fdf4;
-    /* 分层阴影 */
-    --shadow-xs:0 1px 2px rgba(15,23,42,.04);
-    --shadow-sm:0 1px 3px rgba(15,23,42,.05),0 1px 2px rgba(15,23,42,.03);
-    --shadow-md:0 4px 12px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.04);
-    --shadow-lg:0 12px 32px rgba(15,23,42,.10),0 4px 8px rgba(15,23,42,.04);
-    --radius:12px; --radius-sm:8px;
+    /* 字号 token(5档:数字大/KPI/标题/正文/辅助/微) */
+    --fs-xl:30px; --fs-lg:16px; --fs-md:13px; --fs-sm:12px; --fs-xs:11px;
+    /* 圆角 */
+    --r:14px; --r-md:10px; --r-sm:6px;
+    /* 阴影 */
+    --sh-xs:0 1px 2px rgba(15,23,42,.04);
+    --sh-sm:0 1px 3px rgba(15,23,42,.04),0 1px 2px rgba(15,23,42,.03);
+    --sh-md:0 6px 16px rgba(15,23,42,.07),0 2px 4px rgba(15,23,42,.04);
+    --sh-lg:0 16px 40px rgba(15,23,42,.12),0 4px 8px rgba(15,23,42,.05);
   }
   *{box-sizing:border-box;}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","HarmonyOS Sans","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased;font-size:13px;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","HarmonyOS Sans","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased;font-size:var(--fs-md);}
   #root{min-height:100vh;}
-  /* 字体层级:标题 18/700,正文 13/500,辅助 11/400;数字 tabular */
-  .num{font-variant-numeric:tabular-nums;letter-spacing:-.2px;}
-  /* 布局:侧栏/头部用阴影分隔,不用 border(更干净) */
-  .logo{height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;line-height:1.3;color:var(--brand);font-size:14px;font-weight:700;letter-spacing:.3px;background:var(--surface);box-shadow:0 1px 0 var(--line);}
+  /* 数字 */
+  .num{font-variant-numeric:tabular-nums;letter-spacing:-.3px;font-feature-settings:"tnum";}
+  /* ===== 布局 ===== */
+  .logo{height:68px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;line-height:1.3;color:var(--brand);font-size:13px;font-weight:700;letter-spacing:.4px;background:var(--surface);position:relative;}
+  .logo::after{content:"";position:absolute;left:16px;right:16px;bottom:0;height:1px;background:linear-gradient(90deg,transparent,var(--line),transparent);}
   .logo .ic{font-size:22px;line-height:1;}
-  /* KPI tile:去边框,纯阴影,图标背景色块 */
-  .tile{position:relative;background:var(--surface);border:none;border-radius:var(--radius);padding:20px 22px;cursor:pointer;transition:all .22s cubic-bezier(.4,0,.2,1);overflow:hidden;box-shadow:var(--shadow-sm);}
-  .tile:hover{box-shadow:var(--shadow-md);transform:translateY(-2px);}
-  .tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--brand);opacity:0;transition:opacity .2s;}
+  /* ===== KPI tile ===== */
+  .tile{position:relative;background:var(--surface);border-radius:var(--r);padding:22px 24px;cursor:pointer;transition:all .25s cubic-bezier(.4,0,.2,1);overflow:hidden;box-shadow:var(--sh-sm);}
+  .tile:hover{box-shadow:var(--sh-md);transform:translateY(-2px);}
+  .tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--brand);border-radius:0 2px 2px 0;opacity:0;transition:opacity .25s;}
   .tile:hover::before{opacity:1;}
-  .tile .v{font-size:30px;font-weight:700;color:var(--ink);letter-spacing:-.5px;line-height:1.1;}
+  .tile .v{font-size:var(--fs-xl);font-weight:700;color:var(--ink);letter-spacing:-.6px;line-height:1;}
   .tile.alert .v{color:var(--danger);}
   .tile.alert::before{background:var(--danger);opacity:1;}
-  .tile .l{color:var(--ink2);font-size:12px;margin-top:8px;letter-spacing:.2px;}
-  .tile .arr{position:absolute;right:14px;bottom:12px;color:var(--ink3);font-size:10px;}
-  /* 用户视图漏斗卡 */
-  .uc-card{background:var(--surface);border:none;border-top:3px solid var(--ink4);border-radius:var(--radius);padding:16px 18px;cursor:pointer;transition:all .22s cubic-bezier(.4,0,.2,1);box-shadow:var(--shadow-sm);}
-  .uc-card:hover{box-shadow:var(--shadow-md);transform:translateY(-2px);}
-  .uc-v{font-size:26px;font-weight:700;line-height:1.1;letter-spacing:-.5px;}
-  .uc-l{color:var(--ink2);font-size:12px;margin-top:6px;letter-spacing:.2px;}
-  .uc-sub{color:var(--ink3);font-size:11px;margin-left:6px;}
-  /* 风险徽章/状态标签 */
-  .risk{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:6px;font-weight:700;font-size:12px;letter-spacing:.2px;}
-  .st-tag{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600;letter-spacing:.2px;}
-  .legend span{display:inline-flex;align-items:center;margin-right:18px;font-size:12px;color:var(--ink2);}
-  .swatch{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px;}
-  /* 卡片:无边框,阴影分层,入场动画 */
-  .card{border:none !important;border-radius:var(--radius) !important;box-shadow:var(--shadow-sm) !important;animation:cardIn .35s ease both;transition:box-shadow .2s !important;}
-  .card:hover{box-shadow:var(--shadow-md) !important;}
+  .tile .l{color:var(--ink2);font-size:var(--fs-sm);margin-top:10px;letter-spacing:.2px;font-weight:500;}
+  .tile .arr{position:absolute;right:16px;bottom:14px;color:var(--ink3);font-size:var(--fs-xs);opacity:.7;}
+  /* ===== 漏斗卡(用户视图) ===== */
+  .uc-card{background:var(--surface);border-top:3px solid var(--ink4);border-radius:var(--r);padding:18px 20px;cursor:pointer;transition:all .25s cubic-bezier(.4,0,.2,1);box-shadow:var(--sh-sm);position:relative;}
+  .uc-card:hover{box-shadow:var(--sh-md);transform:translateY(-2px);}
+  .uc-v{font-size:26px;font-weight:700;line-height:1;letter-spacing:-.5px;font-variant-numeric:tabular-nums;}
+  .uc-l{color:var(--ink2);font-size:var(--fs-sm);margin-top:8px;letter-spacing:.2px;font-weight:500;}
+  .uc-sub{color:var(--ink3);font-size:var(--fs-xs);margin-left:6px;font-weight:400;}
+  /* ===== 徽章/标签 ===== */
+  .risk{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:var(--r-sm);font-weight:700;font-size:var(--fs-sm);letter-spacing:.2px;line-height:1.4;}
+  .st-tag{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:var(--r-sm);font-size:var(--fs-xs);font-weight:600;letter-spacing:.2px;line-height:1.4;}
+  .legend{display:flex;gap:18px;align-items:center;}
+  .legend span{display:inline-flex;align-items:center;font-size:var(--fs-sm);color:var(--ink2);}
+  .swatch{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;}
+  /* ===== 卡片 ===== */
+  .card{border:none !important;border-radius:var(--r) !important;box-shadow:var(--sh-sm) !important;animation:cardIn .35s cubic-bezier(.4,0,.2,1) both;transition:box-shadow .25s !important;}
+  .card:hover{box-shadow:var(--sh-md) !important;}
   @keyframes cardIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-  .card>.ant-card-head{min-height:42px;border-bottom-color:var(--line) !important;padding:0 16px !important;}
-  .card>.ant-card-head .ant-card-head-title{font-size:14px;font-weight:600;color:var(--ink);}
-  .sec-title{color:var(--ink2);font-size:12px;letter-spacing:.3px;margin:6px 0 12px;font-weight:500;}
+  .card>.ant-card-head{min-height:44px !important;border-bottom-color:var(--line) !important;padding:0 18px !important;}
+  .card>.ant-card-head .ant-card-head-title{font-size:var(--fs-md);font-weight:600;color:var(--ink);letter-spacing:.2px;}
+  .card>.ant-card-body{padding:14px 18px !important;}
+  .sec-title{color:var(--ink2);font-size:var(--fs-sm);letter-spacing:.3px;margin:8px 2px 14px;font-weight:500;}
   .sec-fade{color:var(--ink3);}
-  /* 大屏流程条:节点+细线箭头 */
-  .flowbar{display:flex;align-items:center;background:var(--surface);border:none;border-radius:var(--radius);padding:16px 12px;margin-bottom:16px;box-shadow:var(--shadow-sm);}
-  .flow-item{flex:1;min-width:84px;text-align:center;padding:0 4px;cursor:pointer;transition:transform .2s;}
-  .flow-item:hover{transform:translateY(-1px);}
+  .brand-bar{display:inline-block;width:3px;height:15px;background:var(--brand);border-radius:2px;vertical-align:-2px;margin-right:9px;}
+  /* ===== 大屏流程条 ===== */
+  .flowbar{display:flex;align-items:stretch;background:var(--surface);border-radius:var(--r);padding:18px 20px;margin-bottom:18px;box-shadow:var(--sh-sm);}
+  .flow-item{flex:1;min-width:90px;text-align:center;padding:4px 8px;cursor:pointer;transition:transform .2s;border-radius:var(--r-md);}
+  .flow-item:hover{background:var(--brand-soft);}
   .flow-item:hover .fv{color:var(--brand);}
-  .flow-item .fv{font-size:24px;font-weight:700;color:var(--ink);letter-spacing:-.5px;line-height:1.1;font-variant-numeric:tabular-nums;}
-  .flow-item .fl{font-size:11px;color:var(--ink3);margin-top:6px;letter-spacing:.3px;}
-  .flow-arrow{color:var(--ink4);font-size:14px;margin:0 2px;}
-  .flow-tail{margin-left:auto;padding-left:18px;border-left:1px solid var(--line);font-size:12px;color:var(--ink3);white-space:nowrap;}
-  /* 画像时间线:圆点+竖线 */
-  .tl{border-left:2px solid var(--ink4);margin:8px 0 8px 4px;padding-left:16px;position:relative;}
-  .tl .it{margin:10px 0;font-size:13px;color:var(--ink2);}
-  .tl .it::before{content:"";position:absolute;left:-7px;width:10px;height:10px;border-radius:50%;background:var(--surface);border:2px solid var(--brand);}
-  .tl .t{color:var(--ink3);font-size:11px;margin-top:2px;}
-  .brand-bar{width:4px;height:20px;background:var(--brand);border-radius:2px;}
-  /* 表格:表头浅底,风险行左侧色条加宽到4px */
-  .ant-table-small>.ant-table-content .ant-table-tbody>tr>td,.ant-table-small>.ant-table-content .ant-table-thead>tr>th{padding:9px 8px;}
-  .ant-table-thead>tr>th{background:var(--bg) !important;font-weight:600 !important;color:var(--ink2) !important;font-size:12px !important;}
+  .flow-item .fv{font-size:25px;font-weight:700;color:var(--ink);letter-spacing:-.5px;line-height:1;font-variant-numeric:tabular-nums;}
+  .flow-item .fl{font-size:var(--fs-xs);color:var(--ink3);margin-top:8px;letter-spacing:.4px;font-weight:500;}
+  .flow-arrow{color:var(--ink4);font-size:12px;display:flex;align-items:center;}
+  .flow-tail{margin-left:auto;padding-left:20px;display:flex;align-items:center;font-size:var(--fs-sm);color:var(--ink3);white-space:nowrap;}
+  /* ===== 画像时间线 ===== */
+  .tl{border-left:2px solid var(--ink4);margin:6px 0 6px 4px;padding-left:18px;}
+  .tl .it{margin:12px 0;font-size:var(--fs-md);color:var(--ink2);position:relative;}
+  .tl .it::before{content:"";position:absolute;left:-24px;top:6px;width:10px;height:10px;border-radius:50%;background:var(--surface);border:2px solid var(--brand);}
+  .tl .t{color:var(--ink3);font-size:var(--fs-xs);margin-top:3px;letter-spacing:.2px;}
+  /* ===== 表格 ===== */
+  .ant-table{border-radius:var(--r-md);overflow:hidden;}
+  .ant-table-small>.ant-table-content .ant-table-tbody>tr>td,.ant-table-small>.ant-table-content .ant-table-thead>tr>th{padding:11px 10px !important;}
+  .ant-table-thead>tr>th{background:var(--bg) !important;font-weight:600 !important;color:var(--ink2) !important;font-size:var(--fs-sm) !important;letter-spacing:.2px;border-bottom:1px solid var(--line) !important;}
+  .ant-table-tbody>tr>td{border-bottom:1px solid var(--line) !important;}
   .ant-table-tbody>tr{transition:background .15s;}
-  .ant-table-tbody>tr:hover>td{background:var(--ink4) !important;opacity:.4;}
-  .row-crit{box-shadow:inset 4px 0 0 var(--danger);background:var(--danger-soft);}
-  .row-high{box-shadow:inset 4px 0 0 var(--orange);background:var(--orange-soft);}
+  .ant-table-tbody>tr:hover>td{background:#f1f5f9 !important;}
+  .ant-table-tbody>tr:last-child>td{border-bottom:none !important;}
+  .row-crit{box-shadow:inset 4px 0 0 var(--danger);background:var(--danger-soft) !important;}
+  .row-high{box-shadow:inset 4px 0 0 var(--orange);background:var(--orange-soft) !important;}
   .row-watch{box-shadow:inset 4px 0 0 var(--warn);}
-  /* AntD 组件字号/色统一 */
-  .ant-statistic-content-value{color:var(--ink);font-weight:700 !important;}
-  .ant-statistic-title{color:var(--ink2) !important;font-size:12px !important;}
-  .ant-menu-item{font-size:13px !important;border-radius:8px !important;margin:4px 8px !important;width:calc(100% - 16px) !important;}
+  /* ===== AntD 深度定制 ===== */
+  .ant-statistic-content-value{color:var(--ink);font-weight:700 !important;letter-spacing:-.3px;}
+  .ant-statistic-title{color:var(--ink2) !important;font-size:var(--fs-sm) !important;margin-bottom:4px !important;}
+  .ant-menu{background:transparent !important;}
+  .ant-menu-item{font-size:var(--fs-md) !important;border-radius:var(--r-md) !important;margin:3px 10px !important;width:calc(100% - 20px) !important;height:40px !important;line-height:40px !important;font-weight:500;}
+  .ant-menu-item .anticon,.ant-menu-item i{margin-right:10px !important;width:16px;text-align:center;}
   .ant-menu-item-selected{background:var(--brand-soft) !important;color:var(--brand) !important;font-weight:600;}
   .ant-menu-item-selected::after{display:none;}
-  .ant-btn{font-weight:500;}
-  .ant-tag{font-size:11px;border-radius:5px;}
-  .ant-segmented{border-radius:8px;}
-  .ant-tooltip-inner{font-size:12px;}
+  .ant-menu-item:hover{color:var(--brand) !important;}
+  .ant-btn{font-weight:500;border-radius:var(--r-sm) !important;height:32px;}
+  .ant-btn-primary{background:var(--brand) !important;border-color:var(--brand) !important;box-shadow:0 2px 6px rgba(99,102,241,.25);}
+  .ant-btn-primary:hover{background:var(--brand-deep) !important;border-color:var(--brand-deep) !important;}
+  .ant-tag{font-size:var(--fs-xs);border-radius:var(--r-sm);padding:1px 8px;line-height:1.5;font-weight:500;}
+  .ant-segmented{background:var(--bg) !important;border-radius:var(--r-md) !important;padding:2px;}
+  .ant-segmented-item{border-radius:var(--r-sm) !important;font-size:var(--fs-sm) !important;font-weight:500;}
+  .ant-segmented-item-selected{background:var(--surface) !important;box-shadow:var(--sh-xs);}
+  .ant-tooltip-inner{font-size:var(--fs-sm);border-radius:var(--r-sm);}
+  .ant-input,.ant-select-selector{border-radius:var(--r-sm) !important;}
+  .ant-card-head-wrapper{align-items:center !important;}
+  .ant-pagination-item,.ant-pagination-prev,.ant-pagination-next{border-radius:var(--r-sm) !important;}
+  .ant-empty-description{color:var(--ink3);font-size:var(--fs-sm);}
+  /* 进度条(效率榜摸鱼占比) */
+  .pbar{width:56px;height:5px;background:var(--ink4);border-radius:3px;overflow:hidden;}
+  .pbar>i{display:block;height:100%;border-radius:3px;}
+  /* 链接 */
+  a{color:var(--brand);}
+  a:hover{color:var(--brand-deep);}
+  /* 滚动条 */
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-thumb{background:var(--ink4);border-radius:4px;}
+  ::-webkit-scrollbar-thumb:hover{background:var(--ink3);}
+  ::-webkit-scrollbar-track{background:transparent;}
 </style>
 </head>
 <body>
@@ -126,8 +157,8 @@ const POST=(u,o)=>fetch(u,{method:'POST',...o}).then(r=>r.ok?r.json():r.text().t
 const PUTJ=(u,b)=>fetch(u,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('PUT '+u,e);message.error('保存失败');return {};});
 const DEL=(u)=>fetch(u,{method:'DELETE'}).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('DEL '+u,e);message.error('删除失败');return {};});
 
-function RiskBadge({s}){ const v=LVL(s); return <span className="risk" style={{background:v.c+'1a',color:v.c,border:'1px solid '+v.c+'66'}}><i className="fa-solid fa-shield-halved" style={{marginRight:4,fontSize:10}}></i>{s==null?'-':s} {v.l}</span>; }
-function StatusTag({s}){ const v=STATUS_MAP[s]||{c:'#999',t:s}; return <span className="st-tag" style={{background:v.c+'1a',color:v.c}}>{v.i&&<i className={'fa-solid '+v.i} style={{marginRight:4,fontSize:10}}></i>}{v.t}</span>; }
+function RiskBadge({s}){ const v=LVL(s); return <span className="risk" style={{background:v.c+'1a',color:v.c,border:'1px solid '+v.c+'66'}}><i className="fa-solid fa-shield-halved" style={{marginRight:4,fontSize:11}}></i>{s==null?'-':s} {v.l}</span>; }
+function StatusTag({s}){ const v=STATUS_MAP[s]||{c:'#999',t:s}; return <span className="st-tag" style={{background:v.c+'1a',color:v.c}}>{v.i&&<i className={'fa-solid '+v.i} style={{marginRight:4,fontSize:11}}></i>}{v.t}</span>; }
 function Legend(){ return <div className="legend">
   <span><i className="swatch" style={{background:'#22c55e'}}/>0-30 正常</span>
   <span><i className="swatch" style={{background:'#f59e0b'}}/>31-60 关注</span>
@@ -146,14 +177,14 @@ function ProfilePage({user, goBack, from}){
     if(vs.length&&trendRef.current){ const c=echarts.init(trendRef.current);
       const riskColors=vs.map(v=>v.risk_score>=86?'#ef4444':v.risk_score>=61?'#f97316':v.risk_score>=31?'#f59e0b':'#22c55e');
       c.setOption({tooltip:{trigger:'axis',formatter:p=>p[0].name+'<br/>风险分: <b>'+p[0].value+'</b>'},grid:{left:40,right:20,top:20,bottom:35},
-        xAxis:{type:'category',data:vs.map(v=>(v.window_start||'').replace('T',' ').slice(5,16)),axisLabel:{color:'#94a3b8',fontSize:9,rotate:30}},
+        xAxis:{type:'category',data:vs.map(v=>(v.window_start||'').replace('T',' ').slice(5,16)),axisLabel:{color:'#94a3b8',fontSize:11,rotate:30}},
         yAxis:{type:'value',max:100,axisLabel:{color:'#94a3b8'},splitLine:{lineStyle:{color:'#f1f5f9'}}},
         series:[{type:'line',data:vs.map(v=>v.risk_score||0),smooth:true,areaStyle:{color:'rgba(99,102,241,.12)'},lineStyle:{color:'#6366f1'},itemStyle:{color:function(p){return riskColors[p.dataIndex]||'#6366f1';}}}]});}
     const hrs=(data.profile||{}).active_hours_top||[];
     if(hrs.length&&hoursRef.current){ const c=echarts.init(hoursRef.current);
       const full=Array.from({length:24},(_,h)=>hrs.includes(h)?1:0);
       c.setOption({tooltip:{},grid:{left:30,right:15,top:15,bottom:30},
-        xAxis:{type:'category',data:Array.from({length:24},(_,h)=>h+'时'),axisLabel:{color:'#94a3b8',fontSize:9}},
+        xAxis:{type:'category',data:Array.from({length:24},(_,h)=>h+'时'),axisLabel:{color:'#94a3b8',fontSize:11}},
         yAxis:{type:'value',show:false},
         series:[{type:'bar',data:full,itemStyle:{color:full.map(f=>f?'#6366f1':'#e2e8f0'),borderRadius:[3,3,0,0]}}]});}
     const evs=data.events||[];
@@ -188,12 +219,12 @@ function ProfilePage({user, goBack, from}){
       <Col span={6}><Card className="card"><Statistic title="观察天数" value={p.active_days||new Set(evs.map(e=>(e.occurred_at||'').slice(0,10))).size}/></Card></Col>
     </Row>
     <Row gutter={16} style={{marginTop:16}}>
-      <Col span={14}><Card className="card" title={<span><span className="brand-bar" style={{display:'inline-block',verticalAlign:'-3px',marginRight:8}}></span>风险趋势（点颜色=风险等级）</span>} size="small"><div ref={trendRef} style={{height:220}}></div></Card></Col>
-      <Col span={10}><Card className="card" title={<span><span className="brand-bar" style={{display:'inline-block',verticalAlign:'-3px',marginRight:8}}></span>活跃时段</span>} size="small"><div ref={hoursRef} style={{height:220}}></div></Card></Col>
+      <Col span={14}><Card className="card" title={<span><span className="brand-bar"></span>风险趋势（点颜色=风险等级）</span>} size="small"><div ref={trendRef} style={{height:220}}></div></Card></Col>
+      <Col span={10}><Card className="card" title={<span><span className="brand-bar"></span>活跃时段</span>} size="small"><div ref={hoursRef} style={{height:220}}></div></Card></Col>
     </Row>
     <Row gutter={16} style={{marginTop:16}}>
       <Col span={8}>
-    <Card className="card" title={<span><span className="brand-bar" style={{display:'inline-block',verticalAlign:'-3px',marginRight:8}}></span>事件分类</span>} size="small">
+    <Card className="card" title={<span><span className="brand-bar"></span>事件分类</span>} size="small">
       <Table size="small" pagination={false} dataSource={[
         {key:'doc',label:'文档操作',val:docCnt,color:'#6366f1'},
         {key:'web',label:'网页浏览',val:webCnt,color:'#22c55e'},
@@ -209,7 +240,7 @@ function ProfilePage({user, goBack, from}){
     </Card>
       </Col>
       <Col span={8}>
-    <Card className="card" title={<span><span className="brand-bar" style={{display:'inline-block',verticalAlign:'-3px',marginRight:8}}></span>数据来源</span>} size="small">
+    <Card className="card" title={<span><span className="brand-bar"></span>数据来源</span>} size="small">
       <Table size="small" pagination={false} dataSource={[
         {key:'sangfor',label:'深信服上网行为',val:sangforCnt,color:'#22c55e'},
         {key:'ipguard',label:'IP-Guard文档/网页',val:ipguardCnt,color:'#6366f1'},
@@ -229,7 +260,7 @@ function ProfilePage({user, goBack, from}){
     </Card>
       </Col>
       <Col span={8}>
-    <Card className="card" title={<span><span className="brand-bar" style={{display:'inline-block',verticalAlign:'-3px',marginRight:8}}></span>AI基线摘要</span>} size="small">
+    <Card className="card" title={<span><span className="brand-bar"></span>AI基线摘要</span>} size="small">
       <Typography.Paragraph style={{fontSize:12,marginBottom:0}}>
         <Typography.Text code style={{fontSize:11}}>{data.profile_summary||'（样本不足，按通用可疑度判断）'}</Typography.Text>
       </Typography.Paragraph>
@@ -242,7 +273,7 @@ function ProfilePage({user, goBack, from}){
     </Card>
       </Col>
     </Row>
-    <Card className="card" title={<span><span className="brand-bar" style={{display:'inline-block',verticalAlign:'-3px',marginRight:8}}></span>研判历史</span>} size="small" style={{marginTop:16}}>
+    <Card className="card" title={<span><span className="brand-bar"></span>研判历史</span>} size="small" style={{marginTop:16}}>
       <Table size="small" rowKey="window_start" pagination={{pageSize:8}} dataSource={vs}
         columns={[{title:'时间',dataIndex:'window_start',width:150,render:v=>(v||'').replace('T',' ').slice(0,16)},
           {title:'意图',dataIndex:'intent',width:120,render:v=><Tag style={{background:'var(--brand-soft)',color:'var(--brand)',border:'1px solid var(--brand)'+'40'}}>{INTENT[v]||v}</Tag>},
@@ -253,9 +284,9 @@ function ProfilePage({user, goBack, from}){
       <div className="tl" style={{maxHeight:350,overflow:'auto'}}>
         {(data.risk_events||[]).map((e,i)=><div className="it" key={i}>
           <span className="t">{fmt(e.occurred_at)}</span>
-          {e.risk_class&&<Tag color="orange" style={{marginLeft:4,fontSize:10}}>{e.risk_class}</Tag>}
+          {e.risk_class&&<Tag color="orange" style={{marginLeft:4,fontSize:11}}>{e.risk_class}</Tag>}
           <b> [{e.action}]</b> {e.domain||e.target_value}
-          <Tag style={{marginLeft:6,fontSize:10}} color={e.source==='sangfor'?'green':'blue'}>{e.source==='sangfor'?'深信服':'IP-Guard'}</Tag>
+          <Tag style={{marginLeft:6,fontSize:11}} color={e.source==='sangfor'?'green':'blue'}>{e.source==='sangfor'?'深信服':'IP-Guard'}</Tag>
         </div>)}
         {!(data.risk_events||[]).length&&<div style={{color:'var(--ink3)',padding:24,textAlign:'center'}}>近期无风险行为</div>}
       </div>
@@ -264,8 +295,8 @@ function ProfilePage({user, goBack, from}){
       <div className="tl" style={{maxHeight:300,overflow:'auto'}}>
         {(data.slack_sessions||[]).map((e,i)=><div className="it" key={i}>
           <span className="t">{(e.start||'').replace('T',' ').slice(5,16)} → {(e.end||'').slice(11,16)}</span>
-          <Tag color={e.duration>=60?'red':'orange'} style={{marginLeft:4,fontSize:10}}>{e.duration>=60?Math.floor(e.duration/60)+'h'+e.duration%60+'m':e.duration>0?e.duration+'分':'单次'}</Tag>
-          <Tag color="purple" style={{fontSize:10}}>{e.cat}</Tag>
+          <Tag color={e.duration>=60?'red':'orange'} style={{marginLeft:4,fontSize:11}}>{e.duration>=60?Math.floor(e.duration/60)+'h'+e.duration%60+'m':e.duration>0?e.duration+'分':'单次'}</Tag>
+          <Tag color="purple" style={{fontSize:11}}>{e.cat}</Tag>
           <b> {(e.domains||[]).join(' / ')}</b>
           {e.count>1&&<span style={{color:'#94a3b8',fontSize:11}}> ({e.count}次访问)</span>}
         </div>)}
@@ -410,7 +441,7 @@ function Dashboard({go, goProfile}){
       const maxY=Math.max(...vals,1);
       const c=echarts.init(trend.current); trendChart.current=c;
       c.setOption({tooltip:{trigger:'axis'},grid:{left:40,right:20,top:20,bottom:40},
-        xAxis:{type:'category',data:ts.map(t=>{const d=new Date(+t);return (d.getMonth()+1)+'/'+d.getDate()+' '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');}),axisLabel:{color:'#94a3b8',fontSize:9,rotate:30}},
+        xAxis:{type:'category',data:ts.map(t=>{const d=new Date(+t);return (d.getMonth()+1)+'/'+d.getDate()+' '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');}),axisLabel:{color:'#94a3b8',fontSize:11,rotate:30}},
         yAxis:{type:'value',max:maxY+1,axisLabel:{color:'#94a3b8'},splitLine:{lineStyle:{color:'var(--bg)'}}},
         series:[{type:'bar',data:vals,areaStyle:{color:'rgba(99,102,241,.12)'},itemStyle:{color:'#6366f1',borderColor:'#fff'},name:'风险用户数'}]});} else { trend.current.innerHTML='<div style="text-align:center;color:var(--ink3);padding-top:40px">暂无风险趋势数据</div>'; }}
   },[vs, al]);
@@ -455,7 +486,7 @@ function Dashboard({go, goProfile}){
     {(()=>{
       const ag={};(sysAl.list||[]).forEach(a=>{if(!ag[a.employee])ag[a.employee]={key:a.employee,employee:a.employee,scenario:'',scenarios:[],maxRisk:0,summary:'',status:a.status};const g=ag[a.employee];const sc=INTENT[a.scenario]||a.scenario;if(!g.scenarios.includes(sc))g.scenarios.push(sc);if((a.risk_score||0)>g.maxRisk){g.maxRisk=a.risk_score;g.summary=a.summary;g.scenario=sc;}});
       const ga=Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);
-      return <Card className="card" style={{marginTop:16}} title={<span><span className="brand-bar" style={{display:'inline-block',verticalAlign:'-3px',marginRight:8}}></span>高风险告警 TOP5</span>} size="small" extra={<a onClick={()=>go('alerts')} style={{fontSize:12,color:'var(--brand)'}}>全部 →</a>}>
+      return <Card className="card" style={{marginTop:16}} title={<span><span className="brand-bar"></span>高风险告警 TOP5</span>} size="small" extra={<a onClick={()=>go('alerts')} style={{fontSize:12,color:'var(--brand)'}}>全部 →</a>}>
         {ga.length? <Table size="small" rowKey="key" pagination={false} dataSource={ga.slice(0,5)} onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
           columns={[{title:'用户',dataIndex:'employee',width:100,render:v=><span style={{fontWeight:600}}>{v}</span>},
             {title:'风险场景',dataIndex:'scenario',width:90,render:(v,r)=>{const L=LVL(r.maxRisk);return <Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40'}}>{v}</Tag>}},
@@ -526,7 +557,7 @@ function Computers({goProfile,filter}){
         onRow={r=>({onClick:()=>goProfile(r.computer),style:{cursor:'pointer'}})}
         columns={[
           {title:'用户',dataIndex:'computer',width:170,
-            render:(v,r)=>{const rk=r.max_risk||0;const ex=exMap[v];return (<span><a style={{fontWeight:rk>=61?700:500,color:'var(--ink)'}}>{v}</a>{ex&&<Tooltip title={'已豁免：'+ex.join('、')}><Tag color="default" style={{marginLeft:6,fontSize:10,lineHeight:'16px'}}>豁免</Tag></Tooltip>}</span>);}},
+            render:(v,r)=>{const rk=r.max_risk||0;const ex=exMap[v];return (<span><a style={{fontWeight:rk>=61?700:500,color:'var(--ink)'}}>{v}</a>{ex&&<Tooltip title={'已豁免：'+ex.join('、')}><Tag color="default" style={{marginLeft:6,fontSize:11,lineHeight:'16px'}}>豁免</Tag></Tooltip>}</span>);}},
           {title:'风险',dataIndex:'max_risk',width:95,render:v=><RiskBadge s={v}/>},
           {title:'告警',dataIndex:'alert_count',width:64,render:v=>v>0?<Tag color="red">{v}条</Tag>:<span style={{color:'var(--ink4)'}}>—</span>},
           {title:isToday?'今日事件':'事件',width:80,render:(_,r)=><span className="num" style={{color:'var(--ink2)'}}>{isToday?(r.event_count_today||0):(r.event_count||0)}</span>},
@@ -581,7 +612,7 @@ function Alerts({goProfile,filter}){
       <Table size="small" rowKey="key" pagination={{pageSize:14,showTotal:t=>`共 ${alertN} 条告警 / ${t} 人（按用户合并）`}} loading={loading} dataSource={agData}
         columns={[
           {title:'用户',dataIndex:'employee',width:100,render:v=><a onClick={(e)=>{e.stopPropagation();goProfile(v);}} style={{cursor:'pointer',fontWeight:600}}>{v}</a>},
-          {title:'风险场景',dataIndex:'scenarios',width:150,render:(v,r)=>{const mainL=INTENT[r.intent]||r.intent;const L=LVL(r.maxRisk);const subs=v.filter(s=>s.label!==mainL);return <Space wrap size={[4,3]}><Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40',fontWeight:600}}>{mainL} {r.maxRisk}</Tag>{subs.length>0&&<Tooltip title={'另涉及：'+subs.map(s=>s.label).join('、')}><Tag style={{fontSize:10,color:'var(--ink3)',background:'var(--bg)',border:'1px solid var(--ink4)'}}>+{subs.length}</Tag></Tooltip>}</Space>}},
+          {title:'风险场景',dataIndex:'scenarios',width:150,render:(v,r)=>{const mainL=INTENT[r.intent]||r.intent;const L=LVL(r.maxRisk);const subs=v.filter(s=>s.label!==mainL);return <Space wrap size={[4,3]}><Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40',fontWeight:600}}>{mainL} {r.maxRisk}</Tag>{subs.length>0&&<Tooltip title={'另涉及：'+subs.map(s=>s.label).join('、')}><Tag style={{fontSize:11,color:'var(--ink3)',background:'var(--bg)',border:'1px solid var(--ink4)'}}>+{subs.length}</Tag></Tooltip>}</Space>}},
           {title:'告警数',dataIndex:'count',width:60,render:v=><span className="num" style={{color:'var(--ink2)',fontWeight:600}}>{v}</span>},
           {title:'最近告警',dataIndex:'latest',width:135,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
           {title:'风险',dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
@@ -628,6 +659,7 @@ function Alerts({goProfile,filter}){
 function Verdicts({goProfile,filter}){
   const isToday=filter&&filter.today; const tStr=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});
   const [rows,setRows]=useState(null); const [q,setQ]=useState(''); const [lvl,setLvl]=useState('all'); const [aisel,setAisel]=useState('all');
+  const [merged,setMerged]=useState(true);  // 默认合并(同员工同意图),避免重复研判刷屏
   const [lastUpd,setLastUpd]=useState(null); const [loading,setLoading]=useState(true);
   const load=async()=>{const r=await GETL('/api/verdicts?limit=500');setRows(r);setLastUpd(new Date());setLoading(false);};
   useEffect(()=>{load();const t=setInterval(load,15000);return ()=>clearInterval(t);},[]);
@@ -642,10 +674,14 @@ function Verdicts({goProfile,filter}){
     return true;
   });
   const aiCnt=(rows||[]).filter(v=>v.ai_participated).length;
+  // 合并视图: 同员工+同意图 聚合, 显示次数/最高分/最近/最新说明(消除重复研判噪音)
+  const mergedData=(()=>{const ag={};filtered.forEach(v=>{const k=(v.employee||'?')+'|'+(v.intent||'?');if(!ag[k])ag[k]={key:k,employee:v.employee,intent:v.intent,count:0,maxRisk:0,latest:v.window_start,explanation:'',ai:1};const g=ag[k];g.count++;if((v.risk_score||0)>=g.maxRisk){g.maxRisk=v.risk_score;g.explanation=v.explanation;g.latest=v.window_start;}if(!v.ai_participated)g.ai=0;});return Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);})();
+  const viewData = merged ? mergedData : filtered;
   return (<div>
-    <div className="sec-title">研判记录 · AI 对每个可疑行为窗口的判定（告警 = 其中风险≥50 的子集）{isToday?' · 仅今日 ':''} · <span style={{fontSize:11,color:'var(--ink3)'}}>每15秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()} · 显示{filtered.length}条（AI {aiCnt} / 兜底 {(rows||[]).length-aiCnt}）</span></div>
-    <Card className="card" size="small">
-      <Space style={{marginBottom:8}} wrap>
+    <div className="sec-title">研判记录 · AI 对每个可疑行为窗口的判定（告警 = 其中风险≥50 的子集）{isToday?' · 仅今日 ':''} · <span style={{fontSize:11,color:'var(--ink3)'}}>每15秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()} · {filtered.length}条研判 / 合并后 {mergedData.length} 组（AI {aiCnt} / 兜底 {(rows||[]).length-aiCnt}）</span></div>
+    <Card className="card" size="small" title={<span><span className="brand-bar"></span>研判记录</span>}
+      extra={<Segmented size="small" value={merged?'merge':'list'} onChange={v=>setMerged(v==='merge')} options={[{label:'合并视图',value:'merge'},{label:'逐条',value:'list'}]}/>}>
+      <Space style={{marginBottom:10}} wrap>
         <Input.Search placeholder="搜索用户" allowClear style={{width:180}} onChange={e=>setQ(e.target.value)} />
         <Select value={lvl} style={{width:120}} onChange={setLvl}>
           <Select.Option value="all">全部风险</Select.Option>
@@ -659,12 +695,19 @@ function Verdicts({goProfile,filter}){
           <Select.Option value="fallback">规则兜底</Select.Option>
         </Select>
       </Space>
-      <Table size="small" rowKey="id" pagination={{pageSize:14,showTotal:t=>`共 ${t} 条${t>=500?' (仅显示最近500条)':''}`}} loading={loading} dataSource={filtered}
+      <Table size="small" rowKey={merged?'key':'id'} pagination={{pageSize:14,showTotal:t=>`共 ${t} ${merged?'组':'条'}${!merged&&t>=500?' (仅显示最近500条)':''}`}} loading={loading} dataSource={viewData}
         onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
-        columns={[
-          {title:'用户',dataIndex:'employee',width:110},
+        columns={merged?[
+          {title:'用户',dataIndex:'employee',width:110,render:v=><span style={{fontWeight:600}}>{v}</span>},
+          {title:'意图',dataIndex:'intent',width:110,render:v=><Tag style={{background:'var(--brand-soft)',color:'var(--brand)',border:'1px solid var(--brand)'+'33'}}>{INTENT[v]||v}</Tag>},
+          {title:'研判次数',dataIndex:'count',width:90,render:v=><span className="num" style={{fontWeight:700,color:v>=10?'var(--orange)':'var(--ink)'}}>{v}</span>},
+          {title:'最高风险',dataIndex:'maxRisk',width:100,render:v=><RiskBadge s={v}/>},
+          {title:'最近',dataIndex:'latest',width:140,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
+          {title:'最近一次说明',dataIndex:'explanation',render:v=><Tooltip title={v}><span style={{display:'inline-block',maxWidth:340,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',verticalAlign:'bottom'}}>{v||'-'}</span></Tooltip>},
+        ]:[
+          {title:'用户',dataIndex:'employee',width:110,render:v=><span style={{fontWeight:600}}>{v}</span>},
           {title:'时间',dataIndex:'window_start',width:140,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
-          {title:'意图',dataIndex:'intent',width:110,render:v=><Tag color="blue">{INTENT[v]||v}</Tag>},
+          {title:'意图',dataIndex:'intent',width:110,render:v=><Tag style={{background:'var(--brand-soft)',color:'var(--brand)',border:'1px solid var(--brand)'+'33'}}>{INTENT[v]||v}</Tag>},
           {title:'风险',dataIndex:'risk_score',width:90,render:v=><RiskBadge s={v}/>},
           {title:'来源',dataIndex:'ai_participated',width:80,render:v=><Tag color={v?'green':'default'}>{v?'AI':'兜底'}</Tag>},
           {title:'说明',dataIndex:'explanation',render:v=><Tooltip title={v}><span style={{display:'inline-block',maxWidth:320,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',verticalAlign:'bottom'}}>{v||'-'}</span></Tooltip>},
@@ -751,32 +794,36 @@ function Monitor(){
 
 function Efficiency({items,loading,gen,msg,goProfile}){
   const [board,setBoard]=useState(null); const [lastUpd,setLastUpd]=useState(null); const [bdLoading,setBdLoading]=useState(true);
+  const [tier,setTier]=useState('30');  // 默认≥30min,与大屏"摸鱼人数"口径一致
   const load=async()=>{const r=await GETL('/api/efficiency');setBoard(r);setLastUpd(new Date());setBdLoading(false);};
   useEffect(()=>{load();const t=setInterval(load,30000);return ()=>clearInterval(t);},[]);
   const SLACK_COLORS={视频:'#ef4444',社交:'#f97316',购物:'#f59e0b',资讯:'#6366f1',音乐:'#22c55e'};
+  const tierMin={'all':0,'30':30,'60':60,'120':120}[tier];
+  const filtered=(board||[]).filter(r=>(r.max_span||0)>=tierMin);
   return (<div>
     <div className="sec-title">效率监控 · 工作时段(9-12,14-18)摸鱼排行 · <span style={{fontSize:11,color:'var(--ink3)'}}>每30秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()}</span></div>
-    <Card className="card" size="small" title={<span><span className="brand-bar" style={{display:'inline-block',verticalAlign:'-3px',marginRight:8}}></span>效率榜（最长摸鱼跨度降序）</span>}>
+    <Card className="card" size="small" title={<span><span className="brand-bar"></span>效率榜（最长摸鱼跨度降序）</span>}
+      extra={<Segmented size="small" value={tier} onChange={setTier} options={[{label:'全部',value:'all'},{label:'≥30min',value:'30'},{label:'≥60min',value:'60'},{label:'≥2h',value:'120'}]}/>}>
       <Table size="small" rowKey="employee" pagination={{pageSize:14,showTotal:t=>`共 ${t} 人`}} loading={bdLoading}
-        dataSource={(board||[]).filter(r=>(r.max_span||0)>0)}
+        dataSource={filtered}
         onRow={r=>({onClick:()=>goProfile&&goProfile(r.employee),style:{cursor:'pointer'}})}
-        rowClassName={r=>(r.max_span||0)>=60?'row-high':((r.max_span||0)>=30?'row-watch':'')}
+        rowClassName={r=>(r.max_span||0)>=120?'row-crit':((r.max_span||0)>=60?'row-high':((r.max_span||0)>=30?'row-watch':''))}
         columns={[
           {title:'员工',dataIndex:'employee',width:110,render:v=><span style={{fontWeight:600}}>{v}</span>},
-          {title:'最长摸鱼',dataIndex:'max_span',width:100,sorter:(a,b)=>(b.max_span||0)-(a.max_span||0),defaultSortOrder:'ascend',
-            render:v=>{const n=v||0;const c=n>=60?'#ef4444':n>=30?'#f59e0b':'#94a3b8';return <><span style={{color:c,fontWeight:700}}>{n}</span><span style={{color:'var(--ink3)',fontSize:11}}> 分钟</span></>}},
-          {title:'摸鱼占比',dataIndex:'pct',width:110,render:(v,r)=>{const p=v||0;return <div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:60,height:6,background:'var(--ink4)',borderRadius:3,overflow:'hidden'}}><div style={{width:Math.min(p*3,100)+'%',height:'100%',background:p>=10?'#ef4444':'#f59e0b',borderRadius:3}}></div></div><span style={{color:'var(--ink2)',fontWeight:600,fontSize:12}}>{p}%</span></div>}},
-          {title:'摸鱼分类',dataIndex:'cats',render:v=>{const e=v||{};return <Space wrap size={[4,3]}>{Object.entries(e).sort((a,b)=>b[1]-a[1]).map(([k,n])=><Tag key={k} style={{fontSize:11,background:(SLACK_COLORS[k]||'#94a3b8')+'14',color:SLACK_COLORS[k]||'#94a3b8',border:'1px solid '+(SLACK_COLORS[k]||'#94a3b8')+'30'}}>{k} {n}</Tag>)}</Space>}},
-          {title:'工作占比',dataIndex:'work_pct',width:100,render:v=>{const p=v||0;return <span style={{color:p>=50?'#22c55e':'var(--ink2)',fontWeight:600}}>{p}%</span>}},
-          {title:'在岗',width:90,render:(_,r)=><span style={{color:'var(--ink3)',fontSize:11}}>{r.active_days||0}天 · {r.hour_min===null?'-':r.hour_min+'-'+r.hour_max+'点'}</span>},
+          {title:'最长摸鱼',dataIndex:'max_span',width:110,sorter:(a,b)=>(b.max_span||0)-(a.max_span||0),defaultSortOrder:'ascend',
+            render:v=>{const n=v||0;const c=n>=120?'#ef4444':n>=60?'#f97316':n>=30?'#f59e0b':'#94a3b8';return <><span className="num" style={{color:c,fontWeight:700,fontSize:15}}>{n>=60?Math.floor(n/60)+'h'+(n%60?' '+(n%60)+'m':''):n}</span><span style={{color:'var(--ink3)',fontSize:11}}>{n<60?' 分钟':''}</span></>}},
+          {title:'摸鱼占比',dataIndex:'pct',width:120,render:(v,r)=>{const p=v||0;return <div style={{display:'flex',alignItems:'center',gap:8}}><div className="pbar"><i style={{width:Math.min(p*3,100)+'%',background:p>=10?'#ef4444':'#f59e0b'}}></i></div><span className="num" style={{color:'var(--ink2)',fontWeight:600,fontSize:12}}>{p}%</span></div>}},
+          {title:'摸鱼分类',dataIndex:'cats',render:v=>{const e=v||{};return <Space wrap size={[4,4]}>{Object.entries(e).sort((a,b)=>b[1]-a[1]).map(([k,n])=><Tag key={k} style={{background:(SLACK_COLORS[k]||'#94a3b8')+'14',color:SLACK_COLORS[k]||'#94a3b8',border:'1px solid '+(SLACK_COLORS[k]||'#94a3b8')+'30'}}>{k} {n}</Tag>)}</Space>}},
+          {title:'工作占比',dataIndex:'work_pct',width:100,render:v=>{const p=v||0;return <span style={{color:p>=50?'#22c55e':p>=30?'var(--ink2)':'var(--orange)',fontWeight:600}}>{p}%</span>}},
+          {title:'在岗',width:100,render:(_,r)=><span style={{color:'var(--ink3)',fontSize:11}}>{r.active_days||0}天 · {r.hour_min===null?'-':r.hour_min+'-'+r.hour_max+'点'}</span>},
         ]}/>
     </Card>
-    <Card className="card" size="small" style={{marginTop:16}} title={<span><span className="brand-bar" style={{display:'inline-block',verticalAlign:'-3px',marginRight:8}}></span>AI 摸鱼总结（近7天 · 按人）</span>} extra={<Button type="primary" size="small" loading={loading} onClick={gen}><i className="fa-solid fa-robot" style={{marginRight:6}}></i>{items&&items.length?'重新生成':'生成总结'}</Button>}>
+    <Card className="card" size="small" style={{marginTop:16}} title={<span><span className="brand-bar"></span>AI 摸鱼总结（近7天 · 按人）</span>} extra={<Button type="primary" size="small" loading={loading} onClick={gen}><i className="fa-solid fa-robot" style={{marginRight:6}}></i>{items&&items.length?'重新生成':'生成总结'}</Button>}>
       {loading&&<div style={{padding:40,textAlign:'center',color:'var(--ink3)'}}>AI 正在分析近7天摸鱼数据,约10-20秒…<br/><span style={{fontSize:11}}>（后台运行中，可切换其他页面，完成后会通知你）</span></div>}
       {!loading&&items&&items.length===0&&<Empty description={msg||'近7天工作时段无明显摸鱼'} style={{padding:40}}/>}
       {!loading&&items&&items.length>0&&<Row gutter={[16,16]} style={{marginTop:8}}>
-        {items.map((it,i)=><Col key={i} span={12}><div onClick={()=>goProfile&&goProfile(it.employee)} style={{padding:'14px 16px',background:'var(--bg)',borderRadius:8,cursor:'pointer',borderLeft:'3px solid var(--brand)'}}>
-          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}><i className="fa-solid fa-user" style={{color:'var(--brand)',fontSize:13}}></i><b style={{fontSize:14}}>{it.employee}</b></div>
+        {items.map((it,i)=><Col key={i} span={12}><div onClick={()=>goProfile&&goProfile(it.employee)} style={{padding:'14px 18px',background:'var(--bg)',borderRadius:10,cursor:'pointer',borderLeft:'3px solid var(--brand)',transition:'all .2s'}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}><i className="fa-solid fa-user" style={{color:'var(--brand)',fontSize:12}}></i><b style={{fontSize:14}}>{it.employee}</b></div>
           <Typography.Text style={{fontSize:12,lineHeight:1.7,color:'var(--ink2)'}}>{it.summary}</Typography.Text>
         </div></Col>)}
       </Row>}
