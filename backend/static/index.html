@@ -91,6 +91,7 @@
   .card{border:none !important;border-radius:var(--r) !important;box-shadow:var(--sh-sm) !important;animation:cardIn .35s cubic-bezier(.4,0,.2,1) both;transition:box-shadow .25s,transform .25s !important;background:var(--glass) !important;backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);}
   .card:hover{box-shadow:var(--sh-md) !important;}
   @keyframes cardIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  @keyframes sk{0%{background-position:100% 50%}100%{background-position:0 50%}}
   .card>.ant-card-head{min-height:44px !important;border-bottom-color:var(--line) !important;padding:0 18px !important;}
   .card>.ant-card-head .ant-card-head-title{font-size:var(--fs-md);font-weight:600;color:var(--ink);letter-spacing:.2px;}
   .card>.ant-card-body{padding:14px 18px !important;}
@@ -474,18 +475,19 @@ function Dashboard({go, goProfile}){
   const sp=eff.length?eff.filter(r=>(r.max_span||0)>=30).length:'—';
   const sp60=eff.length?eff.filter(r=>(r.max_span||0)>=60).length:'—';
   const KPIS=[
-    {k:'alert', icon:'fa-bell', v:sysAl.today||0, l:'今日告警', sub:'涉及 '+(sysAl.today_people||0)+' 人 · '+(sysAl.today_critical||0)+' 严重', tip:'今日(北京时间0点起)新增的告警条数。按"员工+意图"合并去重后计数。86+为严重。', go:()=>go('alerts',{today:true}), danger:true},
-    {k:'eff1', icon:'fa-mug-hot', v:sp, l:'摸鱼人数', sub:'连续摸鱼≥30分钟', tip:'最长一次连续摸鱼跨度≥30分钟的员工数。工作时段=9-12,14-18(排除午休)。', go:()=>go('efficiency')},
-    {k:'eff2', icon:'fa-fire', v:sp60, l:'重度摸鱼', sub:'连续摸鱼≥1小时', tip:'最长一次连续摸鱼跨度≥60分钟的员工数(摸鱼时长维度,和"摸鱼人数"同口径递进)。', go:()=>go('efficiency')},
-    {k:'user', icon:'fa-users', v:sys.employees||0, l:'今日活跃', sub:'累计 '+Math.round(((sys.events||{}).total||0)/10000)+' 万条事件', tip:'今日有行为记录的员工数。事件经降噪聚合(同域名10分钟内合并),非原始日志行数。', go:()=>go('computers',{today:true})},
+    {k:'alert', icon:'fa-bell', v:sysAl.today, l:'今日告警', sub:'涉及 '+(sysAl.today_people||0)+' 人 · '+(sysAl.today_critical||0)+' 严重', tip:'今日(北京时间0点起)新增的告警条数。按"员工+意图"合并去重后计数。86+为严重。', go:()=>go('alerts',{today:true}), danger:true, loaded:Object.keys(sys).length>0},
+    {k:'eff1', icon:'fa-mug-hot', v:(sp==='—'?null:sp), l:'摸鱼人数', sub:'连续摸鱼≥30分钟', tip:'最长一次连续摸鱼跨度≥30分钟的员工数。工作时段=9-12,14-18(排除午休)。', go:()=>go('efficiency'), loaded:eff.length>0},
+    {k:'eff2', icon:'fa-fire', v:(sp60==='—'?null:sp60), l:'重度摸鱼', sub:'连续摸鱼≥1小时', tip:'最长一次连续摸鱼跨度≥60分钟的员工数(摸鱼时长维度,和"摸鱼人数"同口径递进)。', go:()=>go('efficiency'), loaded:eff.length>0},
+    {k:'user', icon:'fa-users', v:sys.employees, l:'今日活跃', sub:'累计 '+(((sys.events||{}).total?Math.round((sys.events.total)/10000):0))+' 万条事件', tip:'今日有行为记录的员工数。事件经降噪聚合(同域名10分钟内合并),非原始日志行数。', go:()=>go('computers',{today:true}), loaded:Object.keys(sys).length>0},
   ];
+  const Ske=()=> <span style={{display:'inline-block',width:54,height:30,verticalAlign:-7,borderRadius:6,background:'linear-gradient(90deg,var(--ink4) 25%,var(--bg) 37%,var(--ink4) 63%)',backgroundSize:'400% 100%',animation:'sk 1.2s ease infinite'}}/>;
   return (<div>
     <Row gutter={[16,16]}>
       {KPIS.map(c=>(
         <Col span={6} key={c.k}>
           <div className={'tile'+(c.danger?' alert':'')} onClick={c.go} title={c.tip}>
             <div className="ic"><i className={'fa-solid '+c.icon}></i></div>
-            <div className="v num">{c.v}</div>
+            <div className="v num">{c.loaded?(c.v==null?'—':c.v):<Ske/>}</div>
             <div className="l">{c.l}</div>
             <div className="sub">{c.sub}</div>
             <div className="arr">查看 ›</div>
