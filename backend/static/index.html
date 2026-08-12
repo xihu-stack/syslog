@@ -433,8 +433,8 @@ function App(){
 
 function Dashboard({go, goProfile}){
   const [st,setSt]=useState({}); const [vs,setVs]=useState([]); const [al,setAl]=useState([]); const [sys,setSys]=useState({}); const [eff,setEff]=useState([]);
-  const pie=useRef(),bar=useRef(),trend=useRef(),alertTrend=useRef();
-  const pieChart=useRef(null),barChart=useRef(null),trendChart=useRef(null),alertTrendChart=useRef(null);
+  const pie=useRef(),bar=useRef(),alertTrend=useRef();
+  const pieChart=useRef(null),barChart=useRef(null),alertTrendChart=useRef(null);
   const load=async()=>{
     GET('/api/stats').then(setSt);
     GETL('/api/verdicts?limit=300').then(setVs);
@@ -455,25 +455,6 @@ function Dashboard({go, goProfile}){
       c.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0].name+'：'+p[0].value+'分'},grid:{left:200,right:60},xAxis:{type:'value',max:100,axisLine:{lineStyle:{color:'#e2e8f0'}},axisLabel:{color:'#94a3b8'},splitLine:{lineStyle:{color:'var(--bg)'}}},
         yAxis:{type:'category',data:top.map(x=>x[0]).reverse(),axisLabel:{color:'#475569',fontSize:13,interval:0},axisLine:{lineStyle:{color:'#e2e8f0'}}},
         series:[{type:'bar',data:top.map(x=>x[1]).reverse(),barCategoryGap:'30%',itemStyle:{color:'#6366f1',borderRadius:[0,6,6,0]},label:{show:true,position:'right',color:'var(--ink2)',formatter:'{c}分'}}]}); c.on('click',p=>goProfile&&goProfile(p.name));}} else { bar.current.innerHTML='<div style="text-align:center;color:var(--ink3);padding-top:60px">暂无高风险用户</div>'; }}
-    if(trend.current){ if(trendChart.current){trendChart.current.dispose();trendChart.current=null;} if(vs.length){
-      const bk={};
-      vs.forEach(v=>{
-        const t=new Date(v.window_start); if(isNaN(t))return;
-        const k=Math.floor(t.getTime()/600000)*600000;
-        if((v.risk_score||0)>=50){
-          if(!bk[k])bk[k]=new Set();
-          bk[k].add(v.employee);
-        }
-      });
-      const ts=Object.keys(bk).sort((a,b)=>+a-+b);
-      const vals=ts.map(t=>bk[t].size);
-      if(!vals.length){ trend.current.innerHTML='<div style="text-align:center;color:var(--ink3);padding-top:40px">暂无风险趋势数据</div>'; return; }
-      const maxY=Math.max(...vals,1);
-      const c=echarts.init(trend.current); trendChart.current=c;
-      c.setOption({tooltip:{trigger:'axis'},grid:{left:40,right:20,top:20,bottom:40},
-        xAxis:{type:'category',data:ts.map(t=>{const d=new Date(+t);return (d.getMonth()+1)+'/'+d.getDate()+' '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');}),axisLabel:{color:'#94a3b8',fontSize:11,rotate:30}},
-        yAxis:{type:'value',max:maxY+1,axisLabel:{color:'#94a3b8'},splitLine:{lineStyle:{color:'var(--bg)'}}},
-        series:[{type:'bar',data:vals,areaStyle:{color:'rgba(99,102,241,.12)'},itemStyle:{color:'#6366f1',borderColor:'#fff'},name:'风险用户数'}]});} else { trend.current.innerHTML='<div style="text-align:center;color:var(--ink3);padding-top:40px">暂无风险趋势数据</div>'; }}
   },[vs, al]);
   useEffect(()=>{
     const days=sys.alerts_by_day||[];
@@ -515,11 +496,10 @@ function Dashboard({go, goProfile}){
     <Row gutter={[16,16]} style={{marginTop:16}} align="stretch">
       <Col span={16}>
         <div style={{marginBottom:10,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-          <div><span className="brand-bar"></span><b style={{fontSize:14}}>风险态势</b><span style={{color:'var(--ink3)',fontSize:11,marginLeft:10}}>高风险用户 TOP5 · 风险≥50 趋势</span></div>
-          <span style={{color:'var(--ink3)',fontSize:11}}>点击柱/行查看画像</span>
+          <div><span className="brand-bar"></span><b style={{fontSize:14}}>风险态势</b><span style={{color:'var(--ink3)',fontSize:11,marginLeft:10}}>高风险用户 TOP5</span></div>
+          <span style={{color:'var(--ink3)',fontSize:11}}>点击柱查看画像</span>
         </div>
-        <Card className="card" size="small" style={{marginBottom:16}} bodyStyle={{padding:'14px 18px'}}><div ref={bar} style={{height:220}}></div></Card>
-        <Card className="card" size="small" bodyStyle={{padding:'14px 18px'}}><div style={{color:'var(--ink2)',fontSize:11,marginBottom:6,fontWeight:600}}>风险用户数趋势 · 按10分钟 · 风险≥50</div><div ref={trend} style={{height:170}}></div></Card>
+        <Card className="card" size="small" bodyStyle={{padding:'14px 18px'}}><div ref={bar} style={{height:380}}></div></Card>
       </Col>
       <Col span={8}>
         <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警日趋势</b><span style={{color:'var(--ink3)',fontSize:11,marginLeft:10}}>近7天</span></div>
