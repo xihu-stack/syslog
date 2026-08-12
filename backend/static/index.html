@@ -584,8 +584,11 @@ function Computers({goProfile,filter}){
         <Input.Search placeholder="搜索用户名" allowClear style={{width:180}} onChange={e=>setUq(e.target.value)} />
         <Segmented value={riskFilter} onChange={setRiskFilter} size="small" options={[
           {label:'全部',value:'all'},{label:'关注+',value:'watch'},{label:'高危+',value:'high'},{label:'严重',value:'crit'},{label:'无告警',value:'clean'}]}/>
-        <span style={{fontSize:11,color:'var(--ink3)'}}>共 {filtered.length} 人 · {isToday?'今日':''}事件 {evtTotal}</span>
       </Space>
+      <div style={{marginBottom:8,padding:'7px 12px',background:'var(--bg)',borderRadius:8,fontSize:12,color:'var(--ink2)',display:'flex',alignItems:'center',gap:8}}>
+        {riskFilter!=='all' && <Tag color={riskFilter==='crit'?'red':riskFilter==='high'?'orange':riskFilter==='watch'?'gold':'blue'} style={{marginRight:0}}>{riskFilter==='crit'?'严重≥86':riskFilter==='high'?'高危≥61':riskFilter==='watch'?'关注≥31':riskFilter==='clean'?'无告警':''}</Tag>}
+        <span>当前 <b className="num" style={{color:'var(--ink)',fontSize:14}}>{filtered.length}</b> / {base.length} 人{isToday?' (今日)':''} · {isToday?'今日':''}事件 <b className="num">{evtTotal}</b></span>
+      </div>
       <Table size="small" rowKey="computer" pagination={{pageSize:14}} loading={loading}
         dataSource={filtered}
         rowClassName={r=>{const rk=(r.max_risk||0);if(rk>=86)return 'row-crit';if(rk>=61)return 'row-high';if(rk>=31)return 'row-watch';return '';}}
