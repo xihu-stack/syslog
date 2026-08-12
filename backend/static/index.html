@@ -123,6 +123,10 @@
   .row-crit{box-shadow:inset 4px 0 0 var(--danger);background:var(--danger-soft) !important;}
   .row-high{box-shadow:inset 4px 0 0 var(--orange);background:var(--orange-soft) !important;}
   .row-watch{box-shadow:inset 4px 0 0 var(--warn);}
+  /* 用户视图行:只左侧细色条标示风险档,无背景色(保持表格干净) */
+  .uv-crit{box-shadow:inset 3px 0 0 var(--danger);}
+  .uv-high{box-shadow:inset 3px 0 0 var(--orange);}
+  .uv-watch{box-shadow:inset 3px 0 0 #3b82f6;}
   /* ===== AntD 深度定制 ===== */
   .ant-statistic-content-value{color:var(--ink);font-weight:700 !important;letter-spacing:-.3px;font-family:var(--mono);font-variant-numeric:tabular-nums;}
   .ant-statistic-title{color:var(--ink2) !important;font-size:var(--fs-sm) !important;margin-bottom:4px !important;}
@@ -172,7 +176,7 @@ const { Layout, Menu, Card, Row, Col, Table, Tag, Button, Input, Form, message, 
 const { Sider, Header, Content } = Layout;
 const { useState, useEffect, useRef } = React;
 
-const LVL = s => (s==null)?{c:'#94a3b8',l:'-'} : s>=86?{c:'#ef4444',l:'严重'} : s>=61?{c:'#f97316',l:'高危'} : s>=31?{c:'#f59e0b',l:'关注'} : {c:'#22c55e',l:'正常'};
+const LVL = s => (s==null)?{c:'#94a3b8',l:'-'} : s>=86?{c:'#ef4444',l:'严重'} : s>=61?{c:'#f97316',l:'高危'} : s>=31?{c:'#3b82f6',l:'关注'} : {c:'#22c55e',l:'正常'};
 const INTENT = {data_exfiltration:'数据外发', job_seeking:'求职离职', baseline_deviation:'行为偏离', policy_violation:'违规', normal_work:'正常', unknown:'未知'};
 const DEV = {none:'无', minor:'轻微', major:'重大', severe:'严重', unknown:'未知'};
 const STATUS_MAP = {NEW:{c:'#6366f1',t:'待处理',i:'fa-clock'}, TRIAGING:{c:'#f59e0b',t:'处理中',i:'fa-spinner'}, CONFIRMED:{c:'#ef4444',t:'已确认',i:'fa-circle-exclamation'}, FP:{c:'#94a3b8',t:'误报',i:'fa-xmark'}, CLOSED:{c:'#22c55e',t:'已关闭',i:'fa-circle-check'}};
@@ -549,7 +553,7 @@ function Computers({goProfile,filter}){
   // 各档不重叠,数字相加=总数,符合直觉。旧版"关注以上/高危以上"是包含关系(62含41),误导。
   const CARDS=[
     {k:'all',   label:'用户总数', sub:'全部', value:base.length, color:'#6366f1', icon:'fa-users'},
-    {k:'watch', label:'关注',     sub:'31-60', value:base.filter(r=>{const x=r.max_risk||0;return x>=31&&x<61;}).length, color:'#f59e0b', icon:'fa-eye'},
+    {k:'watch', label:'关注',     sub:'31-60', value:base.filter(r=>{const x=r.max_risk||0;return x>=31&&x<61;}).length, color:'#3b82f6', icon:'fa-eye'},
     {k:'high',  label:'高危',     sub:'61-85', value:base.filter(r=>{const x=r.max_risk||0;return x>=61&&x<86;}).length, color:'#f97316', icon:'fa-triangle-exclamation'},
     {k:'crit',  label:'严重',     sub:'86+',   value:base.filter(r=>(r.max_risk||0)>=86).length, color:'#ef4444', icon:'fa-circle-exclamation'},
   ];
@@ -587,12 +591,12 @@ function Computers({goProfile,filter}){
           {label:'全部',value:'all'},{label:'关注31-60',value:'watch'},{label:'高危61-85',value:'high'},{label:'严重86+',value:'crit'},{label:'无告警',value:'clean'}]}/>
       </Space>
       <div style={{marginBottom:8,padding:'7px 12px',background:'var(--bg)',borderRadius:8,fontSize:12,color:'var(--ink2)',display:'flex',alignItems:'center',gap:8}}>
-        {riskFilter!=='all' && <Tag color={riskFilter==='crit'?'red':riskFilter==='high'?'orange':riskFilter==='watch'?'gold':'blue'} style={{marginRight:0}}>{riskFilter==='crit'?'严重86+':riskFilter==='high'?'高危61-85':riskFilter==='watch'?'关注31-60':riskFilter==='clean'?'无告警':''}</Tag>}
+        {riskFilter!=='all' && <Tag color={riskFilter==='crit'?'red':riskFilter==='high'?'orange':riskFilter==='watch'?'blue':'default'} style={{marginRight:0}}>{riskFilter==='crit'?'严重86+':riskFilter==='high'?'高危61-85':riskFilter==='watch'?'关注31-60':riskFilter==='clean'?'无告警':''}</Tag>}
         <span>当前 <b className="num" style={{color:'var(--ink)',fontSize:14}}>{filtered.length}</b> / {base.length} 人{isToday?' (今日)':''} · {isToday?'今日':''}事件 <b className="num">{evtTotal}</b></span>
       </div>
       <Table size="small" rowKey="computer" pagination={{pageSize:14}} loading={loading}
         dataSource={filtered}
-        rowClassName={r=>{const rk=(r.max_risk||0);if(rk>=86)return 'row-crit';if(rk>=61)return 'row-high';if(rk>=31)return 'row-watch';return '';}}
+        rowClassName={r=>{const rk=(r.max_risk||0);if(rk>=86)return 'uv-crit';if(rk>=61)return 'uv-high';if(rk>=31)return 'uv-watch';return '';}}
         onRow={r=>({onClick:()=>goProfile(r.computer),style:{cursor:'pointer'}})}
         columns={[
           {title:<TH t="用户" />,dataIndex:'computer',width:170,
