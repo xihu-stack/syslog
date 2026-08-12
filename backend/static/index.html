@@ -525,7 +525,7 @@ function Dashboard({go, goProfile}){
             {title:'风险场景',dataIndex:'scenario',width:90,render:(v,r)=>{const L=LVL(r.maxRisk);return <Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40'}}>{v}</Tag>}},
             {title:'风险',dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
             {title:'状态',dataIndex:'status',width:80,render:v=><StatusTag s={v}/>},
-            {title:'说明',dataIndex:'summary',render:v=><Tooltip title={v}><span style={{display:'inline-block',maxWidth:250,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',verticalAlign:'bottom'}}>{v||'-'}</span></Tooltip>}]}/> : <Empty description="暂无告警" style={{padding:20}}/>}
+            {title:'说明',dataIndex:'summary',render:v=><span style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>}]}/> : <Empty description="暂无告警" style={{padding:20}}/>}
       </Card>;
     })()}
   </div>);
@@ -648,7 +648,7 @@ function Alerts({goProfile,filter}){
           {title:<TH t="告警数" tip="该员工在当前筛选范围内的告警条数(合并前)。同一员工同意图会合并展示。" />,dataIndex:'count',width:60,render:v=><span className="num" style={{color:'var(--ink2)',fontWeight:600}}>{v}</span>},
           {title:<TH t="最近告警" tip="该员工最近一次告警的行为发生时间。" />,dataIndex:'latest',width:135,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
           {title:<TH t="风险" tip="该员工告警中的最高风险分(0-100)。86+严重/61+高危/31+关注。" />,dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
-          {title:<TH t="说明" />,dataIndex:'summary',render:v=><Tooltip title={v}><span style={{display:'inline-block',maxWidth:300,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',verticalAlign:'bottom'}}>{v}</span></Tooltip>},
+          {title:<TH t="说明" />,dataIndex:'summary',render:v=><span style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>},
           {title:'操作',width:120,render:(_,r)=>(<Space size={4}>
             <Button size="small" type="primary" onClick={(e)=>doConfirm(e,r.verdict_id)}>确认</Button>
             <Button size="small" onClick={(e)=>doFP(e,r)} style={{color:'var(--danger)',border:'1px solid var(--danger)'+'55',background:'var(--danger-soft)'}}>误报</Button>
@@ -735,14 +735,14 @@ function Verdicts({goProfile,filter}){
           {title:<TH t="研判次数" tip="该员工+该意图被AI研判的总次数(合并前)。≥10次标橙,提示重复性风险。" />,dataIndex:'count',width:90,render:v=><span className="num" style={{fontWeight:700,color:v>=10?'var(--orange)':'var(--ink)'}}>{v}</span>},
           {title:<TH t="最高风险" tip="这些研判中的最高风险分(0-100)。86+严重/61+高危/31+关注。" />,dataIndex:'maxRisk',width:100,render:v=><RiskBadge s={v}/>},
           {title:<TH t="最近" tip="最近一次研判的时间(行为发生时间)。" />,dataIndex:'latest',width:140,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
-          {title:<TH t="最近一次说明" />,dataIndex:'explanation',render:v=><Tooltip title={v}><span style={{display:'inline-block',maxWidth:340,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',verticalAlign:'bottom'}}>{v||'-'}</span></Tooltip>},
+          {title:<TH t="最近一次说明" />,dataIndex:'explanation',render:v=><span style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>},
         ]:[
           {title:<TH t="用户" />,dataIndex:'employee',width:110,render:v=><span style={{fontWeight:600}}>{v}</span>},
           {title:<TH t="时间" tip="研判窗口的起始时间(行为发生时间)。" />,dataIndex:'window_start',width:140,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
           {title:<TH t="意图" tip="AI判定的行为意图。" />,dataIndex:'intent',width:110,render:v=><Tag style={{background:'var(--brand-soft)',color:'var(--brand)',border:'1px solid var(--brand)'+'33'}}>{INTENT[v]||v}</Tag>},
           {title:<TH t="风险" tip="AI对该行为窗口的打分(0-100)。" />,dataIndex:'risk_score',width:90,render:v=><RiskBadge s={v}/>},
           {title:<TH t="来源" tip="AI=大模型判定;兜底=LLM不可用时规则引擎判定。" />,dataIndex:'ai_participated',width:80,render:v=><Tag color={v?'green':'default'}>{v?'AI':'兜底'}</Tag>},
-          {title:<TH t="说明" />,dataIndex:'explanation',render:v=><Tooltip title={v}><span style={{display:'inline-block',maxWidth:320,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',verticalAlign:'bottom'}}>{v||'-'}</span></Tooltip>},
+          {title:<TH t="说明" />,dataIndex:'explanation',render:v=><span style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>},
         ]}/>
     </Card>
   </div>);
