@@ -23,7 +23,16 @@ def bj_now() -> datetime:
     """北京时间（naive datetime），用于和 occurred_at 比较。"""
     return datetime.now(BJ_TZ).replace(tzinfo=None)
 
-engine = create_engine(DB_URL, echo=False, future=True)
+# SQLite 用 NullPool(每次新建连接、用完即释放),避免慢查询长时间占连接导致
+# 连接池耗尽(QueuePool size5+overflow10 在 efficiency 等全表扫描接口下会被拖满,
+# 级联拖垮整个服务)。SQLite 是文件锁,连接复用收益本就有限。
+from sqlalchemy.pool import NullPool
+# check_same_thread=False: syslog 线程和 API 线程共用 engine,需关闭 SQLite 同线程检查
+if DB_URL.startswith("sqlite"):
+    engine = create_engine(DB_URL, echo=False, future=True, poolclass=NullPool,
+                           connect_args={"check_same_thread": False})
+else:
+    engine = create_engine(DB_URL, echo=False, future=True, pool_size=20, max_overflow=40, pool_pre_ping=True)
 Session = sessionmaker(bind=engine, expire_on_commit=False)
 Base = declarative_base()
 
