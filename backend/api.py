@@ -48,11 +48,13 @@ def _event_dict(e: EventRow) -> dict:
 
 
 def _verdict_dict(s: Session, r: VerdictRow) -> dict:
+    # 批量查事件(原逐 hash 单查=N+1,列表页100 verdicts × 10 hash = 1000 次查询)。一次 in_ 批查。
+    hashes = r.event_hashes or []
     events = []
-    for h in (r.event_hashes or []):
-        e = s.query(EventRow).filter_by(event_hash=h).first()
-        if e:
-            events.append(_event_dict(e))
+    if hashes:
+        ev_map = {e.event_hash: e for e in
+                  s.query(EventRow).filter(EventRow.event_hash.in_(hashes[:50])).all()}
+        events = [_event_dict(ev_map[h]) for h in hashes if h in ev_map]
     return {
         "id": r.id, "employee": r.employee_id, "device": r.device,
         "window_start": r.window_start.isoformat() if r.window_start else None,
@@ -785,9 +787,10 @@ def ask(body: dict = Body(...)):
         return {"answer": "请输入问题。", "action": "empty"}
     route_sys = ("你是行为分析助手。把用户问题路由到查询动作,只输出 JSON {action, employee, category}。\n"
                  "action: employee_risk(查某员工风险行为) / alerts(告警榜) / slack(摸鱼榜) / attendance(在岗情况) / who_risk(谁访问了某类风险网站) / help(规则/用法说明) / chat(其他闲聊)。\n"
-                 "注意: 问【离职/求职/跳槽/找工作】风险 → who_risk + category=招聘(查访问招聘网站的人, 不是看告警)。\n"
+                 "【关键优先级】问题里提到具体员工姓名(如'王帆''朱亮')→ 一律 employee_risk + employee=该姓名,无论问的是招聘/网盘/外发/摸鱼(查这个人的具体行为)。\n"
+                 "只有问'谁/哪些人/有没有人'(无具体姓名)访问某类网站 → 才用 who_risk + category。\n"
                  "employee: 仅 employee_risk 时填员工姓名(从问题提取)。\n"
-                 "category: 仅 who_risk 时填, 取值 远程控制/网盘/邮箱/招聘/文件助手 之一(从问题判断是哪类风险)。\n"
+                 "category: 仅 who_risk 时填, 取值 远程控制/网盘/邮箱/招聘/文件助手 之一。\n"
                  "只输出 JSON。")
     try:
         raw = llm_client.chat([{"role": "system", "content": route_sys}, {"role": "user", "content": question}],
@@ -805,6 +808,17 @@ def ask(body: dict = Body(...)):
         elif "remote" in ql or "远程" in question or "todesk" in ql: category = "远程控制"
         elif "recruit" in ql or "招聘" in question or "求职" in question: category = "招聘"
         elif "filehelper" in ql or "文件助手" in question or "传输助手" in question: category = "文件助手"
+    # 兜底: 路由成 who_risk 但问题里其实含具体员工名 → 转 employee_risk(查这个人具体行为)。
+    # 避免"王帆访问了哪些招聘网站"被误判成 who_risk(只统计人数,不列具体网站)。
+    if action == "who_risk":
+        _s2 = Session()
+        try:
+            _emps = [r[0] for r in _s2.query(EventRow.employee_id).distinct().limit(5000).all()]
+        finally:
+            _s2.close()
+        _hit = next((e for e in _emps if e and e in question), None)
+        if _hit:
+            action = "employee_risk"; employee = _hit
     data_ctx = _ask_query(action, employee, category)
     sum_sys = ("你是企业员工行为分析助手,基于给定真实数据简洁回答用户问题。"
                "只基于数据、不编造;数据不足就直说。中文,要点清晰。")
@@ -904,17 +918,18 @@ def _ask_query(action, employee, category=""):
                 return f"近期无人访问{target or '该类'}网站。"
             return f"访问{target}类网站的员工(访问次数):\n" + "\n".join(f"{emp} {n}次" for emp, n in rcnt.most_common(20))
         if action == "attendance":
+            # 优化:SQL 取 distinct (employee, date(occurred_at), hour) 聚合,避免逐行遍历98万事件。
             today = bj_now().date().isoformat()
             today_active = set(); eh = defaultdict(set)
-            for emp_id, occ in s.query(EventRow.employee_id, EventRow.occurred_at).yield_per(2000):
-                if occ:
-                    try:
-                        d = occ.date().isoformat(); h = occ.hour  # occurred_at 是 datetime 对象,用属性非切片
-                        eh[emp_id].add((d, h))
-                        if d == today:
-                            today_active.add(emp_id)
-                    except Exception:
-                        pass
+            rows = s.query(EventRow.employee_id, EventRow.occurred_at).filter(EventRow.occurred_at.isnot(None)).all()
+            for emp_id, occ in rows:
+                try:
+                    d = occ.date().isoformat(); h = occ.hour
+                    eh[emp_id].add((d, h))
+                    if d == today:
+                        today_active.add(emp_id)
+                except Exception:
+                    pass
             all_emps = set(eh.keys())
             not_today = sorted(all_emps - today_active)
             lines = [f"今日({today})有活动 {len(today_active)}人 / 全员 {len(all_emps)}人, 今日无活动 {len(not_today)}人(可能不在岗/未用电脑)。"]
@@ -946,21 +961,42 @@ def rules_suggest():
     from collections import Counter
     s = Session()
     try:
+        # 优化:SQL 先按域名 group by + count(98万行→几千唯一域名),Python 只对
+        # distinct 域名调一次分类函数。旧版逐行调3个分类函数,98万×3次字典遍历,极慢。
         unclass = Counter(); kw_hits = set()
-        # 风险/摸鱼关键词: 含这些的未分类域名即使低频也要扫,避免漏掉招聘/网盘/邮箱/视频等
         RISK_KW = ("job", "zhaopin", "recruit", "resume", "hr", "hire", "cv", "mail",
                    "pan", "disk", "cloud", "drive", "upload", "video", "shop", "mall",
                    "weibo", "zhihu", "douban", "game", "novel", "comic")
-        for e in s.query(EventRow).filter(EventRow.category == "WEB").yield_per(2000):
-            d = (e.raw or {}).get("domain") or ""
-            if d and not dicts.risk_class(d) and not dicts.slack_category(d) and not dicts.work_category(d):
-                unclass[d] += 1
+        dom_expr = json_field(EventRow.raw, 'domain')
+        # SQLite: 直接 group by json 提取的 domain 字段
+        from sqlalchemy import func as _f
+        rows = s.query(dom_expr, _f.count(EventRow.id)).filter(
+            EventRow.category == "WEB", dom_expr.isnot(None)
+        ).group_by(dom_expr).all()
+        cls_cache = {}
+        for d, n in rows:
+            d = (d or "").strip()
+            if not d:
+                continue
+            cls = cls_cache.get(d)
+            if cls is None:
+                cls = "risk" if dicts.risk_class(d) else ("slack" if dicts.slack_category(d) else ("work" if dicts.work_category(d) else "unclass"))
+                cls_cache[d] = cls
+            if cls == "unclass":
+                unclass[d] += n
                 if any(k in d.lower() for k in RISK_KW):
                     kw_hits.add(d)
-        top = unclass.most_common(30)
+        top = unclass.most_common(60)
         for d in kw_hits:  # 补充含风险关键词的域名(低频但疑似风险/摸鱼),确保被AI扫到
             if d not in dict(top):
                 top.append((d, unclass[d]))
+        # 预过滤明显的云服务/CDN/SDK 噪音子域(微软云/CDN/统计/证书等长串子域),
+        # 这些喂给AI无价值且占名额。保留短域名(更像真实站点)。
+        NOISE_HINT = ("office.net", "office.com", "sharepoint", "microsoft", "cdn", "akamai",
+                      "cloudfront", "ic3-edf", "trouter", "svc.ms", "1cdn", "office365",
+                      "skype", "trouter", "aria.microsoft", "events.data", "telemetry",
+                      "in.applicationinsights", "blob.core", "trouser")
+        top = [(d, n) for d, n in top if len(d) < 48 and not any(x in d.lower() for x in NOISE_HINT)][:30]
         if not top:
             return {"suggestions": [], "msg": "无未分类高频域名"}
         sys_p = ("你是域名分类助手。对每个域名判断归属,只输出 JSON 数组 [{domain, target, cat, reason}]。\n"
