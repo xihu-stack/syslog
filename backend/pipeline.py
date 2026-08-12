@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import concurrent.futures
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 import sys
 import threading
@@ -19,6 +19,51 @@ import profiles
 
 INTENT_MAP = {"job_seeking": "求职离职", "data_exfiltration": "数据外发",
               "baseline_deviation": "行为偏离", "policy_violation": "违规", "normal_work": "正常"}
+
+
+def _ignored_employees() -> set:
+    """需要忽略的员工名集合(测试账号等):逗号/换行分隔的 setting。
+    与访客(纯数字)过滤并用,避免开发期测试号污染生产统计与告警。"""
+    raw = dicts.get_setting("ignored_employees", "") or ""
+    return {x.strip() for x in re.split(r"[,\n，]", raw) if x.strip()}
+
+
+def _window_trigger_domains(w) -> set:
+    """提取窗口里触发的 high/job 级风险域名(用于研判去重 key)。
+    只取真正会触发 should_trigger 的高危域名,普通域名不算(否则去重过宽)。"""
+    doms = set()
+    for e in w:
+        if e.category == "WEB":
+            d = (e.raw or {}).get("domain") or e.target_value
+            if d and dicts.risk_tier(d) in ("high", "job"):
+                doms.add(d.lower())
+    return doms
+
+
+def _recently_judged(rs, emp: str, domains: set, hours: int) -> bool:
+    """该员工对这些高危域名中的任一域名,在最近 hours 小时内是否已研判过。
+    用于抑制"VPN 后台持续连接"这类同域名反复研判(朱亮 228 次问题的根因)。
+    event_hashes 命中即可——研判过的窗口其 event_hashes 已落库,反查这些 hash 是否属当前域名。"""
+    if not domains or hours <= 0:
+        return False
+    cutoff = bj_now() - timedelta(hours=hours)
+    # 该员工最近 hours 小时的研判,取 event_hashes
+    rows = rs.query(VerdictRow).filter(
+        VerdictRow.employee_id == emp, VerdictRow.window_start >= cutoff
+    ).all()
+    if not rows:
+        return False
+    # 反查这些研判的 event_hashes 对应的事件域名,看是否与当前窗口的域名重叠
+    hashes = set()
+    for r in rows:
+        hashes.update(r.event_hashes or [])
+    if not hashes:
+        return False
+    evs = rs.query(EventRow).filter(EventRow.event_hash.in_(list(hashes)[:400]),
+                                    EventRow.category == "WEB").all()
+    judged_doms = {(e.raw or {}).get("domain", "").lower() for e in evs}
+    judged_doms.discard("")
+    return bool(domains & judged_doms)
 
 
 def _alert_count() -> int:
@@ -46,7 +91,7 @@ def ingest_file(path: str) -> int:
                             s.query(EventRow.event_hash).filter(EventRow.event_hash.in_(batch)).all())
         added = 0
         for e, h in zip(events, hashes):
-            if h in existing or (e.employee_id or "").isdigit():  # 跳过已存在 + 访客(纯数字)
+            if h in existing or (e.employee_id or "").isdigit() or (e.employee_id or "") in _ignored_employees():  # 跳过已存在 + 访客(纯数字) + 忽略名单
                 continue
             s.add(EventRow(event_hash=h, occurred_at=e.occurred_at, employee_id=e.employee_id,
                            device_id=e.device_id, category=e.category, action=e.action,
@@ -73,8 +118,9 @@ def ingest_events(events) -> int:
             existing.update(r[0] for r in
                             s.query(EventRow.event_hash).filter(EventRow.event_hash.in_(hashes[i:i + 400])).all())
         added = 0
+        ignored = _ignored_employees()
         for e, h in zip(events, hashes):
-            if h in existing or (e.employee_id or "").isdigit():  # 跳过已存在 + 访客(纯数字)
+            if h in existing or (e.employee_id or "").isdigit() or (e.employee_id or "") in ignored:  # 跳过已存在 + 访客(纯数字) + 忽略名单
                 continue
             s.add(EventRow(event_hash=h, occurred_at=e.occurred_at, employee_id=e.employee_id,
                            device_id=e.device_id, category=e.category, action=e.action,
@@ -99,8 +145,11 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
     try:
         wm = int(dicts.get_setting("last_judged_event_id", "0") or "0")
         new_rows = rs.query(EventRow).filter(EventRow.id > wm).order_by(EventRow.occurred_at).all()
-        # 过滤访客（纯数字手机号/guest）——不是正式员工
-        new_rows = [r for r in new_rows if not re.match(r'^\d{8,}$', r.employee_id or '')]
+        # 过滤访客（纯数字手机号/guest）+ 忽略名单（测试账号等）——不是正式员工
+        ignored = _ignored_employees()
+        new_rows = [r for r in new_rows
+                    if not re.match(r'^\d{8,}$', r.employee_id or '')
+                    and (r.employee_id or '') not in ignored]
         if not new_rows:
             return 0, _alert_count()
         new_events = [CanonicalEvent(
@@ -111,6 +160,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         max_id = max(r.id for r in new_rows)
         gdomains = profiles.global_common_domains(rs)
         gctx = profiles.global_summary(rs)  # 全局参照：每轮算一次，喂给所有窗口的 AI
+        dedup_hours = int(dicts.get_setting("dedup_window_hours", "6") or "6")
         to_judge = []
         for emp, wins in detector.build_windows(new_events).items():
             for w in wins:
@@ -120,6 +170,10 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                     continue
                 if rs.query(VerdictRow).filter_by(employee_id=emp, window_start=w[0].occurred_at,
                                                   window_end=w[-1].occurred_at).first():
+                    continue
+                # 同员工 + 同高危域名 + 近 N 小时已研判过 → 抑制(防 VPN 后台持续连接反复研判)
+                trig = _window_trigger_domains(w)
+                if trig and _recently_judged(rs, emp, trig, dedup_hours):
                     continue
                 to_judge.append((emp, w, baseline, dev))
     finally:

@@ -14,69 +14,97 @@
 <script src="/libs/babel.js"></script>
 <style>
   :root{
-    --ink:#0f172a; --ink2:#475569; --ink3:#94a3b8; --ink4:#cbd5e1;
-    --line:#eef1f6; --bg:#fafbfc;
-    --brand:#4f46e5; --brand-soft:#eef2ff; --brand-deep:#4338ca;
+    /* 中性色(单一 slate 体系,不再混 #9aa3b2/#6b7280) */
+    --ink:#0f172a; --ink2:#475569; --ink3:#94a3b8; --ink4:#e2e8f0;
+    --line:#eef2f7; --bg:#f8fafc; --surface:#ffffff;
+    /* 品牌(靛紫,更柔和) */
+    --brand:#6366f1; --brand-soft:#eef2ff; --brand-deep:#4f46e5;
+    /* 语义(单一体系,不再混 #ff4d4f/#fa8c16/#52c41a) */
     --danger:#ef4444; --danger-soft:#fef2f2;
-    --warn:#f59e0b; --ok:#16a34a;
-    --shadow-sm:0 1px 2px rgba(15,23,42,.04);
-    --shadow-md:0 1px 3px rgba(15,23,42,.05), 0 4px 12px rgba(15,23,42,.04);
-    --shadow-lg:0 4px 6px rgba(15,23,42,.03), 0 10px 30px rgba(15,23,42,.07);
-    --radius:12px;
+    --warn:#f59e0b; --warn-soft:#fffbeb;
+    --orange:#f97316; --orange-soft:#fff7ed;
+    --ok:#22c55e; --ok-soft:#f0fdf4;
+    /* 分层阴影 */
+    --shadow-xs:0 1px 2px rgba(15,23,42,.04);
+    --shadow-sm:0 1px 3px rgba(15,23,42,.05),0 1px 2px rgba(15,23,42,.03);
+    --shadow-md:0 4px 12px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.04);
+    --shadow-lg:0 12px 32px rgba(15,23,42,.10),0 4px 8px rgba(15,23,42,.04);
+    --radius:12px; --radius-sm:8px;
   }
   *{box-sizing:border-box;}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","HarmonyOS Sans","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","HarmonyOS Sans","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased;font-size:13px;}
   #root{min-height:100vh;}
-  .logo{height:60px;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--brand);font-size:15px;font-weight:700;line-height:1.3;border-bottom:1px solid var(--line);background:#fff;letter-spacing:.5px;}
-  .num{font-family:Consolas,"Courier New",monospace;font-variant-numeric:tabular-nums;}
-  .tile{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px 22px;cursor:pointer;transition:.2s;position:relative;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,.03);}
-  .tile:hover{border-color:var(--brand);box-shadow:0 8px 24px rgba(79,70,229,.15);transform:translateY(-2px);}
+  /* 字体层级:标题 18/700,正文 13/500,辅助 11/400;数字 tabular */
+  .num{font-variant-numeric:tabular-nums;letter-spacing:-.2px;}
+  /* 布局:侧栏/头部用阴影分隔,不用 border(更干净) */
+  .logo{height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;line-height:1.3;color:var(--brand);font-size:14px;font-weight:700;letter-spacing:.3px;background:var(--surface);box-shadow:0 1px 0 var(--line);}
+  .logo .ic{font-size:22px;line-height:1;}
+  /* KPI tile:去边框,纯阴影,图标背景色块 */
+  .tile{position:relative;background:var(--surface);border:none;border-radius:var(--radius);padding:20px 22px;cursor:pointer;transition:all .22s cubic-bezier(.4,0,.2,1);overflow:hidden;box-shadow:var(--shadow-sm);}
+  .tile:hover{box-shadow:var(--shadow-md);transform:translateY(-2px);}
+  .tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--brand);opacity:0;transition:opacity .2s;}
+  .tile:hover::before{opacity:1;}
   .tile .v{font-size:30px;font-weight:700;color:var(--ink);letter-spacing:-.5px;line-height:1.1;}
   .tile.alert .v{color:var(--danger);}
-  .tile.alert{border-top:3px solid var(--danger);}
-  .tile .l{color:var(--ink2);font-size:12px;margin-top:7px;letter-spacing:.5px;}
-  .tile .arr{position:absolute;right:12px;bottom:10px;color:var(--ink3);font-size:10px;}
-  .uc-card{background:#fff;border:1px solid var(--line);border-top:3px solid var(--ink4);border-radius:12px;padding:14px 16px;cursor:pointer;transition:.2s;box-shadow:var(--shadow-sm);}
+  .tile.alert::before{background:var(--danger);opacity:1;}
+  .tile .l{color:var(--ink2);font-size:12px;margin-top:8px;letter-spacing:.2px;}
+  .tile .arr{position:absolute;right:14px;bottom:12px;color:var(--ink3);font-size:10px;}
+  /* 用户视图漏斗卡 */
+  .uc-card{background:var(--surface);border:none;border-top:3px solid var(--ink4);border-radius:var(--radius);padding:16px 18px;cursor:pointer;transition:all .22s cubic-bezier(.4,0,.2,1);box-shadow:var(--shadow-sm);}
   .uc-card:hover{box-shadow:var(--shadow-md);transform:translateY(-2px);}
-  .uc-v{font-size:26px;font-weight:700;line-height:1.1;font-family:Consolas,"Courier New",monospace;letter-spacing:-.5px;}
-  .uc-l{color:var(--ink2);font-size:12px;margin-top:6px;letter-spacing:.3px;}
+  .uc-v{font-size:26px;font-weight:700;line-height:1.1;letter-spacing:-.5px;}
+  .uc-l{color:var(--ink2);font-size:12px;margin-top:6px;letter-spacing:.2px;}
   .uc-sub{color:var(--ink3);font-size:11px;margin-left:6px;}
-  .risk{display:inline-block;padding:2px 9px;border-radius:5px;font-family:Consolas,monospace;font-weight:700;font-size:12px;}
-  .legend span{display:inline-block;margin-right:16px;font-size:12px;color:var(--ink2);}
-  .swatch{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:middle;}
-  .tl{border-left:2px solid var(--brand);margin:8px 0 8px 4px;padding-left:14px;}
-  .tl .it{margin:8px 0;font-size:13px;} .tl .t{color:var(--ink3);font-size:12px;}
-  .card{border:1px solid var(--line) !important;border-radius:var(--radius) !important;box-shadow:var(--shadow-md) !important;animation:cardIn .4s ease both;}
-  @keyframes cardIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-  .card>.ant-card-head{min-height:40px;border-bottom-color:var(--line) !important;}
-  .sec-title{color:var(--ink2);font-size:12px;letter-spacing:1px;margin:6px 0 10px;}
-  .st-tag{display:inline-block;padding:1px 7px;border-radius:4px;font-size:11px;font-weight:600;}
-  .ant-statistic-content-value{color:var(--ink);}
-  .ant-statistic-title{color:var(--ink2) !important;}
-  .ant-table-small>.ant-table-content .ant-table-tbody>tr>td,.ant-table-small>.ant-table-content .ant-table-thead>tr>th{padding:9px 8px;}
-  .row-crit{box-shadow:inset 3px 0 0 #ef4444;background:#fef2f2;}
-  .row-high{box-shadow:inset 3px 0 0 #fa8c16;background:#fff7ed;}
-  .row-watch{box-shadow:inset 3px 0 0 #faad14;}
+  /* 风险徽章/状态标签 */
+  .risk{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:6px;font-weight:700;font-size:12px;letter-spacing:.2px;}
+  .st-tag{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600;letter-spacing:.2px;}
+  .legend span{display:inline-flex;align-items:center;margin-right:18px;font-size:12px;color:var(--ink2);}
+  .swatch{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px;}
+  /* 卡片:无边框,阴影分层,入场动画 */
+  .card{border:none !important;border-radius:var(--radius) !important;box-shadow:var(--shadow-sm) !important;animation:cardIn .35s ease both;transition:box-shadow .2s !important;}
+  .card:hover{box-shadow:var(--shadow-md) !important;}
+  @keyframes cardIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .card>.ant-card-head{min-height:42px;border-bottom-color:var(--line) !important;padding:0 16px !important;}
+  .card>.ant-card-head .ant-card-head-title{font-size:14px;font-weight:600;color:var(--ink);}
+  .sec-title{color:var(--ink2);font-size:12px;letter-spacing:.3px;margin:6px 0 12px;font-weight:500;}
   .sec-fade{color:var(--ink3);}
-  .flowbar{display:flex;align-items:center;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 8px;margin-bottom:16px;box-shadow:0 1px 3px rgba(15,23,42,.04);}
-  .flow-item{flex:1;min-width:84px;text-align:center;padding:0 4px;}
-  .flow-item .fv{font-size:24px;font-weight:700;color:var(--ink);letter-spacing:-.5px;line-height:1.1;}
-  .flow-item .fl{font-size:11px;color:var(--ink3);margin-top:5px;letter-spacing:.5px;}
-  .flow-arrow{color:var(--ink3);opacity:.4;font-size:16px;}
-  .flow-tail{margin-left:auto;padding-left:16px;border-left:1px solid var(--line);font-size:12px;color:var(--ink3);white-space:nowrap;}
-  .card{transition:box-shadow .2s !important;}
-  .card:hover{box-shadow:var(--shadow-lg) !important;}
-  .ant-table-tbody>tr{transition:background .15s;}
-  .ant-table-tbody>tr:hover>td{background:#f8fafc !important;}
-  .logo{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;line-height:1.3;}
-  .logo .ic{font-size:24px;line-height:1;filter:grayscale(.1);}
-  .flow-item{transition:.2s;}
+  /* 大屏流程条:节点+细线箭头 */
+  .flowbar{display:flex;align-items:center;background:var(--surface);border:none;border-radius:var(--radius);padding:16px 12px;margin-bottom:16px;box-shadow:var(--shadow-sm);}
+  .flow-item{flex:1;min-width:84px;text-align:center;padding:0 4px;cursor:pointer;transition:transform .2s;}
+  .flow-item:hover{transform:translateY(-1px);}
   .flow-item:hover .fv{color:var(--brand);}
-  .brand-bar{width:4px;height:22px;background:var(--brand);border-radius:2px;}
+  .flow-item .fv{font-size:24px;font-weight:700;color:var(--ink);letter-spacing:-.5px;line-height:1.1;font-variant-numeric:tabular-nums;}
+  .flow-item .fl{font-size:11px;color:var(--ink3);margin-top:6px;letter-spacing:.3px;}
+  .flow-arrow{color:var(--ink4);font-size:14px;margin:0 2px;}
+  .flow-tail{margin-left:auto;padding-left:18px;border-left:1px solid var(--line);font-size:12px;color:var(--ink3);white-space:nowrap;}
+  /* 画像时间线:圆点+竖线 */
+  .tl{border-left:2px solid var(--ink4);margin:8px 0 8px 4px;padding-left:16px;position:relative;}
+  .tl .it{margin:10px 0;font-size:13px;color:var(--ink2);}
+  .tl .it::before{content:"";position:absolute;left:-7px;width:10px;height:10px;border-radius:50%;background:var(--surface);border:2px solid var(--brand);}
+  .tl .t{color:var(--ink3);font-size:11px;margin-top:2px;}
+  .brand-bar{width:4px;height:20px;background:var(--brand);border-radius:2px;}
+  /* 表格:表头浅底,风险行左侧色条加宽到4px */
+  .ant-table-small>.ant-table-content .ant-table-tbody>tr>td,.ant-table-small>.ant-table-content .ant-table-thead>tr>th{padding:9px 8px;}
+  .ant-table-thead>tr>th{background:var(--bg) !important;font-weight:600 !important;color:var(--ink2) !important;font-size:12px !important;}
+  .ant-table-tbody>tr{transition:background .15s;}
+  .ant-table-tbody>tr:hover>td{background:var(--ink4) !important;opacity:.4;}
+  .row-crit{box-shadow:inset 4px 0 0 var(--danger);background:var(--danger-soft);}
+  .row-high{box-shadow:inset 4px 0 0 var(--orange);background:var(--orange-soft);}
+  .row-watch{box-shadow:inset 4px 0 0 var(--warn);}
+  /* AntD 组件字号/色统一 */
+  .ant-statistic-content-value{color:var(--ink);font-weight:700 !important;}
+  .ant-statistic-title{color:var(--ink2) !important;font-size:12px !important;}
+  .ant-menu-item{font-size:13px !important;border-radius:8px !important;margin:4px 8px !important;width:calc(100% - 16px) !important;}
+  .ant-menu-item-selected{background:var(--brand-soft) !important;color:var(--brand) !important;font-weight:600;}
+  .ant-menu-item-selected::after{display:none;}
+  .ant-btn{font-weight:500;}
+  .ant-tag{font-size:11px;border-radius:5px;}
+  .ant-segmented{border-radius:8px;}
+  .ant-tooltip-inner{font-size:12px;}
 </style>
 </head>
 <body>
-<div id="root"><div style="padding:40px;text-align:center;color:#9aa3b2">加载中（本地库，约1~2秒）…</div></div>
+<div id="root"><div style="padding:40px;text-align:center;color:var(--ink3)">加载中（本地库，约1~2秒）…</div></div>
 <script>window.onerror=function(m,s,l,c,e){var d=document.getElementById('root');if(d)d.innerHTML='<div style="padding:30px;color:#c0392b;font-family:monospace;white-space:pre-wrap">前端出错：'+(e&&e.stack||m)+'\n\n请截图发我。</div>';return false;};</script>
 <script type="text/babel">
 const { Layout, Menu, Card, Row, Col, Table, Tag, Button, Input, Form, message, Select, Modal,
@@ -84,10 +112,10 @@ const { Layout, Menu, Card, Row, Col, Table, Tag, Button, Input, Form, message, 
 const { Sider, Header, Content } = Layout;
 const { useState, useEffect, useRef } = React;
 
-const LVL = s => (s==null)?{c:'#9aa3b2',l:'-'} : s>=86?{c:'#ff4d4f',l:'严重'} : s>=61?{c:'#fa8c16',l:'高危'} : s>=31?{c:'#faad14',l:'关注'} : {c:'#52c41a',l:'正常'};
+const LVL = s => (s==null)?{c:'#94a3b8',l:'-'} : s>=86?{c:'#ef4444',l:'严重'} : s>=61?{c:'#f97316',l:'高危'} : s>=31?{c:'#f59e0b',l:'关注'} : {c:'#22c55e',l:'正常'};
 const INTENT = {data_exfiltration:'数据外发', job_seeking:'求职离职', baseline_deviation:'行为偏离', policy_violation:'违规', normal_work:'正常', unknown:'未知'};
 const DEV = {none:'无', minor:'轻微', major:'重大', severe:'严重', unknown:'未知'};
-const STATUS_MAP = {NEW:{c:'#4f46e5',t:'待处理',i:'fa-clock'}, TRIAGING:{c:'#faad14',t:'处理中',i:'fa-spinner'}, CONFIRMED:{c:'#ff4d4f',t:'已确认',i:'fa-circle-exclamation'}, FP:{c:'#bfbfbf',t:'误报',i:'fa-xmark'}, CLOSED:{c:'#52c41a',t:'已关闭',i:'fa-circle-check'}};
+const STATUS_MAP = {NEW:{c:'#6366f1',t:'待处理',i:'fa-clock'}, TRIAGING:{c:'#f59e0b',t:'处理中',i:'fa-spinner'}, CONFIRMED:{c:'#ef4444',t:'已确认',i:'fa-circle-exclamation'}, FP:{c:'#94a3b8',t:'误报',i:'fa-xmark'}, CLOSED:{c:'#22c55e',t:'已关闭',i:'fa-circle-check'}};
 // 防抖回调（延迟ms后执行，取消前序）
 function debounce(fn, delay){ let t; return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), delay); }; }
 const STATUS_OPTS = [{label:'待处理',value:'NEW'},{label:'处理中',value:'TRIAGING'},{label:'已确认',value:'CONFIRMED'},{label:'误报',value:'FP'},{label:'已关闭',value:'CLOSED'}];
@@ -101,10 +129,10 @@ const DEL=(u)=>fetch(u,{method:'DELETE'}).then(r=>r.ok?r.json():r.text().then(t=
 function RiskBadge({s}){ const v=LVL(s); return <span className="risk" style={{background:v.c+'1a',color:v.c,border:'1px solid '+v.c+'66'}}><i className="fa-solid fa-shield-halved" style={{marginRight:4,fontSize:10}}></i>{s==null?'-':s} {v.l}</span>; }
 function StatusTag({s}){ const v=STATUS_MAP[s]||{c:'#999',t:s}; return <span className="st-tag" style={{background:v.c+'1a',color:v.c}}>{v.i&&<i className={'fa-solid '+v.i} style={{marginRight:4,fontSize:10}}></i>}{v.t}</span>; }
 function Legend(){ return <div className="legend">
-  <span><i className="swatch" style={{background:'#52c41a'}}/>0-30 正常</span>
-  <span><i className="swatch" style={{background:'#faad14'}}/>31-60 关注</span>
-  <span><i className="swatch" style={{background:'#fa8c16'}}/>61-85 高危</span>
-  <span><i className="swatch" style={{background:'#ff4d4f'}}/>86-100 严重</span>
+  <span><i className="swatch" style={{background:'#22c55e'}}/>0-30 正常</span>
+  <span><i className="swatch" style={{background:'#f59e0b'}}/>31-60 关注</span>
+  <span><i className="swatch" style={{background:'#f97316'}}/>61-85 高危</span>
+  <span><i className="swatch" style={{background:'#ef4444'}}/>86-100 严重</span>
 </div>; }
 
 const FROM_TITLE={computers:'用户视图',alerts:'告警管理',verdicts:'研判记录',efficiency:'效率监控',dashboard:'监控大屏'};
@@ -116,28 +144,29 @@ function ProfilePage({user, goBack, from}){
     if(!data) return;
     const vs=data.verdicts||[];
     if(vs.length&&trendRef.current){ const c=echarts.init(trendRef.current);
-      const riskColors=vs.map(v=>v.risk_score>=86?'#ff4d4f':v.risk_score>=61?'#fa8c16':v.risk_score>=31?'#faad14':'#52c41a');
+      const riskColors=vs.map(v=>v.risk_score>=86?'#ef4444':v.risk_score>=61?'#f97316':v.risk_score>=31?'#f59e0b':'#22c55e');
       c.setOption({tooltip:{trigger:'axis',formatter:p=>p[0].name+'<br/>风险分: <b>'+p[0].value+'</b>'},grid:{left:40,right:20,top:20,bottom:35},
-        xAxis:{type:'category',data:vs.map(v=>(v.window_start||'').replace('T',' ').slice(5,16)),axisLabel:{color:'#9aa3b2',fontSize:9,rotate:30}},
-        yAxis:{type:'value',max:100,axisLabel:{color:'#9aa3b2'}},
-        series:[{type:'line',data:vs.map(v=>v.risk_score||0),smooth:true,areaStyle:{color:'#4f46e522'},lineStyle:{color:'#4f46e5'},itemStyle:{color:function(p){return riskColors[p.dataIndex]||'#4f46e5';}}}]});}
+        xAxis:{type:'category',data:vs.map(v=>(v.window_start||'').replace('T',' ').slice(5,16)),axisLabel:{color:'#94a3b8',fontSize:9,rotate:30}},
+        yAxis:{type:'value',max:100,axisLabel:{color:'#94a3b8'},splitLine:{lineStyle:{color:'#f1f5f9'}}},
+        series:[{type:'line',data:vs.map(v=>v.risk_score||0),smooth:true,areaStyle:{color:'rgba(99,102,241,.12)'},lineStyle:{color:'#6366f1'},itemStyle:{color:function(p){return riskColors[p.dataIndex]||'#6366f1';}}}]});}
     const hrs=(data.profile||{}).active_hours_top||[];
     if(hrs.length&&hoursRef.current){ const c=echarts.init(hoursRef.current);
       const full=Array.from({length:24},(_,h)=>hrs.includes(h)?1:0);
       c.setOption({tooltip:{},grid:{left:30,right:15,top:15,bottom:30},
-        xAxis:{type:'category',data:Array.from({length:24},(_,h)=>h+'时'),axisLabel:{color:'#9aa3b2',fontSize:9}},
+        xAxis:{type:'category',data:Array.from({length:24},(_,h)=>h+'时'),axisLabel:{color:'#94a3b8',fontSize:9}},
         yAxis:{type:'value',show:false},
-        series:[{type:'bar',data:full,itemStyle:{color:full.map(v=>v?'#4f46e5':'#e6ecf5')}}]});}
+        series:[{type:'bar',data:full,itemStyle:{color:full.map(f=>f?'#6366f1':'#e2e8f0'),borderRadius:[3,3,0,0]}}]});}
     const evs=data.events||[];
-    if(evs.length&&actRef.current){ const c=echarts.init(actRef.current);
+    const hasDoc=(data.category_counts||{}).DOC;
+    if(evs.length&&actRef.current&&hasDoc){ const c=echarts.init(actRef.current);
       const actCnt={}; evs.forEach(e=>{ const a=e.action||'UNKNOWN'; actCnt[a]=(actCnt[a]||0)+1; });
       const top=Object.entries(actCnt).sort((a,b)=>b[1]-a[1]).slice(0,8);
       c.setOption({tooltip:{},grid:{left:80,right:20,top:15,bottom:30},
-        xAxis:{type:'value',axisLabel:{color:'#9aa3b2'}},
-        yAxis:{type:'category',data:top.map(t=>t[0]).reverse(),axisLabel:{color:'#6b7280',fontSize:11}},
-        series:[{type:'bar',data:top.map(t=>t[1]).reverse(),itemStyle:{color:'#4f46e5',borderRadius:[0,4,4,0]}}]});}
+        xAxis:{type:'value',axisLabel:{color:'#94a3b8'}},
+        yAxis:{type:'category',data:top.map(t=>t[0]).reverse(),axisLabel:{color:'var(--ink2)',fontSize:11}},
+        series:[{type:'bar',data:top.map(t=>t[1]).reverse(),itemStyle:{color:'#6366f1',borderRadius:[0,6,6,0]}}]});}
   },[data]);
-  if(!data) return <Card className="card"><div style={{padding:40,textAlign:'center',color:'#9aa3b2'}}>加载中...</div></Card>;
+  if(!data) return <Card className="card"><div style={{padding:40,textAlign:'center',color:'var(--ink3)'}}>加载中...</div></Card>;
   const vs=data.verdicts||[];
   const evs=data.events||[];
   const maxRisk=data.max_risk!=null?data.max_risk:(vs.length?Math.max(...vs.map(v=>v.risk_score||0)):0);
@@ -149,74 +178,74 @@ function ProfilePage({user, goBack, from}){
   const catTot=docCnt+webCnt+searchCnt; const srcTot=sangforCnt+ipguardCnt;
   const usbUsed=(p.channels_used||[]).includes('USB');
   const netdiskUsed=(p.channels_used||[]).some(c=>c==='NETWORK');
+  const hasDoc=docCnt>0;  // 纯上网用户隐藏文档类字段
+  const topDomain=domains[0]||'';
   return (<div>
     <Row gutter={16}>
-      <Col span={5}><Card className="card"><Statistic title="历史事件" value={catTot||p.sample_count||evs.length}/></Card></Col>
-      <Col span={5}><Card className="card"><Statistic title="研判次数" value={data.verdict_count!=null?data.verdict_count:vs.length}/></Card></Col>
-      <Col span={5}><Card className="card"><Statistic title="最高风险" value={maxRisk} valueStyle={{color:LVL(maxRisk).c}}/></Card></Col>
-      <Col span={5}><Card className="card"><Statistic title="观察天数" value={p.active_days||new Set(evs.map(e=>(e.occurred_at||'').slice(0,10))).size}/></Card></Col>
-      <Col span={4}><Card className="card"><Statistic title="常用通道" value={(p.channels_used||[]).map(c=>({USB:'U盘',NETWORK:'网络/共享',LOCAL:'本地'}[c]||c)).join(' / ')||'-'}/></Card></Col>
+      <Col span={6}><Card className="card"><Statistic title="历史事件" value={catTot||p.sample_count||evs.length}/></Card></Col>
+      <Col span={6}><Card className="card"><Statistic title="研判次数" value={data.verdict_count!=null?data.verdict_count:vs.length}/></Card></Col>
+      <Col span={6}><Card className="card"><Statistic title="最高风险" value={maxRisk} valueStyle={{color:LVL(maxRisk).c}}/></Card></Col>
+      <Col span={6}><Card className="card"><Statistic title="观察天数" value={p.active_days||new Set(evs.map(e=>(e.occurred_at||'').slice(0,10))).size}/></Card></Col>
     </Row>
     <Row gutter={16} style={{marginTop:16}}>
-      <Col span={14}><Card className="card" title="风险趋势（点颜色=风险等级）" size="small"><div ref={trendRef} style={{height:220}}></div></Card></Col>
-      <Col span={10}><Card className="card" title="活跃时段" size="small"><div ref={hoursRef} style={{height:220}}></div></Card></Col>
+      <Col span={14}><Card className="card" title={<span><span className="brand-bar" style={{display:'inline-block',verticalAlign:'-3px',marginRight:8}}></span>风险趋势（点颜色=风险等级）</span>} size="small"><div ref={trendRef} style={{height:220}}></div></Card></Col>
+      <Col span={10}><Card className="card" title={<span><span className="brand-bar" style={{display:'inline-block',verticalAlign:'-3px',marginRight:8}}></span>活跃时段</span>} size="small"><div ref={hoursRef} style={{height:220}}></div></Card></Col>
     </Row>
     <Row gutter={16} style={{marginTop:16}}>
       <Col span={8}>
-    <Card className="card" title="事件分类" size="small">
+    <Card className="card" title={<span><span className="brand-bar" style={{display:'inline-block',verticalAlign:'-3px',marginRight:8}}></span>事件分类</span>} size="small">
       <Table size="small" pagination={false} dataSource={[
-        {key:'doc',label:'文档操作',val:docCnt,color:'#4f46e5'},
-        {key:'web',label:'网页浏览',val:webCnt,color:'#52c41a'},
-        {key:'search',label:'关键字搜索',val:searchCnt,color:'#faad14'},
-      ]} columns={[
+        {key:'doc',label:'文档操作',val:docCnt,color:'#6366f1'},
+        {key:'web',label:'网页浏览',val:webCnt,color:'#22c55e'},
+        {key:'search',label:'关键字搜索',val:searchCnt,color:'#f59e0b'},
+      ].filter(r=>hasDoc||r.key!=='doc')} columns={[
         {title:'类型',dataIndex:'label'},
         {title:'数量',dataIndex:'val',render:(v,r)=><span style={{fontWeight:600,color:r.color}}>{v}</span>},
-        {title:'占比',render:(_,r)=>catTot?<span style={{color:'#9aa3b2'}}>{Math.round(r.val/catTot*100)}%</span>:'-'},
+        {title:'占比',render:(_,r)=>catTot?<span style={{color:'var(--ink3)'}}>{Math.round(r.val/catTot*100)}%</span>:'-'},
       ]}/>
-      <div style={{marginTop:12}}>
-        <Typography.Text type="secondary" style={{fontSize:12}}>操作类型 Top8：</Typography.Text>
-        <div ref={actRef} style={{height:160,marginTop:4}}></div>
-      </div>
+      {hasDoc
+        ? <div style={{marginTop:12}}><Typography.Text type="secondary" style={{fontSize:12}}>操作类型 Top8：</Typography.Text><div ref={actRef} style={{height:160,marginTop:4}}></div></div>
+        : <div style={{marginTop:12}}><Typography.Text type="secondary" style={{fontSize:12}}>常用域名 Top6：</Typography.Text><div style={{marginTop:6}}>{domains.slice(0,6).map(d=><Tag key={d} style={{marginBottom:4,fontSize:11,maxWidth:'100%',overflow:'hidden',textOverflow:'ellipsis'}}>{d}</Tag>)}</div></div>}
     </Card>
       </Col>
       <Col span={8}>
-    <Card className="card" title="数据来源" size="small">
+    <Card className="card" title={<span><span className="brand-bar" style={{display:'inline-block',verticalAlign:'-3px',marginRight:8}}></span>数据来源</span>} size="small">
       <Table size="small" pagination={false} dataSource={[
-        {key:'sangfor',label:'深信服上网行为',val:sangforCnt,color:'#52c41a'},
-        {key:'ipguard',label:'IP-Guard文档/网页',val:ipguardCnt,color:'#4f46e5'},
+        {key:'sangfor',label:'深信服上网行为',val:sangforCnt,color:'#22c55e'},
+        {key:'ipguard',label:'IP-Guard文档/网页',val:ipguardCnt,color:'#6366f1'},
       ]} columns={[
         {title:'来源',dataIndex:'label'},
         {title:'数量',dataIndex:'val',render:(v,r)=><span style={{fontWeight:600,color:r.color}}>{v}</span>},
-        {title:'占比',render:(_,r)=>srcTot?<span style={{color:'#9aa3b2'}}>{Math.round(r.val/srcTot*100)}%</span>:'-'},
+        {title:'占比',render:(_,r)=>srcTot?<span style={{color:'var(--ink3)'}}>{Math.round(r.val/srcTot*100)}%</span>:'-'},
       ]}/>
-      <div style={{marginTop:12,padding:8,background:'#f6f8fb',borderRadius:6}}>
+      {hasDoc&&<div style={{marginTop:12,padding:10,background:'var(--bg)',borderRadius:8}}>
         <Typography.Text type="secondary" style={{fontSize:12}}>外发通道：</Typography.Text>
         <div style={{marginTop:6}}>
           {usbUsed&&<Tag color="red" style={{marginBottom:4}}>USB/移动存储</Tag>}
           {netdiskUsed&&<Tag color="orange" style={{marginBottom:4}}>网络/共享磁盘</Tag>}
           {!usbUsed&&!netdiskUsed&&<Typography.Text type="secondary" style={{fontSize:12}}>无外发通道记录</Typography.Text>}
         </div>
-      </div>
+      </div>}
     </Card>
       </Col>
       <Col span={8}>
-    <Card className="card" title="AI基线摘要" size="small">
+    <Card className="card" title={<span><span className="brand-bar" style={{display:'inline-block',verticalAlign:'-3px',marginRight:8}}></span>AI基线摘要</span>} size="small">
       <Typography.Paragraph style={{fontSize:12,marginBottom:0}}>
         <Typography.Text code style={{fontSize:11}}>{data.profile_summary||'（样本不足，按通用可疑度判断）'}</Typography.Text>
       </Typography.Paragraph>
       <Divider style={{margin:'10px 0'}}/>
       <Descriptions column={1} size="small">
         <Descriptions.Item label="日均活动">{p.daily_doc_op_median||0}（峰值{p.daily_doc_op_max||0}）</Descriptions.Item>
-        <Descriptions.Item label="行为类型">{(p.actions_seen||[]).join(', ')||'-'}</Descriptions.Item>
+        {hasDoc&&<Descriptions.Item label="行为类型">{(p.actions_seen||[]).join(', ')||'-'}</Descriptions.Item>}
         <Descriptions.Item label="常接触词">{p.usual_keywords?(p.usual_keywords.slice(0,5).join(', ')):'-'}</Descriptions.Item>
       </Descriptions>
     </Card>
       </Col>
     </Row>
-    <Card className="card" title="研判历史" size="small" style={{marginTop:16}}>
+    <Card className="card" title={<span><span className="brand-bar" style={{display:'inline-block',verticalAlign:'-3px',marginRight:8}}></span>研判历史</span>} size="small" style={{marginTop:16}}>
       <Table size="small" rowKey="window_start" pagination={{pageSize:8}} dataSource={vs}
         columns={[{title:'时间',dataIndex:'window_start',width:150,render:v=>(v||'').replace('T',' ').slice(0,16)},
-          {title:'意图',dataIndex:'intent',width:120,render:v=><Tag color="blue">{INTENT[v]||v}</Tag>},
+          {title:'意图',dataIndex:'intent',width:120,render:v=><Tag style={{background:'var(--brand-soft)',color:'var(--brand)',border:'1px solid var(--brand)'+'40'}}>{INTENT[v]||v}</Tag>},
           {title:'风险',dataIndex:'risk_score',width:120,render:v=><RiskBadge s={v}/>},
           {title:'说明',dataIndex:'explanation',ellipsis:true}]}/>
     </Card>
@@ -228,7 +257,7 @@ function ProfilePage({user, goBack, from}){
           <b> [{e.action}]</b> {e.domain||e.target_value}
           <Tag style={{marginLeft:6,fontSize:10}} color={e.source==='sangfor'?'green':'blue'}>{e.source==='sangfor'?'深信服':'IP-Guard'}</Tag>
         </div>)}
-        {!(data.risk_events||[]).length&&<div style={{color:'#9aa3b2',padding:24,textAlign:'center'}}>近期无风险行为</div>}
+        {!(data.risk_events||[]).length&&<div style={{color:'var(--ink3)',padding:24,textAlign:'center'}}>近期无风险行为</div>}
       </div>
     </Card>
     <Card className="card" title={"摸鱼会话（"+(data.slack_sessions||[]).length+"段）"} size="small" style={{marginTop:16}}>
@@ -240,7 +269,7 @@ function ProfilePage({user, goBack, from}){
           <b> {(e.domains||[]).join(' / ')}</b>
           {e.count>1&&<span style={{color:'#94a3b8',fontSize:11}}> ({e.count}次访问)</span>}
         </div>)}
-        {!(data.slack_sessions||[]).length&&<div style={{color:'#9aa3b2',padding:24,textAlign:'center'}}>近期无摸鱼行为</div>}
+        {!(data.slack_sessions||[]).length&&<div style={{color:'var(--ink3)',padding:24,textAlign:'center'}}>近期无摸鱼行为</div>}
       </div>
     </Card>
     {domains.length>0&&<Card className="card" title="常访问域名（按频率）" size="small" style={{marginTop:16}}>
@@ -288,9 +317,9 @@ function App(){
     message.loading({content:'导入中…',key:'up',duration:0});
     fetch('/api/ingest',{method:'POST',body:fd}).then(r=>r.json()).then(r=>{ message.success({content:'已导入 '+r.imported+' 条，开始研判…',key:'up',duration:2}); pollDetect(); }); return false; };
   return (
-    <ConfigProvider theme={{token:{colorPrimary:'#4f46e5',borderRadius:8}}}>
+    <ConfigProvider theme={{token:{colorPrimary:'#6366f1',borderRadius:8,colorText:'#0f172a',colorTextSecondary:'#475569',fontFamily:'inherit'}}}>
     <Layout style={{minHeight:'100vh'}}>
-      <Sider width={200} style={{background:'#fff',borderRight:'1px solid #e8eef7'}}>
+      <Sider width={208} style={{background:'var(--surface)',boxShadow:'1px 0 0 var(--line)'}}>
         <div className="logo"><span className="ic"><i className="fa-solid fa-chart-line"></i></span>用户行为分析系统</div>
         <Menu mode="inline" selectedKeys={[key==='profile'?(profileFrom||'alerts'):key]} onClick={e=>navigate(e.key)} style={{borderRight:'none'}}
           items={[
@@ -305,16 +334,16 @@ function App(){
           ]}/>
       </Sider>
       <Layout>
-        <Header style={{background:'#fff',borderBottom:'1px solid var(--line)',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 20px',height:56}}>
-          <div style={{display:'flex',alignItems:'center',gap:12}}>
+        <Header style={{background:'var(--surface)',boxShadow:'0 1px 0 var(--line)',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 24px',height:58}}>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
             <div className="brand-bar"></div>
-            {key!=='dashboard' && <a onClick={()=>navigate('dashboard')} style={{color:'var(--ink3)',fontSize:14}}>监控大屏</a>}
-            {key!=='dashboard' && <span style={{color:'#cbd5e1',fontSize:14}}>›</span>}
+            {key!=='dashboard' && <a onClick={()=>navigate('dashboard')} style={{color:'var(--ink3)',fontSize:13,cursor:'pointer'}}>监控大屏</a>}
+            {key!=='dashboard' && <span style={{color:'var(--ink4)',fontSize:13}}>›</span>}
             {key==='profile' ? (<>
-              <a onClick={()=>{navigate(profileFrom||'alerts');setProfileUser(null);}} style={{color:'var(--ink3)',fontSize:14}}>{FROM_TITLE[profileFrom]||'告警管理'}</a>
-              <span style={{color:'#cbd5e1',fontSize:14}}>›</span>
-              <Typography.Text strong style={{fontSize:18}}>{profileUser}</Typography.Text>
-            </>) : (<Typography.Title level={4} style={{margin:0}}>{({dashboard:'监控大屏',computers:'用户视图',alerts:'告警管理',verdicts:'研判记录',efficiency:'效率监控',ask:'AI 问答',rawlogs:'原始日志',config:'系统设置'})[key]}</Typography.Title>)}
+              <a onClick={()=>{navigate(profileFrom||'alerts');setProfileUser(null);}} style={{color:'var(--ink3)',fontSize:13,cursor:'pointer'}}>{FROM_TITLE[profileFrom]||'告警管理'}</a>
+              <span style={{color:'var(--ink4)',fontSize:13}}>›</span>
+              <Typography.Text strong style={{fontSize:16}}>{profileUser}</Typography.Text>
+            </>) : (<Typography.Title level={4} style={{margin:0,fontSize:17,fontWeight:700}}>{({dashboard:'监控大屏',computers:'用户视图',alerts:'告警管理',verdicts:'研判记录',efficiency:'效率监控',ask:'AI 问答',rawlogs:'原始日志',config:'系统设置'})[key]}</Typography.Title>)}
           </div>
           <Space>
             <Typography.Text style={{color:'var(--ink3)',fontSize:12,marginRight:4,fontVariantNumeric:'tabular-nums'}}>{now}</Typography.Text>
@@ -356,15 +385,15 @@ function Dashboard({go, goProfile}){
   useEffect(()=>{
     // 饼图数据：优先用 alerts，其次用 verdicts（sysAl 是 sys.alerts 对象，不能和 useState 的 al 混淆）
     const pieData = al.length ? al : vs;
-    if(pie.current){ if(pieChart.current){pieChart.current.dispose();pieChart.current=null;} if(pieData.length){ const cnt={}; pieData.forEach(v=>{const s=v.scenario||v.intent||'unknown';cnt[s]=(cnt[s]||0)+1;}); if(!Object.keys(cnt).length){ pie.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无告警分布</div>'; } else { const c=echarts.init(pie.current); pieChart.current=c;
-      c.setOption({tooltip:{trigger:'item'},legend:{bottom:0,textStyle:{color:'#6b7280',fontSize:11}},
-        color:['#ff4d4f','#fa8c16','#faad14','#4f46e5','#52c41a'],
-        series:[{type:'pie',radius:['42%','70%'],label:{color:'#4b5563'},data:Object.entries(cnt).map(([k,v])=>({name:INTENT[k]||k,value:v}))}]}); c.on('click',()=>go('alerts'));}} else { pie.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无告警分布</div>'; }}
+    if(pie.current){ if(pieChart.current){pieChart.current.dispose();pieChart.current=null;} if(pieData.length){ const cnt={}; pieData.forEach(v=>{const s=v.scenario||v.intent||'unknown';cnt[s]=(cnt[s]||0)+1;}); if(!Object.keys(cnt).length){ pie.current.innerHTML='<div style="text-align:center;color:var(--ink3);padding-top:60px">暂无告警分布</div>'; } else { const c=echarts.init(pie.current); pieChart.current=c;
+      c.setOption({tooltip:{trigger:'item'},legend:{bottom:0,textStyle:{color:'#475569',fontSize:11},icon:'circle',itemWidth:8,itemHeight:8},
+        color:['#ef4444','#f97316','#f59e0b','#6366f1','#22c55e'],
+        series:[{type:'pie',radius:['42%','70%'],label:{color:'#475569'},itemStyle:{borderColor:'#fff',borderWidth:2},data:Object.entries(cnt).map(([k,v])=>({name:INTENT[k]||k,value:v}))}]}); c.on('click',()=>go('alerts'));}} else { pie.current.innerHTML='<div style="text-align:center;color:var(--ink3);padding-top:60px">暂无告警分布</div>'; }}
     if(bar.current){ if(barChart.current){barChart.current.dispose();barChart.current=null;} if(vs.length){ const er={}; vs.forEach(v=>er[v.employee]=Math.max(er[v.employee]||0,v.risk_score));
-      const top=Object.entries(er).sort((a,b)=>b[1]-a[1]).slice(0,5); if(!top.length){ bar.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无高风险用户</div>'; } else { const c=echarts.init(bar.current); barChart.current=c;
-      c.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0].name+'：'+p[0].value+'分'},grid:{left:200,right:60},xAxis:{type:'value',max:100,axisLine:{lineStyle:{color:'#d0d7e3'}},axisLabel:{color:'#9aa3b2'}},
-        yAxis:{type:'category',data:top.map(x=>x[0]).reverse(),axisLabel:{color:'#475569',fontSize:13,interval:0},axisLine:{lineStyle:{color:'#d0d7e3'}}},
-        series:[{type:'bar',data:top.map(x=>x[1]).reverse(),barCategoryGap:'30%',itemStyle:{color:'#4f46e5',borderRadius:[0,4,4,0]},label:{show:true,position:'right',color:'#6b7280',formatter:'{c}分'}}]}); c.on('click',p=>goProfile&&goProfile(p.name));}} else { bar.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:60px">暂无高风险用户</div>'; }}
+      const top=Object.entries(er).sort((a,b)=>b[1]-a[1]).slice(0,5); if(!top.length){ bar.current.innerHTML='<div style="text-align:center;color:var(--ink3);padding-top:60px">暂无高风险用户</div>'; } else { const c=echarts.init(bar.current); barChart.current=c;
+      c.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0].name+'：'+p[0].value+'分'},grid:{left:200,right:60},xAxis:{type:'value',max:100,axisLine:{lineStyle:{color:'#e2e8f0'}},axisLabel:{color:'#94a3b8'},splitLine:{lineStyle:{color:'var(--bg)'}}},
+        yAxis:{type:'category',data:top.map(x=>x[0]).reverse(),axisLabel:{color:'#475569',fontSize:13,interval:0},axisLine:{lineStyle:{color:'#e2e8f0'}}},
+        series:[{type:'bar',data:top.map(x=>x[1]).reverse(),barCategoryGap:'30%',itemStyle:{color:'#6366f1',borderRadius:[0,6,6,0]},label:{show:true,position:'right',color:'var(--ink2)',formatter:'{c}分'}}]}); c.on('click',p=>goProfile&&goProfile(p.name));}} else { bar.current.innerHTML='<div style="text-align:center;color:var(--ink3);padding-top:60px">暂无高风险用户</div>'; }}
     if(trend.current){ if(trendChart.current){trendChart.current.dispose();trendChart.current=null;} if(vs.length){
       const bk={};
       vs.forEach(v=>{
@@ -377,13 +406,13 @@ function Dashboard({go, goProfile}){
       });
       const ts=Object.keys(bk).sort((a,b)=>+a-+b);
       const vals=ts.map(t=>bk[t].size);
-      if(!vals.length){ trend.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:40px">暂无风险趋势数据</div>'; return; }
+      if(!vals.length){ trend.current.innerHTML='<div style="text-align:center;color:var(--ink3);padding-top:40px">暂无风险趋势数据</div>'; return; }
       const maxY=Math.max(...vals,1);
       const c=echarts.init(trend.current); trendChart.current=c;
       c.setOption({tooltip:{trigger:'axis'},grid:{left:40,right:20,top:20,bottom:40},
-        xAxis:{type:'category',data:ts.map(t=>{const d=new Date(+t);return (d.getMonth()+1)+'/'+d.getDate()+' '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');}),axisLabel:{color:'#9aa3b2',fontSize:9,rotate:30}},
-        yAxis:{type:'value',max:maxY+1,axisLabel:{color:'#9aa3b2'}},
-        series:[{type:'bar',data:vals,areaStyle:{color:'#4f46e522'},itemStyle:{color:'#4f46e5',borderColor:'#fff'},name:'风险用户数'}]});} else { trend.current.innerHTML='<div style="text-align:center;color:#9aa3b2;padding-top:40px">暂无风险趋势数据</div>'; }}
+        xAxis:{type:'category',data:ts.map(t=>{const d=new Date(+t);return (d.getMonth()+1)+'/'+d.getDate()+' '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');}),axisLabel:{color:'#94a3b8',fontSize:9,rotate:30}},
+        yAxis:{type:'value',max:maxY+1,axisLabel:{color:'#94a3b8'},splitLine:{lineStyle:{color:'var(--bg)'}}},
+        series:[{type:'bar',data:vals,areaStyle:{color:'rgba(99,102,241,.12)'},itemStyle:{color:'#6366f1',borderColor:'#fff'},name:'风险用户数'}]});} else { trend.current.innerHTML='<div style="text-align:center;color:var(--ink3);padding-top:40px">暂无风险趋势数据</div>'; }}
   },[vs, al]);
   useEffect(()=>{
     const days=sys.alerts_by_day||[];
@@ -391,9 +420,9 @@ function Dashboard({go, goProfile}){
       if(alertTrendChart.current){alertTrendChart.current.dispose();alertTrendChart.current=null;}
       const c=echarts.init(alertTrend.current); alertTrendChart.current=c;
       c.setOption({tooltip:{trigger:'axis'},grid:{left:40,right:20,top:30,bottom:30},
-        xAxis:{type:'category',data:days.map(d=>d[0].slice(5)),axisLabel:{color:'#9aa3b2'}},
-        yAxis:{type:'value',axisLabel:{color:'#9aa3b2'}},
-        series:[{type:'bar',data:days.map(d=>d[1]),itemStyle:{color:'#4f46e5',borderRadius:[4,4,0,0]},label:{show:true,position:'top',color:'#6b7280'}}]});
+        xAxis:{type:'category',data:days.map(d=>d[0].slice(5)),axisLabel:{color:'#94a3b8'}},
+        yAxis:{type:'value',axisLabel:{color:'#94a3b8'},splitLine:{lineStyle:{color:'var(--bg)'}}},
+        series:[{type:'bar',data:days.map(d=>d[1]),itemStyle:{color:'#6366f1',borderRadius:[6,6,0,0]},label:{show:true,position:'top',color:'var(--ink2)'}}]});
     }
   },[sys]);
   const SRC={"sangfor":"深信服","ipguard":"IP-Guard","":"未知"};
@@ -402,12 +431,12 @@ function Dashboard({go, goProfile}){
   const sl=sys.syslog||{};
   return (<div>
     <div className="flowbar">
-      <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('computers',{today:true})}><div className="fv num">{ev.today||0}</div><div className="fl">今日日志</div></div>
-      <div className="flow-arrow">›</div>
-      <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('verdicts',{today:true})}><div className="fv num">{vd.today||0}</div><div className="fl">过 AI 研判</div></div>
-      <div className="flow-arrow">›</div>
-      <div className="flow-item" style={{cursor:'pointer'}} onClick={()=>go('alerts',{today:true})}><div className="fv num" style={{color:'#ef4444'}}>{sysAl.today||0}</div><div className="fl">今日告警</div></div>
-      <div className="flow-tail">画像 <b style={{color:'#4f46e5'}}>{ago(sys.profile_updated_ts)}</b> 更新</div>
+      <div className="flow-item" onClick={()=>go('computers',{today:true})}><div className="fv num">{ev.today||0}</div><div className="fl">今日日志</div></div>
+      <div className="flow-arrow"><i className="fa-solid fa-angle-right"></i></div>
+      <div className="flow-item" onClick={()=>go('verdicts',{today:true})}><div className="fv num">{vd.today||0}</div><div className="fl">过 AI 研判</div></div>
+      <div className="flow-arrow"><i className="fa-solid fa-angle-right"></i></div>
+      <div className="flow-item" onClick={()=>go('alerts',{today:true})}><div className="fv num" style={{color:'var(--danger)'}}>{sysAl.today||0}</div><div className="fl">今日告警</div></div>
+      <div className="flow-tail">画像 <b style={{color:'var(--brand)'}}>{ago(sys.profile_updated_ts)}</b> 更新</div>
     </div>
     <Row gutter={16} style={{marginTop:16}}>
       {(()=>{const sp=eff.length?eff.filter(r=>(r.max_span||0)>=30).length:'—';const aw=eff.length?Math.round(eff.reduce((s,r)=>s+(r.work_pct||0),0)/eff.length):null;return <>
@@ -424,12 +453,12 @@ function Dashboard({go, goProfile}){
     <Card className="card" title="风险用户数趋势（按10分钟，风险≥50的人数）" size="small" style={{marginTop:16}}><div ref={trend} style={{height:160}}></div></Card>
     <Card className="card" title="告警日趋势（近7天每日告警数）" size="small" style={{marginTop:16}}><div ref={alertTrend} style={{height:200}}></div></Card>
     {(()=>{
-      const ag={};(sysAl.list||[]).forEach(a=>{if(!ag[a.employee])ag[a.employee]={key:a.employee,employee:a.employee,scenarios:[],maxRisk:0,summary:'',status:a.status};const g=ag[a.employee];const sc=INTENT[a.scenario]||a.scenario;if(!g.scenarios.includes(sc))g.scenarios.push(sc);if((a.risk_score||0)>g.maxRisk){g.maxRisk=a.risk_score;g.summary=a.summary;}});
+      const ag={};(sysAl.list||[]).forEach(a=>{if(!ag[a.employee])ag[a.employee]={key:a.employee,employee:a.employee,scenario:'',scenarios:[],maxRisk:0,summary:'',status:a.status};const g=ag[a.employee];const sc=INTENT[a.scenario]||a.scenario;if(!g.scenarios.includes(sc))g.scenarios.push(sc);if((a.risk_score||0)>g.maxRisk){g.maxRisk=a.risk_score;g.summary=a.summary;g.scenario=sc;}});
       const ga=Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);
-      return <Card className="card" style={{marginTop:16}} title={'高风险告警 TOP5'} size="small" extra={<a onClick={()=>go('alerts')} style={{fontSize:12}}>全部 →</a>}>
+      return <Card className="card" style={{marginTop:16}} title={<span><span className="brand-bar" style={{display:'inline-block',verticalAlign:'-3px',marginRight:8}}></span>高风险告警 TOP5</span>} size="small" extra={<a onClick={()=>go('alerts')} style={{fontSize:12,color:'var(--brand)'}}>全部 →</a>}>
         {ga.length? <Table size="small" rowKey="key" pagination={false} dataSource={ga.slice(0,5)} onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
-          columns={[{title:'用户',dataIndex:'employee',width:110},
-            {title:'风险场景',dataIndex:'scenarios',render:v=><Space wrap size={[4,4]}>{v.map(s=><Tag key={s} style={{fontSize:11}} color={'blue'}>{s}</Tag>)}</Space>},
+          columns={[{title:'用户',dataIndex:'employee',width:100,render:v=><span style={{fontWeight:600}}>{v}</span>},
+            {title:'风险场景',dataIndex:'scenario',width:90,render:(v,r)=>{const L=LVL(r.maxRisk);return <Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40'}}>{v}</Tag>}},
             {title:'风险',dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
             {title:'状态',dataIndex:'status',width:80,render:v=><StatusTag s={v}/>},
             {title:'说明',dataIndex:'summary',render:v=><Tooltip title={v}><span style={{display:'inline-block',maxWidth:250,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',verticalAlign:'bottom'}}>{v||'-'}</span></Tooltip>}]}/> : <Empty description="暂无告警" style={{padding:20}}/>}
@@ -440,12 +469,12 @@ function Dashboard({go, goProfile}){
 
 function Computers({goProfile,filter}){
   const isToday=filter&&filter.today; const tStr=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});
-  const [rows,setRows]=useState([]); const [uq,setUq]=useState(''); const [riskFilter,setRiskFilter]=useState('all');
+  const [rows,setRows]=useState(null); const [uq,setUq]=useState(''); const [riskFilter,setRiskFilter]=useState('all');
   const [lastUpd,setLastUpd]=useState(null); const [loading,setLoading]=useState(true); const [excs,setExcs]=useState([]);
   const load=async()=>{const [r,ex]=await Promise.all([GETL('/api/computers'),GET('/api/exceptions')]);setRows(r);setExcs(Array.isArray(ex)?ex:((ex&&ex.items)||[]));setLastUpd(new Date());setLoading(false);};
   useEffect(()=>{ load(); const t=setInterval(load,15000); return ()=>clearInterval(t); },[]);
   const exMap={}; excs.forEach(e=>{const k=e.employee; if(k){(exMap[k]=exMap[k]||[]).push(INTENT[e.signal_type]||e.signal_type);}});
-  const base=rows.filter(r=>{
+  const base=(rows||[]).filter(r=>{
     if(isToday&&(r.last_seen||'').slice(0,10)!==tStr)return false;
     if(uq&&!(r.computer||'').toLowerCase().includes(uq.toLowerCase()))return false;
     return true;
@@ -453,9 +482,9 @@ function Computers({goProfile,filter}){
   // 风险漏斗：与图例同色（关注/高危/严重）。今日与全量模式下含义一致——均为"当前搜索结果"内统计，
   // 不再像旧版那样随 today 切换指标（旧版把"今日事件"和"总用户"塞进同一张卡，含义漂移）。
   const CARDS=[
-    {k:'all',   label:'用户总数', value:base.length, color:'#475569', icon:'fa-users'},
-    {k:'watch', label:'关注以上', sub:'≥31', value:base.filter(r=>(r.max_risk||0)>=31).length, color:'#faad14', icon:'fa-eye'},
-    {k:'high',  label:'高危以上', sub:'≥61', value:base.filter(r=>(r.max_risk||0)>=61).length, color:'#fa8c16', icon:'fa-triangle-exclamation'},
+    {k:'all',   label:'用户总数', value:base.length, color:'#6366f1', icon:'fa-users'},
+    {k:'watch', label:'关注以上', sub:'≥31', value:base.filter(r=>(r.max_risk||0)>=31).length, color:'#f59e0b', icon:'fa-eye'},
+    {k:'high',  label:'高危以上', sub:'≥61', value:base.filter(r=>(r.max_risk||0)>=61).length, color:'#f97316', icon:'fa-triangle-exclamation'},
     {k:'crit',  label:'严重',     sub:'≥86', value:base.filter(r=>(r.max_risk||0)>=86).length, color:'#ef4444', icon:'fa-circle-exclamation'},
   ];
   const filtered=base.filter(r=>{
@@ -467,7 +496,7 @@ function Computers({goProfile,filter}){
   });
   const evtTotal=filtered.reduce((s,r)=>s+(isToday?(r.event_count_today||0):(r.event_count||0)),0);
   return (<div>
-    <div className="sec-title">{isToday?'用户视图 · 仅今日活跃':'用户视图'} · 点击行查看画像 · <span style={{fontSize:11,color:'#9aa3b2'}}>每15秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()}</span></div>
+    <div className="sec-title">{isToday?'用户视图 · 仅今日活跃':'用户视图'} · 点击行查看画像 · <span style={{fontSize:11,color:'var(--ink3)'}}>每15秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()}</span></div>
     <Row gutter={16} style={{marginBottom:16}}>
       {CARDS.map(c=>{const active=riskFilter===c.k; return (
         <Col span={6} key={c.k}>
@@ -489,7 +518,7 @@ function Computers({goProfile,filter}){
         <Input.Search placeholder="搜索用户名" allowClear style={{width:180}} onChange={e=>setUq(e.target.value)} />
         <Segmented value={riskFilter} onChange={setRiskFilter} size="small" options={[
           {label:'全部',value:'all'},{label:'关注+',value:'watch'},{label:'高危+',value:'high'},{label:'严重',value:'crit'},{label:'无告警',value:'clean'}]}/>
-        <span style={{fontSize:11,color:'#9aa3b2'}}>共 {filtered.length} 人 · {isToday?'今日':''}事件 {evtTotal}</span>
+        <span style={{fontSize:11,color:'var(--ink3)'}}>共 {filtered.length} 人 · {isToday?'今日':''}事件 {evtTotal}</span>
       </Space>
       <Table size="small" rowKey="computer" pagination={{pageSize:14}} loading={loading}
         dataSource={filtered}
@@ -499,10 +528,10 @@ function Computers({goProfile,filter}){
           {title:'用户',dataIndex:'computer',width:170,
             render:(v,r)=>{const rk=r.max_risk||0;const ex=exMap[v];return (<span><a style={{fontWeight:rk>=61?700:500,color:'var(--ink)'}}>{v}</a>{ex&&<Tooltip title={'已豁免：'+ex.join('、')}><Tag color="default" style={{marginLeft:6,fontSize:10,lineHeight:'16px'}}>豁免</Tag></Tooltip>}</span>);}},
           {title:'风险',dataIndex:'max_risk',width:95,render:v=><RiskBadge s={v}/>},
-          {title:'告警',dataIndex:'alert_count',width:64,render:v=>v>0?<Tag color="red">{v}条</Tag>:<span style={{color:'#cbd5e1'}}>—</span>},
-          {title:isToday?'今日事件':'事件',width:80,render:(_,r)=><span className="num" style={{color:'#6b7280'}}>{isToday?(r.event_count_today||0):(r.event_count||0)}</span>},
+          {title:'告警',dataIndex:'alert_count',width:64,render:v=>v>0?<Tag color="red">{v}条</Tag>:<span style={{color:'var(--ink4)'}}>—</span>},
+          {title:isToday?'今日事件':'事件',width:80,render:(_,r)=><span className="num" style={{color:'var(--ink2)'}}>{isToday?(r.event_count_today||0):(r.event_count||0)}</span>},
           {title:'最近活动',dataIndex:'last_seen',width:130,render:fmt},
-          {title:'',width:40,render:()=><span style={{color:'#bcc6d6',fontSize:11}}>▸</span>},
+          {title:'',width:40,render:()=><span style={{color:'var(--ink4)',fontSize:11}}>▸</span>},
         ]}/>
     </Card>
   </div>);
@@ -512,7 +541,7 @@ function Alerts({goProfile,filter}){
   const isToday=!!(filter&&filter.today);
   const [when,setWhen]=useState(isToday?'today':'all');         // today|yesterday|week|all
   const [statusF,setStatusF]=useState(isToday?'all':'NEW');     // NEW(未处理)|handled(已处理)|all
-  const [rows,setRows]=useState([]); const [q,setQ]=useState(''); const [lvl,setLvl]=useState('all');
+  const [rows,setRows]=useState(null); const [q,setQ]=useState(''); const [lvl,setLvl]=useState('all');
   const [scenario,setScenario]=useState('all');
   const [lastUpd,setLastUpd]=useState(null); const [loading,setLoading]=useState(true);
   const load=async()=>{const p=new URLSearchParams();p.set('limit','300');if(when!=='all')p.set('when',when);if(statusF!=='all')p.set('status',statusF);const r=await GETL('/api/alerts?'+p.toString());setRows(r);setLastUpd(new Date());setLoading(false);};
@@ -523,12 +552,12 @@ function Alerts({goProfile,filter}){
   const submitFP=()=>{
     POST('/api/verdicts/'+fpModal.vid+'/false_positive?reason='+encodeURIComponent(fpModal.reason)+'&signal_type='+fpModal.intent+'&expires_days='+(fpModal.reason==='临时项目'?'30':'0')).then(()=>{ message.success('已标记误报，后续同类不再告警'); setFpModal({...fpModal,open:false}); load(); });
   };
-  const scenSet=[...new Set(rows.map(r=>r.scenario).filter(Boolean))];
-  const agData=(()=>{const filtered=rows.filter(v=>{if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;if(lvl==='crit'&&v.risk_score<86)return false;if(lvl==='high'&&(v.risk_score<61||v.risk_score>85))return false;if(lvl==='mid'&&(v.risk_score<31||v.risk_score>60))return false;if(scenario!=='all'&&v.scenario!==scenario)return false;return true;});const ag={};filtered.forEach(v=>{if(!ag[v.employee])ag[v.employee]={key:v.employee,employee:v.employee,scenarios:[],maxRisk:0,count:0,latest:v.window_start,summary:'',verdict_id:v.verdict_id,intent:v.scenario};const g=ag[v.employee];const sc=INTENT[v.scenario]||v.scenario;if(!g.scenarios.find(s=>s.label===sc))g.scenarios.push({label:sc,risk:v.risk_score});if((v.risk_score||0)>g.maxRisk){g.maxRisk=v.risk_score;g.summary=v.summary;g.verdict_id=v.verdict_id;g.intent=v.scenario;}g.count++;if(v.window_start>g.latest)g.latest=v.window_start;});return Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);})();
+  const scenSet=[...new Set((rows||[]).map(r=>r.scenario).filter(Boolean))];
+  const agData=(()=>{const filtered=(rows||[]).filter(v=>{if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;if(lvl==='crit'&&v.risk_score<86)return false;if(lvl==='high'&&(v.risk_score<61||v.risk_score>85))return false;if(lvl==='mid'&&(v.risk_score<31||v.risk_score>60))return false;if(scenario!=='all'&&v.scenario!==scenario)return false;return true;});const ag={};filtered.forEach(v=>{if(!ag[v.employee])ag[v.employee]={key:v.employee,employee:v.employee,scenarios:[],maxRisk:0,count:0,latest:v.window_start,summary:'',verdict_id:v.verdict_id,intent:v.scenario};const g=ag[v.employee];const sc=INTENT[v.scenario]||v.scenario;if(!g.scenarios.find(s=>s.label===sc))g.scenarios.push({label:sc,risk:v.risk_score});if((v.risk_score||0)>g.maxRisk){g.maxRisk=v.risk_score;g.summary=v.summary;g.verdict_id=v.verdict_id;g.intent=v.scenario;}g.count++;if(v.window_start>g.latest)g.latest=v.window_start;});return Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);})();
   const alertN=agData.reduce((s,g)=>s+(g.count||0),0);
   return (<div>
     <div className="sec-title" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-      <span>告警管理 · 按用户合并 · 点击用户名查看画像 · <span style={{fontSize:11,color:'#9aa3b2'}}>每15秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()}</span></span>
+      <span>告警管理 · 按用户合并 · 点击用户名查看画像 · <span style={{fontSize:11,color:'var(--ink3)'}}>每15秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()}</span></span>
       <Legend/>
     </div>
     <Card className="card" size="small">
@@ -549,12 +578,12 @@ function Alerts({goProfile,filter}){
           {scenSet.map(s=><Select.Option key={s} value={s}>{INTENT[s]||s}</Select.Option>)}
         </Select>}
       </Space>
-      <Table size="small" rowKey="key" pagination={{pageSize:14,showTotal:t=>`共 ${alertN} 条 / ${t} 人（按用户合并）`}} loading={loading} dataSource={agData}
+      <Table size="small" rowKey="key" pagination={{pageSize:14,showTotal:t=>`共 ${alertN} 条告警 / ${t} 人（按用户合并）`}} loading={loading} dataSource={agData}
         columns={[
-          {title:'用户',dataIndex:'employee',width:100,render:v=><a onClick={(e)=>{e.stopPropagation();goProfile(v);}} style={{cursor:'pointer'}}>{v}</a>},
-          {title:'风险场景',dataIndex:'scenarios',render:v=><Space wrap size={[4,4]}>{v.map(s=><Tag key={s.label} style={{fontSize:11}} color={s.risk>=86?'red':s.risk>=61?'orange':s.risk>=31?'gold':'blue'}>{s.label} {s.risk}</Tag>)}</Space>},
-          {title:'次数',dataIndex:'count',width:50,render:v=><span className="num">{v}</span>},
-          {title:'最近告警',dataIndex:'latest',width:135,render:v=><span style={{fontSize:11,color:'#6b7280'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
+          {title:'用户',dataIndex:'employee',width:100,render:v=><a onClick={(e)=>{e.stopPropagation();goProfile(v);}} style={{cursor:'pointer',fontWeight:600}}>{v}</a>},
+          {title:'风险场景',dataIndex:'scenarios',width:150,render:(v,r)=>{const mainL=INTENT[r.intent]||r.intent;const L=LVL(r.maxRisk);const subs=v.filter(s=>s.label!==mainL);return <Space wrap size={[4,3]}><Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40',fontWeight:600}}>{mainL} {r.maxRisk}</Tag>{subs.length>0&&<Tooltip title={'另涉及：'+subs.map(s=>s.label).join('、')}><Tag style={{fontSize:10,color:'var(--ink3)',background:'var(--bg)',border:'1px solid var(--ink4)'}}>+{subs.length}</Tag></Tooltip>}</Space>}},
+          {title:'告警数',dataIndex:'count',width:60,render:v=><span className="num" style={{color:'var(--ink2)',fontWeight:600}}>{v}</span>},
+          {title:'最近告警',dataIndex:'latest',width:135,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
           {title:'风险',dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
           {title:'说明',dataIndex:'summary',render:v=><Tooltip title={v}><span style={{display:'inline-block',maxWidth:300,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',verticalAlign:'bottom'}}>{v}</span></Tooltip>},
           {title:'操作',width:120,render:(_,r)=>(<Space size={4}>
@@ -598,11 +627,11 @@ function Alerts({goProfile,filter}){
 
 function Verdicts({goProfile,filter}){
   const isToday=filter&&filter.today; const tStr=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});
-  const [rows,setRows]=useState([]); const [q,setQ]=useState(''); const [lvl,setLvl]=useState('all'); const [aisel,setAisel]=useState('all');
+  const [rows,setRows]=useState(null); const [q,setQ]=useState(''); const [lvl,setLvl]=useState('all'); const [aisel,setAisel]=useState('all');
   const [lastUpd,setLastUpd]=useState(null); const [loading,setLoading]=useState(true);
   const load=async()=>{const r=await GETL('/api/verdicts?limit=500');setRows(r);setLastUpd(new Date());setLoading(false);};
   useEffect(()=>{load();const t=setInterval(load,15000);return ()=>clearInterval(t);},[]);
-  const filtered=rows.filter(v=>{
+  const filtered=(rows||[]).filter(v=>{
     if(isToday&&(v.window_start||'').slice(0,10)!==tStr)return false;
     if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;
     if(lvl==='crit'&&v.risk_score<86)return false;
@@ -612,9 +641,9 @@ function Verdicts({goProfile,filter}){
     if(aisel==='fallback'&&v.ai_participated)return false;
     return true;
   });
-  const aiCnt=rows.filter(v=>v.ai_participated).length;
+  const aiCnt=(rows||[]).filter(v=>v.ai_participated).length;
   return (<div>
-    <div className="sec-title">研判记录 · AI 对每个可疑行为窗口的判定（告警 = 其中风险≥50 的子集）{isToday?' · 仅今日 ':''} · <span style={{fontSize:11,color:'#9aa3b2'}}>每15秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()} · 显示{filtered.length}条（AI {aiCnt} / 兜底 {rows.length-aiCnt}）</span></div>
+    <div className="sec-title">研判记录 · AI 对每个可疑行为窗口的判定（告警 = 其中风险≥50 的子集）{isToday?' · 仅今日 ':''} · <span style={{fontSize:11,color:'var(--ink3)'}}>每15秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()} · 显示{filtered.length}条（AI {aiCnt} / 兜底 {(rows||[]).length-aiCnt}）</span></div>
     <Card className="card" size="small">
       <Space style={{marginBottom:8}} wrap>
         <Input.Search placeholder="搜索用户" allowClear style={{width:180}} onChange={e=>setQ(e.target.value)} />
@@ -634,7 +663,7 @@ function Verdicts({goProfile,filter}){
         onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
         columns={[
           {title:'用户',dataIndex:'employee',width:110},
-          {title:'时间',dataIndex:'window_start',width:140,render:v=><span style={{fontSize:11,color:'#6b7280'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
+          {title:'时间',dataIndex:'window_start',width:140,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
           {title:'意图',dataIndex:'intent',width:110,render:v=><Tag color="blue">{INTENT[v]||v}</Tag>},
           {title:'风险',dataIndex:'risk_score',width:90,render:v=><RiskBadge s={v}/>},
           {title:'来源',dataIndex:'ai_participated',width:80,render:v=><Tag color={v?'green':'default'}>{v?'AI':'兜底'}</Tag>},
@@ -681,7 +710,7 @@ function Monitor(){
           <Col span={6}><Statistic title="已入库" value={sl.ingested||0}/></Col>
           <Col span={6}><Statistic title="刷新" value="30秒"/></Col>
         </Row>
-        {sl.error&&<div style={{color:'#ff4d4f',fontSize:12,marginTop:4}}>{sl.error}</div>}
+        {sl.error&&<div style={{color:'var(--danger)',fontSize:12,marginTop:4}}>{sl.error}</div>}
         {sl.recent&&sl.recent.length>0&&<div style={{marginTop:6,fontSize:11,maxHeight:40,overflow:'auto'}}>
           {sl.recent.slice(0,2).map((m,i)=><div key={i} style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{m.t} {m.msg.slice(20,70)}</div>)}
         </div>}
@@ -689,11 +718,11 @@ function Monitor(){
       <Col span={12}><Card className="card" title="AI 研判引擎" size="small">
         {d.running ? (<div>
           <Progress percent={pct} status="active" format={()=>d.done+'/'+d.total}/>
-          <div style={{marginTop:4,color:'#6b7280',fontSize:12}}>4线程并发 · 已完成 {d.judged}</div>
+          <div style={{marginTop:4,color:'var(--ink2)',fontSize:12}}>4线程并发 · 已完成 {d.judged}</div>
         </div>) : (
           <div style={{padding:'6px 0'}}>
-            <Badge status="success" text={<span style={{color:'#52c41a',fontSize:13}}>引擎就绪</span>}/>
-            {d.last_finished&&<div style={{marginTop:4,fontSize:12,color:'#9aa3b2'}}>上次：{d.last_judged||0}窗口 / {d.last_alerts||0}告警</div>}
+            <Badge status="success" text={<span style={{color:'#22c55e',fontSize:13}}>引擎就绪</span>}/>
+            {d.last_finished&&<div style={{marginTop:4,fontSize:12,color:'var(--ink3)'}}>上次：{d.last_judged||0}窗口 / {d.last_alerts||0}告警</div>}
           </div>
         )}
       </Card></Col>
@@ -714,24 +743,44 @@ function Monitor(){
       <Col span={8}><Card className="card" title="最近报文" size="small">
         {sl.recent&&sl.recent.length>0 ? <div style={{fontSize:11,maxHeight:80,overflow:'auto'}}>
           {sl.recent.slice(0,4).map((m,i)=><div key={i} style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginBottom:2}}><b>{m.t}</b> {m.msg.slice(20,65)}</div>)}
-        </div> : <div style={{color:'#9aa3b2',fontSize:12,padding:8}}>等待推送...</div>}
+        </div> : <div style={{color:'var(--ink3)',fontSize:12,padding:8}}>等待推送...</div>}
       </Card></Col>
     </Row>
   </div>);
 }
 
 function Efficiency({items,loading,gen,msg,goProfile}){
+  const [board,setBoard]=useState(null); const [lastUpd,setLastUpd]=useState(null); const [bdLoading,setBdLoading]=useState(true);
+  const load=async()=>{const r=await GETL('/api/efficiency');setBoard(r);setLastUpd(new Date());setBdLoading(false);};
+  useEffect(()=>{load();const t=setInterval(load,30000);return ()=>clearInterval(t);},[]);
+  const SLACK_COLORS={视频:'#ef4444',社交:'#f97316',购物:'#f59e0b',资讯:'#6366f1',音乐:'#22c55e'};
   return (<div>
-    <div className="sec-title">效率监控 · 近7天工作时段摸鱼 · AI 总结谁在什么时候干了什么影响效率 · <span style={{fontSize:11,color:'#94a3b8'}}>结果缓存10分钟</span></div>
-    <div style={{marginBottom:12}}><Button type="primary" loading={loading} onClick={gen}><i className="fa-solid fa-robot" style={{marginRight:6}}></i>{items?'重新生成':'生成 AI 摸鱼总结'}</Button></div>
-    {loading&&<Card className="card"><div style={{padding:40,textAlign:'center',color:'#94a3b8'}}>AI 正在分析近7天摸鱼数据,约10-20秒…<br/><span style={{fontSize:11}}>（后台运行中，可切换其他页面，完成后会通知你）</span></div></Card>}
-    {!loading&&items&&items.length===0&&<Card className="card"><Empty description={msg||'近7天工作时段无明显摸鱼'} style={{padding:40}}/></Card>}
-    {!loading&&items&&items.length>0&&<Row gutter={[16,16]}>
-      {items.map((it,i)=><Col key={i} span={12}><Card className="card" size="small" onClick={()=>goProfile&&goProfile(it.employee)} style={{cursor:'pointer'}}>
-        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}><i className="fa-solid fa-user" style={{color:'#4f46e5'}}></i><b style={{fontSize:15}}>{it.employee}</b></div>
-        <Typography.Text style={{fontSize:13,lineHeight:1.7}}>{it.summary}</Typography.Text>
-      </Card></Col>)}
-    </Row>}
+    <div className="sec-title">效率监控 · 工作时段(9-12,14-18)摸鱼排行 · <span style={{fontSize:11,color:'var(--ink3)'}}>每30秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()}</span></div>
+    <Card className="card" size="small" title={<span><span className="brand-bar" style={{display:'inline-block',verticalAlign:'-3px',marginRight:8}}></span>效率榜（最长摸鱼跨度降序）</span>}>
+      <Table size="small" rowKey="employee" pagination={{pageSize:14,showTotal:t=>`共 ${t} 人`}} loading={bdLoading}
+        dataSource={(board||[]).filter(r=>(r.max_span||0)>0)}
+        onRow={r=>({onClick:()=>goProfile&&goProfile(r.employee),style:{cursor:'pointer'}})}
+        rowClassName={r=>(r.max_span||0)>=60?'row-high':((r.max_span||0)>=30?'row-watch':'')}
+        columns={[
+          {title:'员工',dataIndex:'employee',width:110,render:v=><span style={{fontWeight:600}}>{v}</span>},
+          {title:'最长摸鱼',dataIndex:'max_span',width:100,sorter:(a,b)=>(b.max_span||0)-(a.max_span||0),defaultSortOrder:'ascend',
+            render:v=>{const n=v||0;const c=n>=60?'#ef4444':n>=30?'#f59e0b':'#94a3b8';return <><span style={{color:c,fontWeight:700}}>{n}</span><span style={{color:'var(--ink3)',fontSize:11}}> 分钟</span></>}},
+          {title:'摸鱼占比',dataIndex:'pct',width:110,render:(v,r)=>{const p=v||0;return <div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:60,height:6,background:'var(--ink4)',borderRadius:3,overflow:'hidden'}}><div style={{width:Math.min(p*3,100)+'%',height:'100%',background:p>=10?'#ef4444':'#f59e0b',borderRadius:3}}></div></div><span style={{color:'var(--ink2)',fontWeight:600,fontSize:12}}>{p}%</span></div>}},
+          {title:'摸鱼分类',dataIndex:'cats',render:v=>{const e=v||{};return <Space wrap size={[4,3]}>{Object.entries(e).sort((a,b)=>b[1]-a[1]).map(([k,n])=><Tag key={k} style={{fontSize:11,background:(SLACK_COLORS[k]||'#94a3b8')+'14',color:SLACK_COLORS[k]||'#94a3b8',border:'1px solid '+(SLACK_COLORS[k]||'#94a3b8')+'30'}}>{k} {n}</Tag>)}</Space>}},
+          {title:'工作占比',dataIndex:'work_pct',width:100,render:v=>{const p=v||0;return <span style={{color:p>=50?'#22c55e':'var(--ink2)',fontWeight:600}}>{p}%</span>}},
+          {title:'在岗',width:90,render:(_,r)=><span style={{color:'var(--ink3)',fontSize:11}}>{r.active_days||0}天 · {r.hour_min===null?'-':r.hour_min+'-'+r.hour_max+'点'}</span>},
+        ]}/>
+    </Card>
+    <Card className="card" size="small" style={{marginTop:16}} title={<span><span className="brand-bar" style={{display:'inline-block',verticalAlign:'-3px',marginRight:8}}></span>AI 摸鱼总结（近7天 · 按人）</span>} extra={<Button type="primary" size="small" loading={loading} onClick={gen}><i className="fa-solid fa-robot" style={{marginRight:6}}></i>{items&&items.length?'重新生成':'生成总结'}</Button>}>
+      {loading&&<div style={{padding:40,textAlign:'center',color:'var(--ink3)'}}>AI 正在分析近7天摸鱼数据,约10-20秒…<br/><span style={{fontSize:11}}>（后台运行中，可切换其他页面，完成后会通知你）</span></div>}
+      {!loading&&items&&items.length===0&&<Empty description={msg||'近7天工作时段无明显摸鱼'} style={{padding:40}}/>}
+      {!loading&&items&&items.length>0&&<Row gutter={[16,16]} style={{marginTop:8}}>
+        {items.map((it,i)=><Col key={i} span={12}><div onClick={()=>goProfile&&goProfile(it.employee)} style={{padding:'14px 16px',background:'var(--bg)',borderRadius:8,cursor:'pointer',borderLeft:'3px solid var(--brand)'}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}><i className="fa-solid fa-user" style={{color:'var(--brand)',fontSize:13}}></i><b style={{fontSize:14}}>{it.employee}</b></div>
+          <Typography.Text style={{fontSize:12,lineHeight:1.7,color:'var(--ink2)'}}>{it.summary}</Typography.Text>
+        </div></Col>)}
+      </Row>}
+    </Card>
   </div>);
 }
 
@@ -793,7 +842,7 @@ function Ask(){
     <div style={{flex:1,minHeight:0,overflow:'auto',background:'#fff',border:'1px solid var(--line)',borderRadius:12,padding:12,boxShadow:'0 1px 3px rgba(15,23,42,.04)'}}>
       {msgs.length===0?<Empty description="提问开始对话（如：今天谁摸鱼最多？张三有什么风险行为？今天有哪些告警？）" style={{paddingTop:80}}/>:
         msgs.map((m,i)=><div key={i} style={{display:'flex',justifyContent:m.role==='user'?'flex-end':'flex-start',marginBottom:10}}>
-          <div style={{maxWidth:'72%',padding:'9px 13px',borderRadius:12,background:m.role==='user'?'#4f46e5':'#f1f5f9',color:m.role==='user'?'#fff':'#0f172a',whiteSpace:'pre-wrap',wordBreak:'break-word',lineHeight:1.6,boxShadow:'0 1px 2px rgba(15,23,42,.04)'}}>{m.text}</div>
+          <div style={{maxWidth:'72%',padding:'9px 13px',borderRadius:12,background:m.role==='user'?'#4f46e5':'var(--bg)',color:m.role==='user'?'#fff':'#0f172a',whiteSpace:'pre-wrap',wordBreak:'break-word',lineHeight:1.6,boxShadow:'0 1px 2px rgba(15,23,42,.04)'}}>{m.text}</div>
         </div>)}
       {sending&&<div style={{color:'#94a3b8',fontSize:13,padding:'4px 8px'}}>AI 思考中…（查数据+总结，约10-20秒）</div>}
     </div>
@@ -846,14 +895,14 @@ function Config(){
         </Form>
       </Card>},
       {key:'syslog', label:'Syslog接收', children:<Card className="card" title="Syslog 实时接收" size="small">
-        <div style={{marginBottom:8,color:'#6b7280',fontSize:13}}>监听地址：<b>{cfg.syslog_host||'0.0.0.0'}:{cfg.syslog_port||'8514'}</b></div>
+        <div style={{marginBottom:8,color:'var(--ink2)',fontSize:13}}>监听地址：<b>{cfg.syslog_host||'0.0.0.0'}:{cfg.syslog_port||'8514'}</b></div>
         <div style={{marginBottom:8}}>
           <Typography.Text style={{fontSize:12}}>告警推送地址（留空不推）</Typography.Text>
           <Input placeholder="https://oapi.dingtalk.com/robot/send?access_token=..." defaultValue={cfg.notify_webhook||''} onChange={debounce(e=>PUTJ('/api/config',{notify_webhook:e.target.value}), 800)} />
         </div>
         <div style={{marginBottom:8}}><Badge status={syslog.enabled?'success':'default'} text={syslog.enabled?'监听中（已收 '+syslog.count+' 条，入库 '+syslog.ingested+' 条）':'未启用'}/>
           <Button size="small" type="primary" ghost={syslog.enabled} danger={syslog.enabled} onClick={()=>toggleSys(!syslog.enabled)} style={{marginLeft:8}}>{syslog.enabled?'停止':'启动'}</Button></div>
-        {syslog.recent&&syslog.recent.length? <div style={{background:'#f6f8fb',padding:8,fontSize:12,maxHeight:110,overflow:'auto',border:'1px solid #e6ecf5',borderRadius:6}}>
+        {syslog.recent&&syslog.recent.length? <div style={{background:'var(--bg)',padding:8,fontSize:12,maxHeight:110,overflow:'auto',border:'1px solid var(--ink4)',borderRadius:6}}>
           {syslog.recent.map((m,i)=><div key={i} style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><b>{m.t}</b> {m.from}: {m.msg.slice(0,80)}</div>)}</div>
           :<Typography.Text type="secondary" style={{fontSize:12}}>等待深信服推送（配好后自动接收→解析→研判）</Typography.Text>}
       </Card>},
@@ -878,7 +927,7 @@ function Config(){
                {title:'域名',dataIndex:'domain',render:v=><span className="num" style={{fontSize:12}}>{v}</span>},
                {title:'命中',dataIndex:'hits',width:60,render:v=><span style={{color:'#94a3b8'}}>{v}</span>},
                {title:'AI建议',width:150,render:(_,r)=><Tag color={r.target==='ignore'?'default':r.target==='slack_domains'?'purple':'blue'}>{r.target==='ignore'?'忽略(正常)':(r.target==='slack_domains'?'摸鱼·'+(r.cat||''):{netdisk_domains:'网盘',personal_email_domains:'个人邮箱',recruitment_sites:'招聘'}[r.target]||r.target)}</Tag>},
-               {title:'理由',dataIndex:'reason',ellipsis:true,render:v=><span style={{fontSize:12,color:'#6b7280'}}>{v}</span>},
+               {title:'理由',dataIndex:'reason',ellipsis:true,render:v=><span style={{fontSize:12,color:'var(--ink2)'}}>{v}</span>},
                {title:'',width:70,render:(_,r)=><Button size="small" type="primary" ghost disabled={r.target==='ignore'} onClick={()=>applySug(r)}>采纳</Button>},
              ]}/>}
           <Alert type="info" showIcon style={{marginTop:8}} message="AI 建议仅供参考，采纳后写入词库立即生效（影响后续研判）。不放心可忽略。"/>
