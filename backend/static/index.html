@@ -48,6 +48,9 @@
   #root{min-height:100vh;}
   /* 数字:等宽字体 + tabular */
   .num{font-variant-numeric:tabular-nums;letter-spacing:-.3px;font-feature-settings:"tnum";font-family:var(--mono);}
+  /* 用户名统一样式(全站一致:黑色、加粗、可点击但不显蓝色链接) */
+  .uname{color:var(--ink) !important;font-weight:600;cursor:pointer;}
+  .uname:hover{color:var(--brand) !important;}
   /* ===== 深色侧栏(Linear 风)===== */
   .ant-layout-sider{background:var(--sb-bg) !important;box-shadow:none !important;}
   .logo{height:60px;display:flex;align-items:center;gap:10px;padding:0 18px;color:#fff;font-size:14px;font-weight:600;letter-spacing:.2px;background:linear-gradient(180deg,var(--sb-bg2),var(--sb-bg));border-bottom:1px solid var(--sb-border);}
@@ -527,7 +530,7 @@ function Dashboard({go, goProfile}){
       const ga=Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);
       return <Card className="card" style={{marginTop:16}} title={<span><span className="brand-bar"></span>高风险告警 TOP5</span>} size="small" extra={<a onClick={()=>go('alerts')}>全部 →</a>}>
         {ga.length? <Table size="small" rowKey="key" pagination={false} dataSource={ga.slice(0,5)} onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
-          columns={[{title:'用户',dataIndex:'employee',width:100,render:v=><span style={{fontWeight:600}}>{v}</span>},
+          columns={[{title:'用户',dataIndex:'employee',width:100,render:v=><span className="uname" style={{cursor:'inherit'}}>{v}</span>},
             {title:'风险场景',dataIndex:'scenario',width:90,render:(v,r)=>{const L=LVL(r.maxRisk);return <Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40'}}>{v}</Tag>}},
             {title:'风险',dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
             {title:'状态',dataIndex:'status',width:80,render:v=><StatusTag s={v}/>},
@@ -599,7 +602,7 @@ function Computers({goProfile,filter}){
         onRow={r=>({onClick:()=>goProfile(r.computer),style:{cursor:'pointer'}})}
         columns={[
           {title:<TH t="用户" />,dataIndex:'computer',width:170,
-            render:(v,r)=>{const rk=r.max_risk||0;const ex=exMap[v];return (<span><a style={{fontWeight:rk>=61?700:500,color:'var(--ink)'}}>{v}</a>{ex&&<Tooltip title={'已豁免：'+ex.join('、')}><Tag color="default" style={{marginLeft:6,fontSize:11,lineHeight:'16px'}}>豁免</Tag></Tooltip>}</span>);}},
+            render:(v,r)=>{const rk=r.max_risk||0;const ex=exMap[v];return (<span><a className="uname">{v}</a>{ex&&<Tooltip title={'已豁免：'+ex.join('、')}><Tag color="default" style={{marginLeft:6,fontSize:11,lineHeight:'16px'}}>豁免</Tag></Tooltip>}</span>);}},
           {title:<TH t="风险" tip="该员工历史最高研判风险分(0-100)。86+严重/61+高危/31+关注/0-30正常。" />,dataIndex:'max_risk',width:95,render:v=><RiskBadge s={v}/>},
           {title:<TH t="告警" tip="合并后的告警条数(同员工同意图合并为1条,取最高分)。非研判次数。" />,dataIndex:'alert_count',width:64,render:v=>v>0?<Tag color="red">{v}条</Tag>:<span style={{color:'var(--ink4)'}}>—</span>},
           {title:<TH t={isToday?'今日事件':'事件'} tip="降噪聚合后的事件条数(同域名10分钟内合并),非原始上网次数。今日=北京时间当日0点起。" />,width:80,render:(_,r)=><span className="num" style={{color:'var(--ink2)'}}>{isToday?(r.event_count_today||0):(r.event_count||0)}</span>},
@@ -652,7 +655,7 @@ function Alerts({goProfile,filter}){
       </Space>
       <Table size="small" rowKey="key" pagination={{pageSize:14,showTotal:t=>`共 ${alertN} 条告警 / ${t} 人（按用户合并）`}} loading={loading} dataSource={agData}
         columns={[
-          {title:<TH t="用户" />,dataIndex:'employee',width:100,render:v=><a onClick={(e)=>{e.stopPropagation();goProfile(v);}} style={{cursor:'pointer',fontWeight:600}}>{v}</a>},
+          {title:<TH t="用户" />,dataIndex:'employee',width:100,render:v=><a className="uname" onClick={(e)=>{e.stopPropagation();goProfile(v);}}>{v}</a>},
           {title:<TH t="风险场景" tip="该员工当前最高分告警的场景(主场景,加粗)。+N 表示还涉及N个其他场景,鼠标移上查看。" />,dataIndex:'scenarios',width:150,render:(v,r)=>{const mainL=INTENT[r.intent]||r.intent;const L=LVL(r.maxRisk);const subs=v.filter(s=>s.label!==mainL);return <Space wrap size={[4,3]}><Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40',fontWeight:600}}>{mainL} {r.maxRisk}</Tag>{subs.length>0&&<Tooltip title={'另涉及：'+subs.map(s=>s.label).join('、')}><Tag style={{fontSize:11,color:'var(--ink3)',background:'var(--bg)',border:'1px solid var(--ink4)'}}>+{subs.length}</Tag></Tooltip>}</Space>}},
           {title:<TH t="告警数" tip="该员工在当前筛选范围内的告警条数(合并前)。同一员工同意图会合并展示。" />,dataIndex:'count',width:60,render:v=><span className="num" style={{color:'var(--ink2)',fontWeight:600}}>{v}</span>},
           {title:<TH t="最近告警" tip="该员工最近一次告警的行为发生时间。" />,dataIndex:'latest',width:135,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
@@ -739,14 +742,14 @@ function Verdicts({goProfile,filter}){
       <Table size="small" rowKey={merged?'key':'id'} pagination={{pageSize:14,showTotal:t=>`共 ${t} ${merged?'组':'条'}${!merged&&t>=500?' (仅显示最近500条)':''}`}} loading={loading} dataSource={viewData}
         onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
         columns={merged?[
-          {title:<TH t="用户" />,dataIndex:'employee',width:110,render:v=><span style={{fontWeight:600}}>{v}</span>},
+          {title:<TH t="用户" />,dataIndex:'employee',width:110,render:v=><span className="uname" style={{cursor:'inherit'}}>{v}</span>},
           {title:<TH t="意图" tip="AI判定的行为意图。数据外发/求职离职/行为偏离/违规/正常。" />,dataIndex:'intent',width:110,render:v=><Tag style={{background:'var(--brand-soft)',color:'var(--brand)',border:'1px solid var(--brand)'+'33'}}>{INTENT[v]||v}</Tag>},
           {title:<TH t="研判次数" tip="该员工+该意图被AI研判的总次数(合并前)。≥10次标橙,提示重复性风险。" />,dataIndex:'count',width:90,render:v=><span className="num" style={{fontWeight:700,color:v>=10?'var(--orange)':'var(--ink)'}}>{v}</span>},
           {title:<TH t="最高风险" tip="这些研判中的最高风险分(0-100)。86+严重/61+高危/31+关注。" />,dataIndex:'maxRisk',width:100,render:v=><RiskBadge s={v}/>},
           {title:<TH t="最近" tip="最近一次研判的时间(行为发生时间)。" />,dataIndex:'latest',width:140,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
           {title:<TH t="最近一次说明" />,dataIndex:'explanation',render:v=><span style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>},
         ]:[
-          {title:<TH t="用户" />,dataIndex:'employee',width:110,render:v=><span style={{fontWeight:600}}>{v}</span>},
+          {title:<TH t="用户" />,dataIndex:'employee',width:110,render:v=><span className="uname" style={{cursor:'inherit'}}>{v}</span>},
           {title:<TH t="时间" tip="研判窗口的起始时间(行为发生时间)。" />,dataIndex:'window_start',width:140,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
           {title:<TH t="意图" tip="AI判定的行为意图。" />,dataIndex:'intent',width:110,render:v=><Tag style={{background:'var(--brand-soft)',color:'var(--brand)',border:'1px solid var(--brand)'+'33'}}>{INTENT[v]||v}</Tag>},
           {title:<TH t="风险" tip="AI对该行为窗口的打分(0-100)。" />,dataIndex:'risk_score',width:90,render:v=><RiskBadge s={v}/>},
@@ -849,7 +852,7 @@ function Efficiency({items,loading,gen,msg,goProfile}){
         dataSource={filtered}
         onRow={r=>({onClick:()=>goProfile&&goProfile(r.employee),style:{cursor:'pointer'}})}
         columns={[
-          {title:<TH t="员工" />,dataIndex:'employee',width:110,render:v=><span style={{fontWeight:600}}>{v}</span>},
+          {title:<TH t="员工" />,dataIndex:'employee',width:110,render:v=><span className="uname" style={{cursor:'inherit'}}>{v}</span>},
           {title:<TH t="最长摸鱼" tip="娱乐访问的首末时间跨度(60分钟内算同一段)。是时间跨度,非纯观看时长。工作时段(9-12,14-18)。" />,dataIndex:'max_span',width:110,sorter:(a,b)=>(b.max_span||0)-(a.max_span||0),defaultSortOrder:'ascend',
             render:v=>{const n=v||0;const c=n>=120?'#ef4444':n>=60?'#f97316':n>=30?'#f59e0b':'#94a3b8';return <span className="num" style={{color:c,fontWeight:700,fontSize:15}}>{n>=60?Math.floor(n/60)+'h'+(n%60?' '+(n%60)+'m':''):n+(n<60?'min':'')}</span>}},
           {title:<TH t="摸鱼占比" tip="工作时段娱乐访问 ÷ (娱乐+办公访问)。分母只含已分类网站,不含未分类常规浏览,故数值比旧口径高、区分度更好。" />,dataIndex:'pct',width:120,render:v=>{const p=v||0;return <div style={{display:'flex',alignItems:'center',gap:8}}><div className="pbar"><i style={{width:Math.min(p,100)+'%',background:p>=30?'#ef4444':p>=10?'#f59e0b':'var(--brand)'}}></i></div><span className="num" style={{color:'var(--ink2)',fontWeight:600,fontSize:12}}>{p}%</span></div>}},
