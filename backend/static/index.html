@@ -373,7 +373,7 @@ function App(){
   return (
     <ConfigProvider theme={{token:{colorPrimary:'#6366f1',borderRadius:8,colorText:'#0f172a',colorTextSecondary:'#475569',fontFamily:'inherit'}}}>
     <Layout style={{minHeight:'100vh'}}>
-      <Sider width={222} theme="dark" style={{background:'var(--sb-bg)'}}>
+      <Sider width={222} theme="dark" style={{background:'var(--sb-bg)',position:'fixed',left:0,top:0,bottom:0,height:'100vh',overflowY:'auto'}}>
         <div className="logo"><span className="ic"><i className="fa-solid fa-shield-halved"></i></span><span className="tx"><b>Behavior Guard</b><s>员工行为分析</s></span></div>
         <Menu mode="inline" theme="dark" selectedKeys={[key==='profile'?(profileFrom||'alerts'):key]} onClick={e=>navigate(e.key)} style={{background:'transparent',borderRight:'none',paddingTop:6}}
           items={[
@@ -396,8 +396,8 @@ function App(){
           ]}/>
         <div className="sb-foot"><div className="sb-status"><span className="sb-dot"></span><span>引擎在线 · 实时研判中</span></div></div>
       </Sider>
-      <Layout>
-        <Header style={{background:'var(--glass)',backdropFilter:'saturate(180%) blur(20px)',WebkitBackdropFilter:'saturate(180%) blur(20px)',boxShadow:'0 1px 0 var(--line)',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 24px',height:56}}>
+      <Layout style={{marginLeft:222}}>
+        <Header style={{background:'var(--glass)',backdropFilter:'saturate(180%) blur(20px)',WebkitBackdropFilter:'saturate(180%) blur(20px)',boxShadow:'0 1px 0 var(--line)',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 24px',height:56,position:'sticky',top:0,zIndex:10}}>
           <div style={{display:'flex',alignItems:'center',gap:8,fontSize:14}}>
             {key!=='dashboard' && <span onClick={()=>navigate('dashboard')} style={{color:'var(--ink3)',cursor:'pointer'}}>监控大屏</span>}
             {key!=='dashboard' && <span style={{color:'var(--ink4)'}}>/</span>}
