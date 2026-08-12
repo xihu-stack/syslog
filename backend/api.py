@@ -140,15 +140,32 @@ def employee(emp: str):
                .order_by(desc(EventRow.occurred_at)).limit(50).all())
         # 风险行为: 外发通道/招聘/远程控制域名访问 或 文档写/外发动作(最近300条里筛,取30)
         import detector
+        # 风险行为:扫近期 WEB/DOC 事件筛 risk_class。
+        # 用 event_hashes 反查更准——先从该员工的 verdicts(已研判过的可疑窗口)取
+        # event_hashes,反查出真正被判定为风险的事件;不足再扫最近事件补齐。避免全表扫描,
+        # 也避免 limit(300) 漏掉较早的风险访问(招聘/外发可能在几天前)。
         risk_evs = []
-        for e in (s.query(EventRow).filter_by(employee_id=emp)
+        v_hashes = set()
+        for vr in s.query(VerdictRow).filter_by(employee_id=emp).order_by(desc(VerdictRow.window_start)).limit(60).all():
+            v_hashes.update(vr.event_hashes or [])
+        if v_hashes:  # 优先:研判命中的事件(就是 AI 判过的风险行为,最相关)
+            for e in s.query(EventRow).filter(EventRow.event_hash.in_(list(v_hashes)[:400])).all():
+                dom = (e.raw or {}).get("domain") or ""
+                if (e.category == "WEB" and dicts.risk_class(dom)) or \
+                   (e.category == "DOC" and e.action in detector.WRITE_ACTIONS):
+                    risk_evs.append(e)
+                if len(risk_evs) >= 30:
+                    break
+        for e in (s.query(EventRow).filter_by(employee_id=emp)  # 补齐:近期事件再扫一轮
                   .order_by(desc(EventRow.occurred_at)).limit(300).all()):
+            if len(risk_evs) >= 30:
+                break
             dom = (e.raw or {}).get("domain") or ""
             if (e.category == "WEB" and dicts.risk_class(dom)) or \
                (e.category == "DOC" and e.action in detector.WRITE_ACTIONS):
-                risk_evs.append(e)
-            if len(risk_evs) >= 30:
-                break
+                ev_hash = e.event_hash
+                if not any(x.event_hash == ev_hash for x in risk_evs):
+                    risk_evs.append(e)
         # 摸鱼会话: 连续娱乐事件(60min内)聚合成一段,算时长(什么时候看/看什么/看多久)
         _se = []
         for e in (s.query(EventRow).filter_by(employee_id=emp).filter(EventRow.category == "WEB")
@@ -808,25 +825,29 @@ def _ask_query(action, employee, category=""):
     try:
         if action == "employee_risk" and employee:
             p = s.query(ProfileRow).filter_by(employee_id=employee).first()
-            # 扫该员工全部事件统计风险行为真实条数：原 limit(500)+break15 会把"风险行为 N 条"
-            # 算成 ≤15，喂给 AI 的总数是错的。这是按需问答非轮询，全量扫描可接受；
-            # risk_class / WriteActions 是 Python 判定，无法下推 SQL。
-            risk_evs = []
-            for e in (s.query(EventRow).filter_by(employee_id=employee)
-                      .order_by(desc(EventRow.occurred_at)).all()):
-                dom = (e.raw or {}).get("domain") or ""
-                if (e.category == "WEB" and dicts.risk_class(dom)) or \
-                   (e.category == "DOC" and e.action in detector.WRITE_ACTIONS):
-                    risk_evs.append(e)
             vs_total = s.query(VerdictRow).filter_by(employee_id=employee).count()
-            vs = s.query(VerdictRow).filter_by(employee_id=employee).order_by(desc(VerdictRow.window_start)).limit(10).all()
+            vs = s.query(VerdictRow).filter_by(employee_id=employee).order_by(desc(VerdictRow.window_start)).limit(12).all()
+            # 优先用 verdicts 的 explanation 喂 AI——研判时 AI 已经在 explanation 里写明了
+            # 具体域名+次数+意图(如"访问猎聘网 bdfe.liepin.com 1次"),这比扫事件更准更快。
+            # 旧版扫该员工【全部】事件做 risk_class,事件多的员工会拖到几十秒超时,导致 AI 答不出。
             lines = [f"员工 {employee}:",
                      f"画像: {profiles.summarize_for_llm(p.payload) if p else '无画像'}",
-                     f"风险行为 {len(risk_evs)} 条(最近 {min(len(risk_evs), 10)} 条):"]
-            for e in risk_evs[:10]:
-                dom = (e.raw or {}).get("domain") or e.target_value
-                lines.append(f"  {e.occurred_at} | {dicts.risk_class(dom) or e.action} | {dom}")
-            lines.append(f"研判 {vs_total} 条(最近 {min(vs_total, 8)} 条): " + "; ".join(f"{v.intent} R{v.risk_score}" for v in vs[:8]))
+                     f"研判记录 {vs_total} 条(这是该员工被AI判定过的风险行为,最近 {min(vs_total,12)} 条):"]
+            for v in vs:
+                lines.append(f"  {v.window_start} | {v.intent} | 风险{v.risk_score} | {v.explanation}")
+            # 补充:从这些研判反查具体事件域名(若 AI 问"具体哪些网站",域名比 explanation 更结构化)
+            v_hashes = []
+            for v in vs:
+                v_hashes.extend(v.event_hashes or [])
+            if v_hashes:
+                dom_cnt = Counter()
+                for e in s.query(EventRow).filter(EventRow.event_hash.in_(v_hashes[:400])).all():
+                    d = ((e.raw or {}).get("domain") or "").lower()
+                    rc = dicts.risk_class(d)
+                    if rc and d:
+                        dom_cnt[f"{rc}:{d}"] += 1
+                if dom_cnt:
+                    lines.append("风险域名明细(类别:域名 出现次数): " + ", ".join(f"{k}×{v}" for k, v in dom_cnt.most_common(15)))
             return "\n".join(lines)
         if action == "alerts":
             rows = s.query(AlertRow).order_by(desc(AlertRow.risk_score), desc(AlertRow.created_at)).limit(10).all()
@@ -840,12 +861,20 @@ def _ask_query(action, employee, category=""):
             lines += ["", f"今日告警 {_td_count} 条(按行为时间):"] + [f"  {a.employee_id} | {a.scenario} | R{a.risk_score} | {a.summary}" for a in _td] if _td else ["", f"今日告警: {_td_count} 条"]
             return "\n".join(lines)
         if action == "slack":
+            # 优化:SQL 取 (employee, occurred_at, domain),Python 对 distinct 域名缓存 slack_category。
             et = Counter(); es = Counter()
-            for e in s.query(EventRow).filter(EventRow.category == "WEB").yield_per(2000):
-                et[e.employee_id] += 1
-                cat = dicts.slack_category((e.raw or {}).get("domain") or "")
-                if cat and e.occurred_at and (9 <= e.occurred_at.hour < 12 or 14 <= e.occurred_at.hour < 18):  # 工作时间,排除午休12-14
-                    es[e.employee_id] += 1
+            dom_expr = json_field(EventRow.raw, 'domain')
+            rows = s.query(EventRow.employee_id, EventRow.occurred_at, dom_expr).filter(EventRow.category == "WEB").all()
+            dom_cache = {}
+            for emp_id, occ, dom in rows:
+                et[emp_id] += 1
+                d = (dom or "").lower()
+                cat = dom_cache.get(d) if d else None
+                if d and cat is None:
+                    cat = dicts.slack_category(d) or ""
+                    dom_cache[d] = cat
+                if cat and occ and (9 <= occ.hour < 12 or 14 <= occ.hour < 18):  # 工作时间,排除午休12-14
+                    es[emp_id] += 1
             top = sorted([(e, es[e], et[e]) for e in es if et[e] > 50], key=lambda x: -x[1])[:10]
             if not top:
                 return "无摸鱼数据。"
@@ -855,12 +884,22 @@ def _ask_query(action, employee, category=""):
             cat_map = {"远程控制": "远程控制", "网盘": "网盘", "邮箱": "个人邮箱", "招聘": "招聘", "文件助手": "微信文件助手"}
             key = next((k for k in cat_map if k in category), None)
             target = cat_map.get(key, category) if key else category
+            # 优化:SQL 只取 (employee,domain),Python 先对 distinct 域名算 risk_class(几千个),
+            # 再聚合——避免对 98 万行逐行调 risk_class 导致超时。
             rcnt = Counter()
-            for e in s.query(EventRow).filter(EventRow.category == "WEB").yield_per(2000):
-                dom = (e.raw or {}).get("domain") or ""
-                rc = dicts.risk_class(dom)
+            dom_expr = json_field(EventRow.raw, 'domain')
+            rows = s.query(EventRow.employee_id, dom_expr).filter(EventRow.category == 'WEB').all()
+            dom_cache = {}
+            for emp_id, dom in rows:
+                d = (dom or "").lower()
+                if not d:
+                    continue
+                rc = dom_cache.get(d)
+                if rc is None:
+                    rc = dicts.risk_class(d) or ""
+                    dom_cache[d] = rc
                 if rc and target and (target in rc or rc in target):
-                    rcnt[e.employee_id] += 1
+                    rcnt[emp_id] += 1
             if not rcnt:
                 return f"近期无人访问{target or '该类'}网站。"
             return f"访问{target}类网站的员工(访问次数):\n" + "\n".join(f"{emp} {n}次" for emp, n in rcnt.most_common(20))
