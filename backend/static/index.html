@@ -439,7 +439,7 @@ function App(){
 }
 
 function Dashboard({go, goProfile}){
-  const [st,setSt]=useState({}); const [vs,setVs]=useState([]); const [al,setAl]=useState([]); const [sys,setSys]=useState({}); const [cats,setCats]=useState({}); const [eff,setEff]=useState([]);
+  const [st,setSt]=useState({}); const [vs,setVs]=useState([]); const [al,setAl]=useState([]); const [sys,setSys]=useState({}); const [eff,setEff]=useState([]);
   const pie=useRef(),bar=useRef(),trend=useRef(),alertTrend=useRef();
   const pieChart=useRef(null),barChart=useRef(null),trendChart=useRef(null),alertTrendChart=useRef(null);
   const load=async()=>{
@@ -447,7 +447,6 @@ function Dashboard({go, goProfile}){
     GETL('/api/verdicts?limit=300').then(setVs);
     GETL('/api/alerts?limit=300').then(setAl);
     GET('/api/system/stats').then(setSys);
-    GET('/api/category_stats').then(setCats);
     GETL('/api/efficiency').then(setEff);
   };
   useEffect(()=>{ load(); const t=setInterval(load,15000); return ()=>clearInterval(t); },[]);
@@ -503,7 +502,7 @@ function Dashboard({go, goProfile}){
   const KPIS=[
     {k:'alert', icon:'fa-bell', v:sysAl.today||0, l:'今日告警', sub:'涉及 '+(sysAl.today_people||0)+' 人 · '+(sysAl.today_critical||0)+' 严重', tip:'今日(北京时间0点起)新增的告警条数。按"员工+意图"合并去重后计数。86+为严重。', go:()=>go('alerts',{today:true}), danger:true},
     {k:'eff1', icon:'fa-mug-hot', v:sp, l:'摸鱼人数', sub:'工作时段 max_span≥30min', tip:'最长一次连续摸鱼跨度≥30分钟的员工数。工作时段=9-12,14-18(排除午休)。', go:()=>go('efficiency')},
-    {k:'eff2', icon:'fa-briefcase', v:(aw===null?'—':aw+(aw!==null?'%':'')), l:'平均工作占比', sub:'全员工时效率均值', tip:'全体员工"工作占比"的算术平均。工作占比=办公网站访问÷工时全部访问。', go:()=>go('efficiency')},
+    {k:'eff2', icon:'fa-briefcase', v:(aw===null?'—':aw+(aw!==null?'%':'')), l:'平均工作占比', sub:'全员办公/娱乐比均值', tip:'全体员工"工作占比"的算术平均。工作占比=办公访问÷(办公+娱乐访问),不含未分类浏览。', go:()=>go('efficiency')},
     {k:'user', icon:'fa-users', v:sys.employees||0, l:'今日活跃', sub:'累计 '+Math.round(((sys.events||{}).total||0)/10000)+' 万条事件', tip:'今日有行为记录的员工数。事件经降噪聚合(同域名10分钟内合并),非原始日志行数。', go:()=>go('computers',{today:true})},
   ];
   return (<div>
@@ -872,9 +871,9 @@ function Efficiency({items,loading,gen,msg,goProfile}){
           {title:<TH t="员工" />,dataIndex:'employee',width:110,render:v=><span style={{fontWeight:600}}>{v}</span>},
           {title:<TH t="最长摸鱼" tip="娱乐访问的首末时间跨度(60分钟内算同一段)。是时间跨度,非纯观看时长。工作时段(9-12,14-18)。" />,dataIndex:'max_span',width:110,sorter:(a,b)=>(b.max_span||0)-(a.max_span||0),defaultSortOrder:'ascend',
             render:v=>{const n=v||0;const c=n>=120?'#ef4444':n>=60?'#f97316':n>=30?'#f59e0b':'#94a3b8';return <span className="num" style={{color:c,fontWeight:700,fontSize:15}}>{n>=60?Math.floor(n/60)+'h'+(n%60?' '+(n%60)+'m':''):n+(n<60?'min':'')}</span>}},
-          {title:<TH t="摸鱼占比" tip="工作时段娱乐访问次数 ÷ 工时全部访问次数。分母含未分类的常规浏览,故数值偏保守。" />,dataIndex:'pct',width:120,render:v=>{const p=v||0;return <div style={{display:'flex',alignItems:'center',gap:8}}><div className="pbar"><i style={{width:Math.min(p*3,100)+'%',background:'var(--brand)'}}></i></div><span className="num" style={{color:'var(--ink2)',fontWeight:600,fontSize:12}}>{p}%</span></div>}},
-          {title:<TH t="摸鱼分类" tip="工作时段各类娱乐网站的聚合访问次数(同域名10分钟内合并计数)。如'购物 239'=工作时段累计访问购物网站约239次。" />,dataIndex:'cats',render:v=>{const e=v||{};return <Space wrap size={[4,4]}>{Object.entries(e).sort((a,b)=>b[1]-a[1]).map(([k,n])=><Tag key={k} style={{background:'var(--bg)',color:'var(--ink2)',border:'1px solid var(--ink4)'}}>{k} <b className="num">{n}</b></Tag>)}</Space>}},
-          {title:<TH t="工作占比" tip="工作时段办公类网站访问次数 ÷ 工时全部访问次数。" />,dataIndex:'work_pct',width:90,render:v=>{const p=v||0;return <span className="num" style={{color:p>=50?'#22c55e':p>=30?'var(--ink2)':'var(--orange)',fontWeight:600}}>{p}%</span>}},
+          {title:<TH t="摸鱼占比" tip="工作时段娱乐访问 ÷ (娱乐+办公访问)。分母只含已分类网站,不含未分类常规浏览,故数值比旧口径高、区分度更好。" />,dataIndex:'pct',width:120,render:v=>{const p=v||0;return <div style={{display:'flex',alignItems:'center',gap:8}}><div className="pbar"><i style={{width:Math.min(p,100)+'%',background:p>=30?'#ef4444':p>=10?'#f59e0b':'var(--brand)'}}></i></div><span className="num" style={{color:'var(--ink2)',fontWeight:600,fontSize:12}}>{p}%</span></div>}},
+          {title:<TH t="摸鱼网站" tip="工作时段访问过的娱乐网站类别及占比(占本人摸鱼总量的百分比)。点员工名进画像可看具体域名。" />,dataIndex:'cats',render:(v,r)=>{const e=v||{};const tot=r.slack||Object.values(e).reduce((a,b)=>a+b,0)||1;return <Space wrap size={[4,4]}>{Object.entries(e).sort((a,b)=>b[1]-a[1]).map(([k,n])=>{const pct=Math.round(n/tot*100);return <Tag key={k} style={{background:'var(--bg)',color:'var(--ink2)',border:'1px solid var(--ink4)'}}>{k} <b className="num">{pct}%</b></Tag>})}</Space>}},
+          {title:<TH t="工作占比" tip="办公访问 ÷ (娱乐+办公访问)。≥50%绿色(健康),<30%橙色。" />,dataIndex:'work_pct',width:90,render:v=>{const p=v||0;return <span className="num" style={{color:p>=50?'#22c55e':p>=30?'var(--ink2)':'var(--orange)',fontWeight:600}}>{p}%</span>}},
           {title:<TH t="在岗" tip="观察期内的活跃天数 · 每日最常见活动时段。" />,width:96,render:(_,r)=><span style={{color:'var(--ink3)',fontSize:11}}>{r.active_days||0}天 · {r.hour_min===null?'-':r.hour_min+'-'+r.hour_max+'点'}</span>},
         ]}/>
     </Card>

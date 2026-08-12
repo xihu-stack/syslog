@@ -361,6 +361,27 @@ def cleanup_old_events(days: int = 90) -> int:
         s.close()
 
 
+def cleanup_old_raw_logs(days: int = 7) -> int:
+    """清理超过保留期的原始 syslog 报文(raw_logs)。
+
+    raw_logs 是深信服推送的报文原文,仅用于排查"推送了什么"。
+    长期累积体积大(约 7万条/天)且历史价值低——events 已做降噪聚合,
+    verdicts/alerts 记录了研判结果。默认 7 天,可经 setting raw_logs_retention_days 调。
+    与 events 的 90 天保留分离(events 是分析基础,raw_logs 只为近期排查)。
+    """
+    from datetime import timedelta
+    init_db()
+    s = Session()
+    try:
+        from db import RawLogRow
+        cutoff = bj_now() - timedelta(days=days)
+        n = s.query(RawLogRow).filter(RawLogRow.received_at < cutoff).delete(synchronize_session=False)
+        s.commit()
+        return n
+    finally:
+        s.close()
+
+
 def _notify_webhook(user: str, risk: int, explanation: str):
     """高危告警推送到钉钉/飞书/企业微信 webhook。"""
     import json

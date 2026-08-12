@@ -652,12 +652,16 @@ def efficiency():
             if sp_e is not None:
                 mx = max(mx, (sp_e - sp_s).total_seconds())
             wh = r["wh"]
+            classified = r["slack"] + r["work"]  # 已分类(摸鱼+工作)访问,作占比分母更合理
+            # 旧口径 pct=slack/wh(含未分类),全民都低(1-2%),无区分度。
+            # 新口径:占比分母只含已分类访问(摸鱼+工作),数值更高更有区分度。
             out.append({"employee": k, "total": wh, "slack": r["slack"],
-                        "pct": round(r["slack"] / wh * 100, 1) if wh else 0,
+                        "pct": round(r["slack"] / classified * 100, 1) if classified else 0,
                         "cats": dict(r["cats"]), "active_days": len(r["days"]),
                         "hour_min": hours[0] if hours else None, "hour_max": hours[-1] if hours else None,
                         "max_span": round(mx / 60), "work": r["work"],
-                        "work_pct": round(r["work"] / wh * 100, 1) if wh else 0})
+                        "work_pct": round(r["work"] / classified * 100, 1) if classified else 0,
+                        "classified": classified})
         out.sort(key=lambda x: -(x.get("max_span") or 0))
         _eff_cache["data"] = out; _eff_cache["ts"] = time.time()
         return out

@@ -71,8 +71,9 @@ def _flush_loop():
     _flush_count += 1
     if _flush_count % 120 == 0:  # 约1小时维护一次
         try:
-            import pipeline
-            pipeline.cleanup_old_events(int(__import__("dicts").get_setting("retention_days", "90")))
+            import pipeline, dicts
+            pipeline.cleanup_old_events(int(dicts.get_setting("retention_days", "90")))
+            pipeline.cleanup_old_raw_logs(int(dicts.get_setting("raw_logs_retention_days", "7")))
             pipeline.auto_close_alerts()
         except Exception:
             pass
