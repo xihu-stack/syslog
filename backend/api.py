@@ -612,12 +612,16 @@ def efficiency():
     if _eff_cache["data"] is not None and time.time() - _eff_cache["ts"] < 60:
         return _eff_cache["data"]
     from collections import Counter
+    from datetime import timedelta
     s = Session()
     try:
-        # 性能:SQL 直接抽 domain(免 ORM 水合+免逐条 JSON 解析),域名分类结果按域名缓存
-        # (45 万事件 → 数千唯一域名),冷启动从 ~21s 降到 ~1-2s
+        # 只扫近 7 天(效率分析看近期,不必全量历史)。原全量 98 万行→约 30 万行,
+        # 冷启动从 30s 降到数秒。性能:SQL 直接抽 domain(免 ORM 水合逐行 JSON 解析),
+        # 域名分类按 distinct 域名缓存(数千个)。
+        since = bj_now() - timedelta(days=7)
         dom_expr = json_field(EventRow.raw, 'domain')
-        rows = s.query(EventRow.employee_id, EventRow.occurred_at, EventRow.count, dom_expr).filter(EventRow.category == "WEB").all()
+        rows = s.query(EventRow.employee_id, EventRow.occurred_at, EventRow.count, dom_expr).filter(
+            EventRow.category == "WEB", EventRow.occurred_at >= since).all()
         emp = {}
         dom_cache = {}
         for emp_id, occ, cnt, dom in rows:
