@@ -596,7 +596,6 @@ function Computers({goProfile,filter}){
       </div>
       <Table size="small" rowKey="computer" pagination={{pageSize:14}} loading={loading}
         dataSource={filtered}
-        rowClassName={r=>{const rk=(r.max_risk||0);if(rk>=86)return 'uv-crit';if(rk>=61)return 'uv-high';if(rk>=31)return 'uv-watch';return '';}}
         onRow={r=>({onClick:()=>goProfile(r.computer),style:{cursor:'pointer'}})}
         columns={[
           {title:<TH t="用户" />,dataIndex:'computer',width:170,
