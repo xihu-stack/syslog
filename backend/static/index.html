@@ -48,7 +48,9 @@
   #root{min-height:100vh;}
   /* 数字:等宽字体 + tabular */
   .num{font-variant-numeric:tabular-nums;letter-spacing:-.3px;font-feature-settings:"tnum";font-family:var(--mono);}
-  /* 用户名统一样式(全站一致:黑色、加粗、可点击但不显蓝色链接) */
+  /* flex 列里的卡片撑满等高 */
+  .ant-col[style*="display: flex"]>.card{flex:1;display:flex;flex-direction:column;}
+  .ant-col[style*="display: flex"]>.card>.ant-card-body{flex:1;}
   .uname{color:var(--ink) !important;font-weight:600;cursor:pointer;}
   .uname:hover{color:var(--brand) !important;}
   /* ===== 深色侧栏(Linear 风)===== */
@@ -253,8 +255,8 @@ function ProfilePage({user, goBack, from}){
       <Col span={14}><Card className="card" title={<span><span className="brand-bar"></span>风险趋势（点颜色=风险等级）</span>} size="small"><div ref={trendRef} style={{height:220}}></div></Card></Col>
       <Col span={10}><Card className="card" title={<span><span className="brand-bar"></span>活跃时段</span>} size="small"><div ref={hoursRef} style={{height:220}}></div></Card></Col>
     </Row>
-    <Row gutter={16} style={{marginTop:16}}>
-      <Col span={8}>
+    <Row gutter={16} style={{marginTop:16}} align="stretch">
+      <Col span={8} style={{display:'flex'}}>
     <Card className="card" title={<span><span className="brand-bar"></span>事件分类</span>} size="small">
       <Table size="small" pagination={false} dataSource={[
         {key:'doc',label:'文档操作',val:docCnt,color:'#6366f1'},
@@ -270,8 +272,8 @@ function ProfilePage({user, goBack, from}){
         : <div style={{marginTop:12}}><Typography.Text type="secondary" style={{fontSize:12}}>常用域名 Top6：</Typography.Text><div style={{marginTop:6}}>{domains.slice(0,6).map(d=><Tag key={d} style={{marginBottom:4,fontSize:11,maxWidth:'100%',overflow:'hidden',textOverflow:'ellipsis'}}>{d}</Tag>)}</div></div>}
     </Card>
       </Col>
-      <Col span={8}>
-    <Card className="card" title={<span><span className="brand-bar"></span>数据来源</span>} size="small">
+      <Col span={8} style={{display:'flex'}}>
+    <Card className="card" title={<span><span className="brand-bar"></span>数据来源</span>} size="small" extra={<span style={{fontSize:11,color:'var(--ink3)'}}>共 {srcTot} 条 = 事件分类总数</span>}>
       <Table size="small" pagination={false} dataSource={[
         {key:'sangfor',label:'深信服上网行为',val:sangforCnt,color:'#22c55e'},
         {key:'ipguard',label:'IP-Guard文档/网页',val:ipguardCnt,color:'#6366f1'},
@@ -290,13 +292,13 @@ function ProfilePage({user, goBack, from}){
       </div>}
     </Card>
       </Col>
-      <Col span={8}>
+      <Col span={8} style={{display:'flex'}}>
     <Card className="card" title={<span><span className="brand-bar"></span>AI基线摘要</span>} size="small">
-      <Typography.Paragraph style={{fontSize:12,marginBottom:0}}>
-        <Typography.Text code style={{fontSize:11}}>{data.profile_summary||'（样本不足，按通用可疑度判断）'}</Typography.Text>
-      </Typography.Paragraph>
+      <div style={{background:'var(--bg)',borderRadius:8,padding:'10px 12px',fontSize:12.5,lineHeight:1.8,color:'var(--ink2)'}}>
+        {data.profile_summary?(data.profile_summary.split('；').filter(s=>s.trim()).map((seg,i)=><div key={i} style={{marginBottom:2}}>{seg.trim()}{i<(data.profile_summary.split('；').length-1)?'；':''}</div>)):<span style={{color:'var(--ink3)'}}>样本不足，按通用可疑度判断</span>}
+      </div>
       <Divider style={{margin:'10px 0'}}/>
-      <Descriptions column={1} size="small">
+      <Descriptions column={1} size="small" labelStyle={{color:'var(--ink3)',width:72}}>
         <Descriptions.Item label="日均活动">{p.daily_doc_op_median||0}（峰值{p.daily_doc_op_max||0}）</Descriptions.Item>
         {hasDoc&&<Descriptions.Item label="行为类型">{(p.actions_seen||[]).join(', ')||'-'}</Descriptions.Item>}
         <Descriptions.Item label="常接触词">{p.usual_keywords?(p.usual_keywords.slice(0,5).join(', ')):'-'}</Descriptions.Item>
@@ -512,31 +514,12 @@ function Dashboard({go, goProfile}){
     </Row>
     <Row gutter={[16,16]} style={{marginTop:16}} align="stretch">
       <Col span={16}>
-        <div style={{marginBottom:10,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-          <div><span className="brand-bar"></span><b style={{fontSize:14}}>风险态势</b><span style={{color:'var(--ink3)',fontSize:11,marginLeft:10}}>高风险用户 TOP5</span></div>
-          <span style={{color:'var(--ink3)',fontSize:11}}>点击柱查看画像</span>
-        </div>
-        <Card className="card" size="small" bodyStyle={{padding:'14px 18px'}}><div ref={bar} style={{height:380}}></div></Card>
-      </Col>
-      <Col span={8}>
-        <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警日趋势</b><span style={{color:'var(--ink3)',fontSize:11,marginLeft:10}}>近7天</span></div>
-        <Card className="card" size="small" style={{marginBottom:16}} bodyStyle={{padding:'14px 18px'}}><div ref={alertTrend} style={{height:220}}></div></Card>
-        <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警分布</b></div>
-        <Card className="card" size="small" bodyStyle={{padding:'8px 18px'}}>
-          {(()=>{const cnt={};(sysAl.list||[]).forEach(a=>{const s=a.scenario||'unknown';cnt[s]=(cnt[s]||0)+1;});const tot=Object.values(cnt).reduce((a,b)=>a+b,0)||1;const rows=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,4);
-          return rows.length?<div>{rows.map(([k,v])=>{const L=LVL(k==='policy_violation'?80:k==='data_exfiltration'?70:50);const pct=Math.round(v/tot*100);return <div key={k} style={{display:'flex',alignItems:'center',gap:10,padding:'7px 0'}}>
-            <span style={{width:64,fontSize:12,color:'var(--ink2)',fontWeight:500}}>{INTENT[k]||k}</span>
-            <div style={{flex:1,height:7,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:LVL(k==='policy_violation'?80:70).c,borderRadius:4}}></div></div>
-            <span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{v}</span></div>})}</div>:<Empty description="暂无告警" style={{padding:16}}/>;})()}
-        </Card>
-      </Col>
-    </Row>
-    {(sysAl.today_critical>0)&&<Alert type="error" message={<span>⚠️ 今日严重告警(86+) <b>{sysAl.today_critical}</b> 条需立即关注</span>} style={{marginBottom:8,marginTop:8}} showIcon/>}
-    {(st.alerts>0&&st.verdicts>0&&(st.alerts/st.verdicts>0.15))&&<Alert type="warning" message="基线建设中（冷启动期）— 告警偏多属正常，随时间推移会趋于稳定" style={{marginBottom:8,marginTop:8}} showIcon/>}
-    {(()=>{
+        <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警日趋势</b><span style={{color:'var(--ink3)',fontSize:11,marginLeft:10}}>近7天每日告警数</span></div>
+        <Card className="card" size="small" style={{marginBottom:16}} bodyStyle={{padding:'14px 18px'}}><div ref={alertTrend} style={{height:200}}></div></Card>
+        {(()=>{
       const ag={};(sysAl.list||[]).forEach(a=>{if(!ag[a.employee])ag[a.employee]={key:a.employee,employee:a.employee,scenario:'',scenarios:[],maxRisk:0,summary:'',status:a.status};const g=ag[a.employee];const sc=INTENT[a.scenario]||a.scenario;if(!g.scenarios.includes(sc))g.scenarios.push(sc);if((a.risk_score||0)>g.maxRisk){g.maxRisk=a.risk_score;g.summary=a.summary;g.scenario=sc;}});
       const ga=Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);
-      return <Card className="card" style={{marginTop:16}} title={<span><span className="brand-bar"></span>高风险告警 TOP5</span>} size="small" extra={<a onClick={()=>go('alerts')}>全部 →</a>}>
+      return <Card className="card" title={<span><span className="brand-bar"></span>高风险告警 TOP5</span>} size="small" extra={<a onClick={()=>go('alerts')}>全部 →</a>}>
         {ga.length? <Table size="small" rowKey="key" pagination={false} dataSource={ga.slice(0,5)} onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
           columns={[{title:'用户',dataIndex:'employee',width:100,render:v=><span className="uname" style={{cursor:'inherit'}}>{v}</span>},
             {title:'风险场景',dataIndex:'scenario',width:90,render:(v,r)=>{const L=LVL(r.maxRisk);return <Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40'}}>{v}</Tag>}},
@@ -545,6 +528,23 @@ function Dashboard({go, goProfile}){
             {title:'说明',dataIndex:'summary',render:v=><span style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>}]}/> : <Empty description="暂无告警" style={{padding:20}}/>}
       </Card>;
     })()}
+      </Col>
+      <Col span={8}>
+        <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警分布</b><span style={{color:'var(--ink3)',fontSize:11,marginLeft:10}}>按场景</span></div>
+        <Card className="card" size="small" style={{marginBottom:16}} bodyStyle={{padding:'14px 18px'}}>
+          {(()=>{const cnt={};(sysAl.list||[]).forEach(a=>{const s=a.scenario||'unknown';cnt[s]=(cnt[s]||0)+1;});const tot=Object.values(cnt).reduce((a,b)=>a+b,0)||1;const rows=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,5);
+          return rows.length?<div>{rows.map(([k,v])=>{const L=LVL(k==='policy_violation'?80:k==='data_exfiltration'?70:50);const pct=Math.round(v/tot*100);return <div key={k} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 0'}}>
+            <span style={{width:72,fontSize:12,color:'var(--ink2)',fontWeight:500}}>{INTENT[k]||k}</span>
+            <div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:LVL(k==='policy_violation'?80:70).c,borderRadius:4}}></div></div>
+            <span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{v}</span></div>})}</div>:<Empty description="暂无告警" style={{padding:16}}/>;})()}
+        </Card>
+        <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警状态</b></div>
+        <Card className="card" size="small" bodyStyle={{padding:'12px 18px'}}>
+          {(()=>{const st_map={NEW:['#6366f1','待处理'],CONFIRMED:['#ef4444','已确认'],FP:['#94a3b8','误报'],CLOSED:['#22c55e','已关闭']};const sc=sysAl.status||{};const tot=Object.values(sc).reduce((a,b)=>a+b,0)||1;const rows=Object.keys(st_map).filter(k=>sc[k]);if(!rows.length) return <Empty description="暂无" style={{padding:16}}/>;return <div>{rows.map(k=>{const pct=Math.round((sc[k]||0)/tot*100);const cc=st_map[k][0];return <div key={k} style={{display:'flex',alignItems:'center',gap:10,padding:'7px 0'}}><span style={{width:60,fontSize:12,color:'var(--ink2)'}}>{st_map[k][1]}</span><div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:cc,borderRadius:4}}></div></div><span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{sc[k]||0}</span></div>})}</div>;})()}
+        </Card>
+      </Col>
+    </Row>
+    {(sysAl.today_critical>0)&&<Alert type="error" message={<span>⚠️ 今日严重告警(86+) <b>{sysAl.today_critical}</b> 条需立即关注</span>} style={{marginBottom:8,marginTop:8}} showIcon/>}
   </div>);
 }
 
