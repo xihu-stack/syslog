@@ -3,6 +3,7 @@
 启动:  python api.py   然后浏览器打开 http://127.0.0.1:8000
 """
 import os
+import re
 import shutil
 import tempfile
 
@@ -34,6 +35,21 @@ FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static"
 
 
 # ---------------- 工具 ----------------
+
+# 员工枚举降噪：events.employee_id 里混着设备/网关标识(IP/MAC 地址，如 10.4.245.1)，
+# 不是真人。统计"全员/上线/在岗"时必须排除，否则分母被设备撑大，还会把网关列成
+# "今日无活动的人"。按 IP/MAC 形状判定为非人(纯事实降噪，留代码、不交给AI判断)。
+_NON_PERSON = re.compile(
+    r'^(?:'
+    r'\d{1,3}(?:\.\d{1,3}){3}'                   # IPv4(设备/网关，如 10.4.245.1)
+    r'|[0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5}'     # MAC(冒号)
+    r'|[0-9a-fA-F]{2}(?:-[0-9a-fA-F]{2}){5}'     # MAC(连字符)
+    r')$')
+
+def _is_person(emp_id) -> bool:
+    """employee_id 是否代表真人(排除 IP/MAC 等设备标识)。"""
+    return bool(emp_id) and not _NON_PERSON.match((emp_id or "").strip())
+
 
 def _event_dict(e: EventRow) -> dict:
     return {
@@ -959,6 +975,8 @@ def _ask_query(action, employee, category=""):
             today_active = set(); eh = defaultdict(set)
             rows = s.query(EventRow.employee_id, EventRow.occurred_at).filter(EventRow.occurred_at.isnot(None)).all()
             for emp_id, occ in rows:
+                if not _is_person(emp_id):  # 排除 IP/MAC 等设备标识，否则被当成"未上线的人"拉低上线比例
+                    continue
                 try:
                     d = occ.date().isoformat(); h = occ.hour
                     eh[emp_id].add((d, h))
