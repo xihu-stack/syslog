@@ -26,26 +26,27 @@ def _flush_events():
     # 原始报文持久化 — 直接从_state["recent"]取(recvfrom后第一件事就存,100%有数据)
     import re as _re_mod
     try:
-        from db import Session, RawLogRow
+        from db import Session, RawLogRow, write_lock
         recents = list(_state.get("recent", []))
         _state["recent"] = []  # 取走清空(避免重复insert)
         if recents:
-            s = Session()
-            try:
-                for m in recents:
-                    msg = m.get("msg", "")
-                    _lt = _u = _a = ""
-                    _m1 = _re_mod.search(r"\[log_type:([^\]]+)\]", msg)
-                    if _m1: _lt = _m1.group(1).strip()
-                    _m2 = _re_mod.search(r"\[user:([^\]]+)\]", msg)
-                    if _m2: _u = _m2.group(1).strip()
-                    _m3 = _re_mod.search(r"\[app:([^\]]+)\]", msg)
-                    if _m3: _a = _m3.group(1).strip()
-                    s.add(RawLogRow(log_type=_lt, user=_u, app=_a, msg=msg[:1000]))
-                s.commit()
-                print(f"[raw] insert from recent {len(recents)}条", flush=True)
-            finally:
-                s.close()
+            with write_lock:  # 与研判 _flush 串行写，避免写锁互等
+                s = Session()
+                try:
+                    for m in recents:
+                        msg = m.get("msg", "")
+                        _lt = _u = _a = ""
+                        _m1 = _re_mod.search(r"\[log_type:([^\]]+)\]", msg)
+                        if _m1: _lt = _m1.group(1).strip()
+                        _m2 = _re_mod.search(r"\[user:([^\]]+)\]", msg)
+                        if _m2: _u = _m2.group(1).strip()
+                        _m3 = _re_mod.search(r"\[app:([^\]]+)\]", msg)
+                        if _m3: _a = _m3.group(1).strip()
+                        s.add(RawLogRow(log_type=_lt, user=_u, app=_a, msg=msg[:1000]))
+                    s.commit()
+                    print(f"[raw] insert from recent {len(recents)}条", flush=True)
+                finally:
+                    s.close()
     except Exception as _re:
         print(f"[raw] insert失败: {_re}", flush=True)
     if not events:

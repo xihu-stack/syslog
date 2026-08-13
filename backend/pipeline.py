@@ -8,7 +8,7 @@ import sys
 import threading
 
 from db import (AlertRow, EventRow, ExceptionRow, Session, SettingRow, VerdictRow,
-                bj_now, init_db, severity_of)
+                bj_now, init_db, severity_of, write_lock)
 from models import CanonicalEvent
 from parser_ipguard import parse_ipguard_excel
 from parser_sangfor import parse_sangfor
@@ -110,27 +110,28 @@ def ingest_events(events) -> int:
     events = aggregate(events)
     if not events:
         return 0
-    s = Session()
-    try:
-        hashes = [e.event_hash() for e in events]
-        existing = set()
-        for i in range(0, len(hashes), 400):
-            existing.update(r[0] for r in
-                            s.query(EventRow.event_hash).filter(EventRow.event_hash.in_(hashes[i:i + 400])).all())
-        added = 0
-        ignored = _ignored_employees()
-        for e, h in zip(events, hashes):
-            if h in existing or (e.employee_id or "").isdigit() or (e.employee_id or "") in ignored:  # 跳过已存在 + 访客(纯数字) + 忽略名单
-                continue
-            s.add(EventRow(event_hash=h, occurred_at=e.occurred_at, employee_id=e.employee_id,
-                           device_id=e.device_id, category=e.category, action=e.action,
-                           target_type=e.target_type, target_value=e.target_value,
-                           size_bytes=e.size_bytes, count=e.count, source=e.source, raw=e.raw))
-            added += 1
-        s.commit()
-        return added
-    finally:
-        s.close()
+    with write_lock:  # 与研判 _flush 串行写，避免写锁互等报 database is locked
+        s = Session()
+        try:
+            hashes = [e.event_hash() for e in events]
+            existing = set()
+            for i in range(0, len(hashes), 400):
+                existing.update(r[0] for r in
+                                s.query(EventRow.event_hash).filter(EventRow.event_hash.in_(hashes[i:i + 400])).all())
+            added = 0
+            ignored = _ignored_employees()
+            for e, h in zip(events, hashes):
+                if h in existing or (e.employee_id or "").isdigit() or (e.employee_id or "") in ignored:  # 跳过已存在 + 访客(纯数字) + 忽略名单
+                    continue
+                s.add(EventRow(event_hash=h, occurred_at=e.occurred_at, employee_id=e.employee_id,
+                               device_id=e.device_id, category=e.category, action=e.action,
+                               target_type=e.target_type, target_value=e.target_value,
+                               size_bytes=e.size_bytes, count=e.count, source=e.source, raw=e.raw))
+                added += 1
+            s.commit()
+            return added
+        finally:
+            s.close()
 
 
 def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]:
@@ -192,38 +193,51 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         nonlocal judged
         if not buf:
             return
-        wsession = Session()
-        try:
-            for emp, device, wstart, wend, hashes, v in buf:
-                vr = VerdictRow(employee_id=emp, device=device, window_start=wstart, window_end=wend,
-                    intent=v.get("intent"), deviation=v.get("deviation"), risk_score=v.get("risk_score", 0),
-                    explanation=v.get("explanation"), channels=v.get("channels"),
-                    ai_participated=1 if v.get("ai_participated", True) else 0, event_hashes=hashes, model="Qwen3-32B")
-                wsession.add(vr); wsession.flush()
-                if v.get("risk_score", 0) >= risk_threshold:
-                    _exc = wsession.query(ExceptionRow).filter(
-                        ExceptionRow.employee_id == emp, ExceptionRow.signal_type == v.get("intent"),
-                        (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > datetime.utcnow())
-                    ).first()
-                    if _exc:
+        from sqlalchemy.exc import OperationalError as _OpErr
+        import time as _time
+        # write_lock：与 syslog 的 ingest_events/build_profiles 串行写，根除 database is locked。
+        # 重试：兜底——即便有别处未加锁的写或 WAL 边界情况，也只重试不中断整个研判。
+        with write_lock:
+            for attempt in range(30):
+                wsession = Session()
+                try:
+                    for emp, device, wstart, wend, hashes, v in buf:
+                        vr = VerdictRow(employee_id=emp, device=device, window_start=wstart, window_end=wend,
+                            intent=v.get("intent"), deviation=v.get("deviation"), risk_score=v.get("risk_score", 0),
+                            explanation=v.get("explanation"), channels=v.get("channels"),
+                            ai_participated=1 if v.get("ai_participated", True) else 0, event_hashes=hashes, model="Qwen3-32B")
+                        wsession.add(vr); wsession.flush()
+                        if v.get("risk_score", 0) >= risk_threshold:
+                            _exc = wsession.query(ExceptionRow).filter(
+                                ExceptionRow.employee_id == emp, ExceptionRow.signal_type == v.get("intent"),
+                                (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > datetime.utcnow())
+                            ).first()
+                            if _exc:
+                                continue
+                            key = f"{emp}|{v.get('intent')}"  # 同员工同意图只保留1条(跨日/跨窗口合并),取最高分+最新
+                            existing = wsession.query(AlertRow).filter_by(dedup_key=key).first()
+                            if not existing:
+                                wsession.add(AlertRow(employee_id=emp, scenario=v.get("intent"),
+                                    severity=severity_of(v.get("risk_score", 0)), risk_score=v.get("risk_score", 0),
+                                    verdict_id=vr.id, summary=v.get("explanation"), dedup_key=key, window_start=wstart))
+                                if v.get("risk_score", 0) >= 75:
+                                    _notify_webhook(emp, v.get("risk_score", 0), v.get("explanation", ""))
+                            elif v.get("risk_score", 0) > (existing.risk_score or 0):
+                                existing.risk_score = v.get("risk_score", 0)
+                                existing.severity = severity_of(v.get("risk_score", 0))
+                                existing.summary = v.get("explanation")
+                                existing.verdict_id = vr.id
+                                existing.window_start = wstart
+                    wsession.commit()
+                    break  # 提交成功
+                except _OpErr as e:
+                    wsession.rollback()
+                    if "locked" in str(e).lower() and attempt < 29:
+                        _time.sleep(1)
                         continue
-                    key = f"{emp}|{v.get('intent')}"  # 同员工同意图只保留1条(跨日/跨窗口合并),取最高分+最新
-                    existing = wsession.query(AlertRow).filter_by(dedup_key=key).first()
-                    if not existing:
-                        wsession.add(AlertRow(employee_id=emp, scenario=v.get("intent"),
-                            severity=severity_of(v.get("risk_score", 0)), risk_score=v.get("risk_score", 0),
-                            verdict_id=vr.id, summary=v.get("explanation"), dedup_key=key, window_start=wstart))
-                        if v.get("risk_score", 0) >= 75:
-                            _notify_webhook(emp, v.get("risk_score", 0), v.get("explanation", ""))
-                    elif v.get("risk_score", 0) > (existing.risk_score or 0):
-                        existing.risk_score = v.get("risk_score", 0)
-                        existing.severity = severity_of(v.get("risk_score", 0))
-                        existing.summary = v.get("explanation")
-                        existing.verdict_id = vr.id
-                        existing.window_start = wstart
-            wsession.commit()
-        finally:
-            wsession.close()
+                    raise  # 非锁冲突 或 重试耗尽，抛出
+                finally:
+                    wsession.close()
         judged += len(buf)
         buf.clear()
 
@@ -267,16 +281,17 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
     _flush()  # 收尾剩余
 
     # ---- 3) 推进研判水位 ----
-    ws = Session()
-    try:
-        wm_row = ws.query(SettingRow).filter_by(key="last_judged_event_id").first()
-        if wm_row:
-            wm_row.value = str(max_id)
-        else:
-            ws.add(SettingRow(key="last_judged_event_id", value=str(max_id)))
-        ws.commit()
-    finally:
-        ws.close()
+    with write_lock:  # 串行写，避免收尾时写锁冲突导致整轮研判前功尽弃
+        ws = Session()
+        try:
+            wm_row = ws.query(SettingRow).filter_by(key="last_judged_event_id").first()
+            if wm_row:
+                wm_row.value = str(max_id)
+            else:
+                ws.add(SettingRow(key="last_judged_event_id", value=str(max_id)))
+            ws.commit()
+        finally:
+            ws.close()
     return judged, _alert_count()
 
 

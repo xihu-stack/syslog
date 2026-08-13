@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import (JSON, Column, DateTime, Integer, String, Text, cast, create_engine, event)
@@ -35,6 +36,11 @@ else:
     engine = create_engine(DB_URL, echo=False, future=True, pool_size=20, max_overflow=40, pool_pre_ping=True)
 Session = sessionmaker(bind=engine, expire_on_commit=False)
 Base = declarative_base()
+
+# 全局写锁：SQLite 即便 WAL 模式也只有一个写事务。研判的 _flush 与 syslog 的
+# ingest_events/build_profiles 会同时写，互相等不到锁就报 database is locked。
+# 用这把锁让所有写串行（各写各的、毫秒~秒级），从根上消除写锁互等。
+write_lock = threading.RLock()
 
 # SQLite 并发优化：WAL 模式（读不阻塞写）+ 锁等待 30s，避免研判期间并发写(刷新verdicts/前端写)互相等不到锁报 database is locked
 if DB_URL.startswith("sqlite"):

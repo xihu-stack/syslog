@@ -8,7 +8,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 from statistics import median
 
-from db import EventRow, ProfileRow, Session, bj_now, json_field
+from db import EventRow, ProfileRow, Session, bj_now, json_field, write_lock
 import dicts  # 敏感词表改为从字典配置读取
 
 LOOKBACK_DAYS = 30
@@ -121,19 +121,20 @@ def global_summary(session) -> str:
 
 def build_profiles() -> int:
     """全量重建所有员工画像，返回员工数。按 employee_id 唯一键 upsert。"""
-    s = Session()
-    try:
-        emps = [r[0] for r in s.query(EventRow.employee_id).distinct()]
-        now = datetime.utcnow()
-        for emp in emps:
-            p = compute_profile(_events_for(s, emp))
-            existing = s.query(ProfileRow).filter_by(employee_id=emp).first()
-            if existing:
-                existing.as_of = now
-                existing.payload = p
-            else:
-                s.add(ProfileRow(employee_id=emp, as_of=now, payload=p))
-        s.commit()
-        return len(emps)
-    finally:
-        s.close()
+    with write_lock:  # 与研判 _flush 串行写，避免写锁互等报 database is locked
+        s = Session()
+        try:
+            emps = [r[0] for r in s.query(EventRow.employee_id).distinct()]
+            now = datetime.utcnow()
+            for emp in emps:
+                p = compute_profile(_events_for(s, emp))
+                existing = s.query(ProfileRow).filter_by(employee_id=emp).first()
+                if existing:
+                    existing.as_of = now
+                    existing.payload = p
+                else:
+                    s.add(ProfileRow(employee_id=emp, as_of=now, payload=p))
+            s.commit()
+            return len(emps)
+        finally:
+            s.close()
