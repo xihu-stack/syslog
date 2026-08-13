@@ -935,18 +935,20 @@ function Ask(){
     setSending(false);
     setMsgs(m=>[...m,{role:'ai',text:(r&&r.answer)||'（无回答）'}]);
   };
-  return (<div style={{display:'flex',flexDirection:'column',height:'calc(100vh - 150px)'}}>
+  return (<div style={{display:'flex',flexDirection:'column',maxWidth:920,margin:'0 auto',width:'100%'}}>
     <div className="sec-title">AI 问答 · 基于行为数据回答 · <span style={{fontSize:11,color:'#94a3b8'}}>可问:某员工风险行为 / 告警榜 / 摸鱼榜 / 在岗情况 / 规则说明</span></div>
-    <div style={{flex:1,minHeight:0,overflow:'auto',background:'#fff',border:'1px solid var(--line)',borderRadius:12,padding:12,boxShadow:'0 1px 3px rgba(15,23,42,.04)'}}>
-      {msgs.length===0?<Empty description="提问开始对话（如：今天谁摸鱼最多？张三有什么风险行为？今天有哪些告警？）" style={{paddingTop:80}}/>:
+    <div style={{minHeight:200,maxHeight:'calc(100vh - 280px)',overflow:'auto',background:'#fff',border:'1px solid var(--line)',borderRadius:12,padding:12,boxShadow:'0 1px 3px rgba(15,23,42,.04)'}}>
+      {msgs.length===0?<Empty description="提问开始对话（如：今天谁摸鱼最多？张三有什么风险行为？今天有哪些告警？）" style={{paddingTop:60}}/>:
         msgs.map((m,i)=><div key={i} style={{display:'flex',justifyContent:m.role==='user'?'flex-end':'flex-start',marginBottom:10}}>
           <div style={{maxWidth:'72%',padding:'9px 13px',borderRadius:12,background:m.role==='user'?'#4f46e5':'var(--bg)',color:m.role==='user'?'#fff':'#0f172a',whiteSpace:'pre-wrap',wordBreak:'break-word',lineHeight:1.6,boxShadow:'0 1px 2px rgba(15,23,42,.04)'}}>{m.text}</div>
         </div>)}
       {sending&&<div style={{color:'#94a3b8',fontSize:13,padding:'4px 8px'}}>AI 思考中…（查数据+总结，约10-20秒）</div>}
     </div>
-    <div style={{marginTop:10,display:'flex',gap:8,alignItems:'flex-end'}}>
-      <Input.TextArea value={q} onChange={e=>setQ(e.target.value)} onPressEnter={e=>{if(!e.shiftKey){e.preventDefault();send();}}} placeholder="提问…（回车发送，Shift+回车换行）" autoSize={{minRows:1,maxRows:4}} disabled={sending} style={{flex:1}}/>
-      <Button type="primary" loading={sending} onClick={send}>发送</Button>
+    <div style={{marginTop:10,background:'#fff',border:'1px solid var(--line)',borderRadius:12,padding:'10px 12px',boxShadow:'0 1px 3px rgba(15,23,42,.04)'}}>
+      <div style={{display:'flex',gap:8,alignItems:'flex-end'}}>
+        <Input.TextArea value={q} onChange={e=>setQ(e.target.value)} onPressEnter={e=>{if(!e.shiftKey){e.preventDefault();send();}}} placeholder="提问…（回车发送，Shift+回车换行）" autoSize={{minRows:2,maxRows:6}} disabled={sending} style={{flex:1,fontSize:14}}/>
+        <Button type="primary" loading={sending} onClick={send}>发送</Button>
+      </div>
     </div>
   </div>);
 }
