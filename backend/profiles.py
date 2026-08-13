@@ -93,7 +93,7 @@ def summarize_for_llm(p: dict):
     返回 None 表示冷启动（样本不足）—— 由调用方决定如何喂全局基线。
     结构化输出：样本量/置信度 + 常规时段 + 日均量 + 常用域名集（让 AI 判断当前域名是否陌生）。
     """
-    if not p or p.get("sample_count", 0) < 3:
+    if not p or p.get("sample_count", 0) < 15:  # <15样本不足以建个人基线→冷启动走全局参照
         return None
     n = p["sample_count"]
     tier = "成熟" if n >= 50 else "较薄"
@@ -103,7 +103,7 @@ def summarize_for_llm(p: dict):
     dom_txt = "、".join(doms) if doms else "无明显常用域名"
     ch = "/".join(p.get("channels_used", [])) or "未记录"
     return (f"【个人基线·{tier}(样本{n})】常规活跃时段 {hrange}；"
-            f"日均活动~{p.get('daily_doc_op_median', 0)}(峰值{p.get('daily_doc_op_max', 0)})；"
+            f"日均事件量~{p.get('daily_doc_op_median', 0)}(峰值{p.get('daily_doc_op_max', 0)})；"
             f"常用通道 {ch}；常用域名：{dom_txt}。"
             f"判断要点：当前窗口出现【不在常用集内】的【高危类别】域名=异常；仅域名多不异常。")
 

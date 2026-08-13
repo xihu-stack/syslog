@@ -36,13 +36,13 @@ else:
 Session = sessionmaker(bind=engine, expire_on_commit=False)
 Base = declarative_base()
 
-# SQLite 并发优化：WAL 模式（读不阻塞写）+ 锁等待 5s，避免研判期间前端轮询读卡死
+# SQLite 并发优化：WAL 模式（读不阻塞写）+ 锁等待 30s，避免研判期间并发写(刷新verdicts/前端写)互相等不到锁报 database is locked
 if DB_URL.startswith("sqlite"):
     @event.listens_for(engine, "connect")
     def _sqlite_pragma(dbapi_connection, _):
         cur = dbapi_connection.cursor()
         cur.execute("PRAGMA journal_mode=WAL")
-        cur.execute("PRAGMA busy_timeout=5000")
+        cur.execute("PRAGMA busy_timeout=30000")
         cur.close()
 
 

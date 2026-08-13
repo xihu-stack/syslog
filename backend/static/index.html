@@ -293,13 +293,13 @@ function ProfilePage({user, goBack, from}){
     </Card>
       </Col>
       <Col span={8} style={{display:'flex'}}>
-    <Card className="card" title={<span><span className="brand-bar"></span>AI基线摘要</span>} size="small">
+    <Card className="card" title={<span><span className="brand-bar"></span>个人行为基线</span>} size="small">
       <div style={{background:'var(--bg)',borderRadius:8,padding:'10px 12px',fontSize:12.5,lineHeight:1.8,color:'var(--ink2)'}}>
         {data.profile_summary?(data.profile_summary.split('；').filter(s=>s.trim()).map((seg,i)=><div key={i} style={{marginBottom:2}}>{seg.trim()}{i<(data.profile_summary.split('；').length-1)?'；':''}</div>)):<span style={{color:'var(--ink3)'}}>样本不足，按通用可疑度判断</span>}
       </div>
       <Divider style={{margin:'10px 0'}}/>
       <Descriptions column={1} size="small" labelStyle={{color:'var(--ink3)',width:72}}>
-        <Descriptions.Item label="日均活动">{p.daily_doc_op_median||0}（峰值{p.daily_doc_op_max||0}）</Descriptions.Item>
+        <Descriptions.Item label="日均事件量">{p.daily_doc_op_median||0}（峰值{p.daily_doc_op_max||0}）</Descriptions.Item>
         {hasDoc&&<Descriptions.Item label="行为类型">{(p.actions_seen||[]).join(', ')||'-'}</Descriptions.Item>}
         <Descriptions.Item label="常接触词">{p.usual_keywords?(p.usual_keywords.slice(0,5).join(', ')):'-'}</Descriptions.Item>
       </Descriptions>
@@ -811,14 +811,20 @@ function Monitor(){
           {sl.recent.slice(0,2).map((m,i)=><div key={i} style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{m.t} {m.msg.slice(20,70)}</div>)}
         </div>}
       </Card></Col>
-      <Col span={12}><Card className="card" title="AI 研判引擎" size="small">
+      <Col span={12}><Card className="card" title="AI 研判引擎" size="small" extra={!d.running&&<Button size="small" type="primary" ghost onClick={async()=>{message.loading({content:'已启动增量研判…',key:'det',duration:2});await POST('/api/run');load();}}>增量研判</Button>}>
         {d.running ? (<div>
           <Progress percent={pct} status="active" format={()=>d.done+'/'+d.total}/>
-          <div style={{marginTop:4,color:'var(--ink2)',fontSize:12}}>4线程并发 · 已完成 {d.judged}</div>
-        </div>) : (
+          <div style={{marginTop:4,color:'var(--ink2)',fontSize:12}}>4线程并发 · 已研判 {d.done}/{d.total} 窗口{d.total?(' · '+pct+'%'):''}</div>
+        </div>) : d.error ? (
+          <div style={{padding:'4px 0'}}>
+            <Badge status="error" text={<span style={{color:'var(--danger)',fontSize:13,fontWeight:700}}>上次研判失败（未跑完）</span>}/>
+            <div style={{marginTop:6,fontSize:11,color:'var(--danger)',background:'var(--bg)',padding:'6px 8px',borderRadius:6,fontFamily:'Consolas,monospace'}}>{String(d.error).split('\n')[0]}</div>
+            <div style={{marginTop:4,fontSize:11,color:'var(--ink3)'}}>点右上"增量研判"重试（数据库锁等待已加长至30s）</div>
+          </div>
+        ) : (
           <div style={{padding:'6px 0'}}>
-            <Badge status="success" text={<span style={{color:'#22c55e',fontSize:13}}>引擎就绪</span>}/>
-            {d.last_finished&&<div style={{marginTop:4,fontSize:12,color:'var(--ink3)'}}>上次：{d.last_judged||0}窗口 / {d.last_alerts||0}告警</div>}
+            <Badge status="success" text={<span style={{color:'#22c55e',fontSize:13}}>引擎就绪 · 空闲</span>}/>
+            {d.last_finished&&<div style={{marginTop:4,fontSize:12,color:'var(--ink3)'}}>上次：{d.last_judged||0}窗口 / {d.last_alerts||0}告警 · {String(d.last_finished).replace('T',' ').slice(0,16)}</div>}
           </div>
         )}
       </Card></Col>
@@ -840,6 +846,37 @@ function Monitor(){
         {sl.recent&&sl.recent.length>0 ? <div style={{fontSize:11,maxHeight:80,overflow:'auto'}}>
           {sl.recent.slice(0,4).map((m,i)=><div key={i} style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginBottom:2}}><b>{m.t}</b> {m.msg.slice(20,65)}</div>)}
         </div> : <div style={{color:'var(--ink3)',fontSize:12,padding:8}}>等待推送...</div>}
+      </Card></Col>
+    </Row>
+    <Row gutter={16} style={{marginTop:16}}>
+      <Col span={12}><Card className="card" title="告警场景分布" size="small" extra={<span style={{fontSize:11,color:'var(--ink3)'}}>共 {al.total||0} 条告警</span>}>
+        {Object.keys(al.by_scenario||{}).length ? (()=>{
+          const tot=Object.values(al.by_scenario||{}).reduce((a,b)=>a+b,0)||1;
+          const scColor={data_exfiltration:'#ef4444',job_seeking:'#f97316',policy_violation:'#8b5cf6',baseline_deviation:'#6366f1',normal_work:'#94a3b8'};
+          return <div style={{paddingTop:4}}>{Object.entries(al.by_scenario||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>{
+            const p=Math.round(v/tot*100);
+            return <div key={k} style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+              <span style={{width:64,fontSize:12,color:'var(--ink2)'}}>{INTENT[k]||k}</span>
+              <div className="pbar" style={{flex:1}}><i style={{width:p+'%',background:scColor[k]||'var(--brand)'}}></i></div>
+              <span className="num" style={{width:52,textAlign:'right',fontSize:12,fontWeight:600,color:'var(--ink)'}}>{v}条 · {p}%</span>
+            </div>;})}
+          </div>;
+        })() : <Empty description="暂无告警" style={{padding:24}}/>}
+      </Card></Col>
+      <Col span={12}><Card className="card" title="近 7 天告警趋势" size="small">
+        {(() => {
+          const days=data.alerts_by_day||[];
+          if(!days.length) return <Empty description="暂无数据" style={{padding:24}}/>;
+          const mx=Math.max(1,...days.map(x=>x[1]));
+          return <div style={{display:'flex',alignItems:'flex-end',gap:6,height:128,padding:'8px 4px 0'}}>
+            {days.map(([dt,n])=>{const h=Math.max(2,n/mx*92);return (
+              <div key={dt} style={{flex:1,textAlign:'center'}}>
+                <div className="num" style={{fontSize:11,color:n>0?'var(--brand)':'var(--ink4)',marginBottom:3,fontWeight:600}}>{n}</div>
+                <div style={{height:h+'px',background:n>0?'var(--brand)':'var(--ink4)',opacity:n>0?1:0.25,borderRadius:'4px 4px 0 0',margin:'0 auto',width:'62%',transition:'height .3s'}}></div>
+                <div style={{fontSize:10,color:'var(--ink3)',marginTop:5}}>{dt.slice(5)}</div>
+              </div>);})}
+          </div>;
+        })()}
       </Card></Col>
     </Row>
   </div>);
