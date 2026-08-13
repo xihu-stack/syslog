@@ -967,7 +967,7 @@ function Config(){
   const toggleSys=async(on)=>{ await POST('/api/syslog/'+(on?'start':'stop')); message.success(on?'已启动':'已停止'); load(); };
   const uploadLog=f=>{ const fd=new FormData(); fd.append('file',f); message.loading({content:'导入中…',key:'up',duration:0});
     fetch('/api/ingest',{method:'POST',body:fd}).then(r=>r.json()).then(r=>message.success({content:'已导入 '+r.imported+' 条',key:'up',duration:2})); return false; };
-  const DM={sensitive_keywords:'敏感文件名关键词',recruitment_sites:'招聘网站域名',netdisk_domains:'网盘域名',personal_email_domains:'个人邮箱域名',job_search_terms:'求职搜索词',risk_search_terms:'高危搜索词',work_domains:'工作网站白名单(算工作占比)'};
+  const DM={sensitive_keywords:'敏感文件名关键词',recruitment_sites:'招聘网站域名',netdisk_domains:'网盘域名',personal_email_domains:'个人邮箱域名',job_search_terms:'求职搜索词',risk_search_terms:'高危搜索词',work_domains:'工作网站白名单(算工作占比)',remote_control_domains:'远程控制工具(降权,凌晨才告警)',vpn_domains:'VPN/翻墙工具(访问即违规)',code_repo_domains:'代码仓库(降权,凌晨才告警)',wechat_file_domains:'微信文件助手(外发通道)'};
   return (
     <Tabs defaultActiveKey="monitor" items={[
       {key:'monitor', label:'系统监控', children:<Monitor/>},
@@ -1015,7 +1015,7 @@ function Config(){
              columns={[
                {title:'域名',dataIndex:'domain',render:v=><span className="num" style={{fontSize:12}}>{v}</span>},
                {title:'命中',dataIndex:'hits',width:60,render:v=><span style={{color:'#94a3b8'}}>{v}</span>},
-               {title:'AI建议',width:150,render:(_,r)=><Tag color={r.target==='ignore'?'default':r.target==='slack_domains'?'purple':'blue'}>{r.target==='ignore'?'忽略(正常)':(r.target==='slack_domains'?'摸鱼·'+(r.cat||''):{netdisk_domains:'网盘',personal_email_domains:'个人邮箱',recruitment_sites:'招聘'}[r.target]||r.target)}</Tag>},
+               {title:'AI建议',width:150,render:(_,r)=><Tag color={r.target==='ignore'?'default':r.target==='slack_domains'?'purple':'blue'}>{r.target==='ignore'?'忽略(正常)':(r.target==='slack_domains'?'摸鱼·'+(r.cat||''):{netdisk_domains:'网盘',personal_email_domains:'个人邮箱',recruitment_sites:'招聘',remote_control_domains:'远程控制',vpn_domains:'VPN/翻墙',code_repo_domains:'代码仓库',wechat_file_domains:'微信文件助手'}[r.target]||r.target)}</Tag>},
                {title:'理由',dataIndex:'reason',ellipsis:true,render:v=><span style={{fontSize:12,color:'var(--ink2)'}}>{v}</span>},
                {title:'',width:70,render:(_,r)=><Button size="small" type="primary" ghost disabled={r.target==='ignore'} onClick={()=>applySug(r)}>采纳</Button>},
              ]}/>}

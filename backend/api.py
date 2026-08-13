@@ -1008,7 +1008,7 @@ def rules_suggest():
         if not top:
             return {"suggestions": [], "msg": "无未分类高频域名"}
         sys_p = ("你是域名分类助手。对每个域名判断归属,只输出 JSON 数组 [{domain, target, cat, reason}]。\n"
-                 "target: netdisk_domains(网盘云盘) / personal_email_domains(个人邮箱) / recruitment_sites(招聘求职) / slack_domains(摸鱼娱乐) / ignore(正常办公/厂商后台/CDN/SDK/无关)。\n"
+                 "target: netdisk_domains(网盘云盘) / personal_email_domains(个人邮箱) / recruitment_sites(招聘求职) / remote_control_domains(远程控制todesk/向日葵等) / vpn_domains(VPN翻墙) / code_repo_domains(代码仓库github等) / wechat_file_domains(微信文件助手filehelper) / slack_domains(摸鱼娱乐) / ignore(正常办公/厂商后台/CDN/SDK/无关)。\n"
                  "cat: 仅 target=slack_domains 时填 视频/社交/购物/资讯/音乐 之一,否则空字符串。\n"
                  "reason: 一句中文理由。只输出 JSON 数组。")
         user = "域名列表(域名 出现次数):\n" + "\n".join(f"{d} {n}" for d, n in top)

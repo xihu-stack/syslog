@@ -58,6 +58,21 @@ DEFAULTS = {
         "helixon.com", "huashen.bio",
         "stackoverflow.com", "csdn.net", "juejin.cn", "npmjs.com", "pypi.org", "docker.com",
     ],
+    # 以下 4 类原写死在 risk_patterns(),搬进字典使后台「字典」页可增删,
+    # 新增远程工具/VPN/代码仓库无需改代码。AI规则建议也会覆盖这些类。
+    "remote_control_domains": [
+        "todesk", "teamviewer", "anydesk", "向日葵", "sunlogin", "rustdesk", "vnc",
+    ],
+    "vpn_domains": [
+        "privado", "clash", "clashverge", "shadowsocks", "v2ray", "trojan", "wireguard",
+        "nordvpn", "expressvpn", "surfshark", "psiphon", "vmess", "lantern",
+    ],
+    "code_repo_domains": [
+        "github", "gitlab.com", "gitee.com", "bitbucket.org", "coding.net",
+    ],
+    "wechat_file_domains": [
+        "filehelper", "传输助手", "filehelper.weixin",
+    ],
 }
 
 _inited = False
@@ -163,15 +178,16 @@ def set_setting(key: str, value):
 # 真正的高危信号靠"域名"识别（todesk 被归到 IT行业 里，但域名能认出）。
 
 def risk_patterns() -> list:
-    """返回 [(中文标签, [域名子串...])]：当前生效的高风险域名模式。"""
+    """返回 [(中文标签, [域名子串...])]：当前生效的高风险域名模式。
+    全部走 DB 字典(后台「字典」页可增删),新增远程工具/VPN/网盘等无需改代码。"""
     return [
-        ("远程控制", ["todesk", "teamviewer", "anydesk", "向日葵", "sunlogin", "rustdesk", "vnc"]),
-        ("VPN/翻墙", ["privado", "clash", "clashverge", "shadowsocks", "v2ray", "trojan", "wireguard", "nordvpn", "expressvpn", "surfshark", "psiphon", "vmess", "lantern"]),
-        ("代码外发", ["github", "gitlab.com", "gitee.com", "bitbucket.org", "coding.net"]),  # github子串覆盖github.io等;gitlab精确gitlab.com避免公司内部gitlab.xxx误当代码外发
-        ("网盘/云盘", list(get("netdisk_domains"))),                  # 公司禁止
-        ("个人邮箱", list(get("personal_email_domains"))),            # 公司禁止
+        ("远程控制", list(get("remote_control_domains"))),
+        ("VPN/翻墙", list(get("vpn_domains"))),
+        ("代码外发", list(get("code_repo_domains"))),    # github子串覆盖github.io等
+        ("网盘/云盘", list(get("netdisk_domains"))),       # 公司禁止
+        ("个人邮箱", list(get("personal_email_domains"))), # 公司禁止
         ("招聘求职", list(get("recruitment_sites"))),
-        ("微信文件助手", ["filehelper", "传输助手", "filehelper.weixin"]),  # 微信传文件=外发;去掉file.qq.com避免staticfile.qq.com(CDN)误伤
+        ("微信文件助手", list(get("wechat_file_domains"))),  # 微信传文件=外发
     ]
 
 
