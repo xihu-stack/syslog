@@ -972,8 +972,17 @@ def rules_suggest():
         # 优化:SQL 先按域名 group by + count(98万行→几千唯一域名),Python 只对
         # distinct 域名调一次分类函数。旧版逐行调3个分类函数,98万×3次字典遍历,极慢。
         unclass = Counter(); kw_hits = set()
+        # 含这些关键词的未分类域名即使低频也要扫,避免漏掉新风险/新应用
         RISK_KW = ("job", "zhaopin", "recruit", "resume", "hr", "hire", "cv", "mail",
                    "pan", "disk", "cloud", "drive", "upload", "video", "shop", "mall",
+                   "weibo", "zhihu", "douban", "game", "novel", "comic",
+                   # 新增:覆盖新风险线索
+                   "send", "transfer", "share", "sync", "backup", "export",  # 外发/同步
+                   "chat", "ai", "gpt", "llm", "prompt",  # AI助手
+                   "wiki", "notion", "confluence", "figma",  # 协作/设计平台(数据外发)
+                   "pastebin", "github", "gist", "codepen",  # 代码粘贴/外发
+                   "tunnel", "ngrok", "frp", "proxy",  # 内网穿透/代理
+                   "telegram", "whatsapp", "signal",  # 即时通讯(外发)
                    "weibo", "zhihu", "douban", "game", "novel", "comic")
         dom_expr = json_field(EventRow.raw, 'domain')
         # SQLite: 直接 group by json 提取的 domain 字段
@@ -1007,10 +1016,15 @@ def rules_suggest():
         top = [(d, n) for d, n in top if len(d) < 48 and not any(x in d.lower() for x in NOISE_HINT)][:30]
         if not top:
             return {"suggestions": [], "msg": "无未分类高频域名"}
-        sys_p = ("你是域名分类助手。对每个域名判断归属,只输出 JSON 数组 [{domain, target, cat, reason}]。\n"
-                 "target: netdisk_domains(网盘云盘) / personal_email_domains(个人邮箱) / recruitment_sites(招聘求职) / remote_control_domains(远程控制todesk/向日葵等) / vpn_domains(VPN翻墙) / code_repo_domains(代码仓库github等) / wechat_file_domains(微信文件助手filehelper) / slack_domains(摸鱼娱乐) / ignore(正常办公/厂商后台/CDN/SDK/无关)。\n"
+        sys_p = ("你是企业数据安全助手。分析这些【未分类】的域名,判断是否需要纳入风险监控。\n"
+                 "对每个域名输出 JSON: {domain, target, cat, reason}\n"
+                 "target 取值:\n"
+                 "- 已知风险类(纳入对应字典): netdisk_domains(网盘云盘) / personal_email_domains(个人邮箱) / recruitment_sites(招聘求职) / remote_control_domains(远程控制) / vpn_domains(翻墙) / code_repo_domains(代码仓库) / wechat_file_domains(微信文件助手) / ai_assistant_domains(AI助手chatgpt/deepseek等,往AI塞数据) / slack_domains(摸鱼娱乐)\n"
+                 "- **suspect_new(疑似新风险)**: 不属于上述任何类,但像数据外发/泄露/规避监控的可疑行为(如未知网盘、匿名传输、临时邮箱、屏幕共享、代码粘贴pastebin、内网穿透ngrok/frp、加密货币、敏感数据爬取等)。这类即使无法精确归类也要标出,供人工审核。\n"
+                 "- ignore: 明确的正常办公/厂商后台/CDN/SDK/系统更新/认证服务\n"
                  "cat: 仅 target=slack_domains 时填 视频/社交/购物/资讯/音乐 之一,否则空字符串。\n"
-                 "reason: 一句中文理由。只输出 JSON 数组。")
+                 "reason: 一句中文,说明判断依据。\n"
+                 "原则:宁可多标 suspect_new 让人工复核,也不要漏掉可疑域名。只输出 JSON 数组。")
         user = "域名列表(域名 出现次数):\n" + "\n".join(f"{d} {n}" for d, n in top)
         raw = llm_client.chat([{"role": "system", "content": sys_p}, {"role": "user", "content": user}],
                               max_tokens=1500, timeout=120)

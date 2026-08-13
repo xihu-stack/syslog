@@ -73,6 +73,22 @@ DEFAULTS = {
     "wechat_file_domains": [
         "filehelper", "传输助手", "filehelper.weixin",
     ],
+    # AI 助手(ChatGPT/DeepSeek/豆包/Kimi/千问/Copilot 等)。
+    # 风险=数据外发(往 AI 塞公司数据),不是访问本身。设为 mid 档:不访问即触发,
+    # 但只有凌晨/密集才告警(工作时段正常使用 AI 不打扰),由研判 AI 结合上下文判断。
+    "ai_assistant_domains": [
+        "chatgpt.com", "openai.com", "oaistatic.com", "chatgpt-sidebar.com",
+        "claude.ai", "anthropic.com",
+        "gemini.google.com", "aistudio.google.com", "bard.google.com",
+        "deepseek.com", "chat.deepseek.com",
+        "doubao.com", "kimi.com", "moonshot.cn",
+        "qianwen.com", "tongyi.com", "aliyundashscope",
+        "zhipu.ai", "chatglm.cn", "bigmodel.cn",
+        "yiyan.baidu.com", "baichuan-ai",
+        "yuanbao.tencent.com", "hunyuan",
+        "metaso.cn", "perplexity.ai", "poe.com",
+        "githubcopilot.com", "copilot.microsoft", "copilot.tencent.com",
+    ],
 }
 
 _inited = False
@@ -188,6 +204,7 @@ def risk_patterns() -> list:
         ("个人邮箱", list(get("personal_email_domains"))), # 公司禁止
         ("招聘求职", list(get("recruitment_sites"))),
         ("微信文件助手", list(get("wechat_file_domains"))),  # 微信传文件=外发
+        ("AI助手", list(get("ai_assistant_domains"))),       # 往AI塞数据=外发嫌疑,mid档
     ]
 
 
@@ -228,6 +245,7 @@ RISK_TIER = {
     "个人邮箱": "high",          # 公司禁止→访问即违规告警
     "招聘求职": "job",           # 求职意图
     "微信文件助手": "high",      # 微信传文件=外发嫌疑(普通微信访问不算)
+    "AI助手": "mid",             # 往AI塞数据=外发嫌疑,降权(工作时段正常用,凌晨/密集才告警)
 }
 
 
