@@ -184,7 +184,7 @@ const { useState, useEffect, useRef } = React;
 const LVL = s => (s==null)?{c:'#94a3b8',l:'-'} : s>=86?{c:'#ef4444',l:'严重'} : s>=61?{c:'#f97316',l:'高危'} : s>=31?{c:'#3b82f6',l:'关注'} : {c:'#22c55e',l:'正常'};
 const INTENT = {data_exfiltration:'数据外发', job_seeking:'求职离职', baseline_deviation:'行为偏离', policy_violation:'违规', normal_work:'正常', unknown:'未知'};
 const DEV = {none:'无', minor:'轻微', major:'重大', severe:'严重', unknown:'未知'};
-const STATUS_MAP = {NEW:{c:'#6366f1',t:'待处理',i:'fa-clock'}, TRIAGING:{c:'#f59e0b',t:'处理中',i:'fa-spinner'}, CONFIRMED:{c:'#ef4444',t:'已确认',i:'fa-circle-exclamation'}, FP:{c:'#94a3b8',t:'误报',i:'fa-xmark'}, CLOSED:{c:'#22c55e',t:'已关闭',i:'fa-circle-check'}};
+const STATUS_MAP = {NEW:{c:'#ef4444',t:'待处理',i:'fa-clock'}, TRIAGING:{c:'#f59e0b',t:'处理中',i:'fa-spinner'}, CONFIRMED:{c:'#6366f1',t:'已确认',i:'fa-circle-exclamation'}, FP:{c:'#94a3b8',t:'误报',i:'fa-xmark'}, CLOSED:{c:'#22c55e',t:'已关闭',i:'fa-circle-check'}};
 // 防抖回调（延迟ms后执行，取消前序）
 function debounce(fn, delay){ let t; return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), delay); }; }
 const STATUS_OPTS = [{label:'待处理',value:'NEW'},{label:'处理中',value:'TRIAGING'},{label:'已确认',value:'CONFIRMED'},{label:'误报',value:'FP'},{label:'已关闭',value:'CLOSED'}];
@@ -541,7 +541,7 @@ function Dashboard({go, goProfile}){
         </Card>
         <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警状态</b></div>
         <Card className="card" size="small" bodyStyle={{padding:'12px 18px'}}>
-          {(()=>{const st_map={NEW:['#6366f1','待处理'],CONFIRMED:['#ef4444','已确认'],FP:['#94a3b8','误报'],CLOSED:['#22c55e','已关闭']};const sc=sysAl.status||{};const tot=Object.values(sc).reduce((a,b)=>a+b,0)||1;const rows=Object.keys(st_map).filter(k=>sc[k]);if(!rows.length) return <Empty description="暂无" style={{padding:16}}/>;return <div>{rows.map(k=>{const pct=Math.round((sc[k]||0)/tot*100);const cc=st_map[k][0];return <div key={k} style={{display:'flex',alignItems:'center',gap:10,padding:'7px 0'}}><span style={{width:60,fontSize:12,color:'var(--ink2)'}}>{st_map[k][1]}</span><div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:cc,borderRadius:4}}></div></div><span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{sc[k]||0}</span></div>})}</div>;})()}
+          {(()=>{const st_map={NEW:['#ef4444','待处理'],CONFIRMED:['#6366f1','已确认'],FP:['#94a3b8','误报'],CLOSED:['#22c55e','已关闭']};const sc=sysAl.status||{};const tot=Object.values(sc).reduce((a,b)=>a+b,0)||1;const rows=Object.keys(st_map).filter(k=>sc[k]);if(!rows.length) return <Empty description="暂无" style={{padding:16}}/>;return <div>{rows.map(k=>{const pct=Math.round((sc[k]||0)/tot*100);const cc=st_map[k][0];return <div key={k} style={{display:'flex',alignItems:'center',gap:10,padding:'7px 0'}}><span style={{width:60,fontSize:12,color:'var(--ink2)'}}>{st_map[k][1]}</span><div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:cc,borderRadius:4}}></div></div><span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{sc[k]||0}</span></div>})}</div>;})()}
         </Card>
       </Col>
     </Row>
