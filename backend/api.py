@@ -645,28 +645,41 @@ def efficiency():
         out = []
         for k, r in emp.items():
             hours = sorted(r["hours"])
-            st = sorted(r["stimes"]); sp_s = sp_e = None; mx = 0.0  # 最长连续摸鱼(60min gap内)
+            st = sorted(r["stimes"])
+            # 摸鱼时长估算:日志只有访问时刻无停留时长,用'段累计'近似——
+            # 同一天内 ≤30min gap 的娱乐访问连成一段,每段时长=首末跨度(碎片化摸鱼聚合)。
+            # 各段相加=总摸鱼时长,÷活跃天数=日均。比旧'最长跨度'更准(旧算法把跨天断续当连续)。
+            from collections import defaultdict as _dd
+            by_day = _dd(list)
             for t in st:
-                if sp_e is not None and (t - sp_e).total_seconds() <= 3600:
-                    sp_e = t
-                else:
-                    if sp_e is not None:
-                        mx = max(mx, (sp_e - sp_s).total_seconds())
-                    sp_s = sp_e = t
-            if sp_e is not None:
-                mx = max(mx, (sp_e - sp_s).total_seconds())
+                by_day[t.date()].append(t)
+            total_min = 0.0
+            mx = 0.0  # 保留 max_span(单日最长一段),用30min gap 更严
+            for d, ts in by_day.items():
+                ts.sort(); seg_s = seg_e = None; day_min = 0.0
+                for t in ts:
+                    if seg_e is not None and (t - seg_e).total_seconds() <= 1800:  # 30min gap
+                        seg_e = t
+                    else:
+                        if seg_e is not None:
+                            day_min += (seg_e - seg_s).total_seconds()
+                        seg_s = seg_e = t
+                if seg_e is not None:
+                    day_min += (seg_e - seg_s).total_seconds()
+                total_min += day_min
+                mx = max(mx, day_min)
+            active_days = len(r["days"]) or 1
+            slack_avg = round(total_min / 60 / active_days)  # 日均摸鱼分钟
             wh = r["wh"]
-            classified = r["slack"] + r["work"]  # 已分类(摸鱼+工作)访问,作占比分母更合理
-            # 旧口径 pct=slack/wh(含未分类),全民都低(1-2%),无区分度。
-            # 新口径:占比分母只含已分类访问(摸鱼+工作),数值更高更有区分度。
+            classified = r["slack"] + r["work"]
             out.append({"employee": k, "total": wh, "slack": r["slack"],
                         "pct": round(r["slack"] / classified * 100, 1) if classified else 0,
                         "cats": dict(r["cats"]), "active_days": len(r["days"]),
                         "hour_min": hours[0] if hours else None, "hour_max": hours[-1] if hours else None,
-                        "max_span": round(mx / 60), "work": r["work"],
+                        "slack_avg": slack_avg, "max_span": round(mx / 60), "work": r["work"],
                         "work_pct": round(r["work"] / classified * 100, 1) if classified else 0,
                         "classified": classified})
-        out.sort(key=lambda x: -(x.get("max_span") or 0))
+        out.sort(key=lambda x: -(x.get("slack_avg") or 0))
         _eff_cache["data"] = out; _eff_cache["ts"] = time.time()
         return out
     finally:
