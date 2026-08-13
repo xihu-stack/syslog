@@ -452,30 +452,31 @@ function App(){
 }
 
 function Dashboard({go, goProfile}){
-  const [st,setSt]=useState({}); const [vs,setVs]=useState([]); const [al,setAl]=useState([]); const [sys,setSys]=useState({}); const [eff,setEff]=useState([]);
+  const [st,setSt]=useState({}); const [vs,setVs]=useState([]); const [sys,setSys]=useState({}); const [eff,setEff]=useState([]);
   const pie=useRef(),bar=useRef(),alertTrend=useRef();
   const pieChart=useRef(null),barChart=useRef(null),alertTrendChart=useRef(null);
   const load=async()=>{
     GET('/api/stats').then(setSt);
     GETL('/api/verdicts?limit=300').then(setVs);
-    GETL('/api/alerts?limit=300').then(setAl);
     GET('/api/system/stats').then(setSys);
     GETL('/api/efficiency').then(setEff);
   };
   useEffect(()=>{ load(); const t=setInterval(load,15000); return ()=>clearInterval(t); },[]);
   useEffect(()=>{
-    // 饼图数据：优先用 alerts，其次用 verdicts（sysAl 是 sys.alerts 对象，不能和 useState 的 al 混淆）
-    const pieData = al.length ? al : vs;
-    if(pie.current){ if(pieChart.current){pieChart.current.dispose();pieChart.current=null;} if(pieData.length){ const cnt={}; pieData.forEach(v=>{const s=v.scenario||v.intent||'unknown';cnt[s]=(cnt[s]||0)+1;}); if(!Object.keys(cnt).length){ pie.current.innerHTML='<div style="text-align:center;color:var(--ink3);padding-top:60px">暂无告警分布</div>'; } else { const c=echarts.init(pie.current); pieChart.current=c;
+    // 饼图：告警按场景分布。用 system_stats.alerts.by_scenario(SQL 全量 group_by，无 risk 排序截断/偏差)；
+    // 无告警时退回 verdicts 分布(冷启动期有参考)。
+    const _bs=((sys.alerts||{}).by_scenario)||{};
+    let cnt=Object.keys(_bs).length?_bs:{}; if(!Object.keys(cnt).length){cnt={};vs.forEach(v=>{const k=v.scenario||v.intent||'unknown';cnt[k]=(cnt[k]||0)+1;});}
+    if(pie.current){ if(pieChart.current){pieChart.current.dispose();pieChart.current=null;} if(Object.keys(cnt).length){ const c=echarts.init(pie.current); pieChart.current=c;
       c.setOption({tooltip:{trigger:'item'},legend:{bottom:0,textStyle:{color:'#475569',fontSize:11},icon:'circle',itemWidth:8,itemHeight:8},
         color:['#ef4444','#f97316','#f59e0b','#6366f1','#22c55e'],
-        series:[{type:'pie',radius:['42%','70%'],label:{color:'#475569'},itemStyle:{borderColor:'#fff',borderWidth:2},data:Object.entries(cnt).map(([k,v])=>({name:INTENT[k]||k,value:v}))}]}); c.on('click',()=>go('alerts'));}} else { pie.current.innerHTML='<div style="text-align:center;color:var(--ink3);padding-top:60px">暂无告警分布</div>'; }}
+        series:[{type:'pie',radius:['42%','70%'],label:{color:'#475569'},itemStyle:{borderColor:'#fff',borderWidth:2},data:Object.entries(cnt).map(([k,v])=>({name:INTENT[k]||k,value:v}))}]}); c.on('click',()=>go('alerts'));} else { pie.current.innerHTML='<div style="text-align:center;color:var(--ink3);padding-top:60px">暂无告警分布</div>'; }}
     if(bar.current){ if(barChart.current){barChart.current.dispose();barChart.current=null;} if(vs.length){ const er={}; vs.forEach(v=>er[v.employee]=Math.max(er[v.employee]||0,v.risk_score));
       const top=Object.entries(er).sort((a,b)=>b[1]-a[1]).slice(0,5); if(!top.length){ bar.current.innerHTML='<div style="text-align:center;color:var(--ink3);padding-top:60px">暂无高风险用户</div>'; } else { const c=echarts.init(bar.current); barChart.current=c;
       c.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0].name+'：'+p[0].value+'分'},grid:{left:200,right:60},xAxis:{type:'value',max:100,axisLine:{lineStyle:{color:'#e2e8f0'}},axisLabel:{color:'#94a3b8'},splitLine:{lineStyle:{color:'var(--bg)'}}},
         yAxis:{type:'category',data:top.map(x=>x[0]).reverse(),axisLabel:{color:'#475569',fontSize:13,interval:0},axisLine:{lineStyle:{color:'#e2e8f0'}}},
         series:[{type:'bar',data:top.map(x=>x[1]).reverse(),barCategoryGap:'30%',itemStyle:{color:'#6366f1',borderRadius:[0,6,6,0]},label:{show:true,position:'right',color:'var(--ink2)',formatter:'{c}分'}}]}); c.on('click',p=>goProfile&&goProfile(p.name));}} else { bar.current.innerHTML='<div style="text-align:center;color:var(--ink3);padding-top:60px">暂无高风险用户</div>'; }}
-  },[vs, al]);
+  },[vs, sys]);
   useEffect(()=>{
     const days=sys.alerts_by_day||[];
     if(days.length&&alertTrend.current){

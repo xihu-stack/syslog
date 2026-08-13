@@ -262,8 +262,10 @@ def computers():
 
 
 @app.post("/api/ingest")
-async def ingest(file: UploadFile = File(...)):
-    """上传 xlsx/csv → 批量导入 → 建画像 → 异步启动研判（立即返回，前端轮询进度）。"""
+def ingest(file: UploadFile = File(...)):
+    """上传 xlsx/csv → 批量导入 → 建画像 → 异步启动研判（立即返回，前端轮询进度）。
+    用 def(非 async)：内部 shutil/ingest_file/build_profiles 都是同步阻塞 IO，async 会
+    阻塞事件循环卡住其它请求；FastAPI 把 def 端点丢线程池跑，不阻塞主循环。"""
     suffix = os.path.splitext(file.filename or "")[1] or ".xlsx"
     fd, tmp = tempfile.mkstemp(suffix=suffix)  # 唯一名,避免并发上传互相覆盖
     os.close(fd)
@@ -339,14 +341,16 @@ def feedback(alert_id: int, label: str, reason: str = "", signal_type: str = "",
     from db import ExceptionRow
     s = Session()
     try:
-        s.add(FeedbackRow(alert_id=alert_id, label=label, reason=reason))
+        # 先校验告警存在再写 FeedbackRow，避免写出指向不存在 alert_id 的孤儿反馈
         a = s.get(AlertRow, alert_id)
-        if a:
-            a.status = "CONFIRMED" if label == "TP" else "FP"
-            if label == "FP" and signal_type:
-                exp = datetime.utcnow() + timedelta(days=expires_days) if expires_days > 0 else None
-                s.add(ExceptionRow(employee_id=a.employee_id, signal_type=signal_type,
-                                   reason=reason, expires_at=exp))
+        if not a:
+            raise HTTPException(404, f"告警 {alert_id} 不存在")
+        s.add(FeedbackRow(alert_id=alert_id, label=label, reason=reason))
+        a.status = "CONFIRMED" if label == "TP" else "FP"
+        if label == "FP" and signal_type:
+            exp = datetime.utcnow() + timedelta(days=expires_days) if expires_days > 0 else None
+            s.add(ExceptionRow(employee_id=a.employee_id, signal_type=signal_type,
+                               reason=reason, expires_at=exp))
         s.commit()
         return {"ok": True}
     finally:
@@ -539,6 +543,10 @@ def system_stats():
         # risk 排序 limit 的样本推算、超过样本量时漏算。
         al_today_critical = s.query(AlertRow).filter(
             AlertRow.window_start >= today_start, AlertRow.risk_score >= 86).count()
+        # 告警按场景分布(全量 group_by，无 risk 排序截断)——供大屏饼图，避免前端用
+        # risk 排序 limit 样本导致高风险场景被系统性放大。
+        al_by_scenario = {r[0] or "未识别": r[1] for r in
+            s.query(AlertRow.scenario, _f.count(AlertRow.id)).group_by(AlertRow.scenario).all()}
 
         # 豁免(expires_at 按 naive UTC 写入,这里同源比较;用 timezone-aware 再剥离 tz,
         # 避免 utcnow() 在 Py3.12 的 DeprecationWarning 刷日志)
@@ -590,7 +598,8 @@ def system_stats():
             },
             "alerts": {
                 "today": al_today, "yesterday": al_yesterday, "total": al_total,
-                "today_people": al_today_people, "today_critical": al_today_critical, "status": alert_status,
+                "today_people": al_today_people, "today_critical": al_today_critical,
+                "by_scenario": al_by_scenario, "status": alert_status,
                 "list": [{
                     "employee": r.employee_id, "scenario": r.scenario,
                     "risk_score": r.risk_score, "status": r.status, "summary": r.summary,
