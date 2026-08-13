@@ -304,7 +304,17 @@ function ProfilePage({user, goBack, from}){
     </Card>
       </Col>
     </Row>
-    <Card className="card" title={<span><span className="brand-bar"></span>研判历史</span>} size="small" style={{marginTop:16}}>
+    {(data.alerts||[]).length>0 && <Card className="card" title={<span><span className="brand-bar"></span>告警明细（{(data.alert_count||0)} 条 · 与用户视图同源）</span>} size="small" style={{marginTop:16}}>
+      <Table size="small" rowKey="window_start" pagination={false} dataSource={data.alerts||[]}
+        columns={[
+          {title:<TH t="场景" />,dataIndex:'scenario',width:100,render:v=>{const L=INTENT[v]||v;return <Tag style={{background:'var(--brand-soft)',color:'var(--brand)',border:'1px solid var(--brand)'+'33'}}>{L}</Tag>}},
+          {title:<TH t="风险" />,dataIndex:'risk_score',width:100,render:v=><RiskBadge s={v}/>},
+          {title:<TH t="状态" />,dataIndex:'status',width:80,render:v=><StatusTag s={v}/>},
+          {title:<TH t="时间" />,dataIndex:'window_start',width:130,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,10)}</span>},
+          {title:<TH t="说明" />,dataIndex:'summary',render:v=><span style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>},
+        ]}/>
+    </Card>}
+    <Card className="card" title={<span><span className="brand-bar"></span>研判历史（{data.verdict_count!=null?data.verdict_count:vs.length} 次研判 · 风险≥50 升级为告警）</span>} size="small" style={{marginTop:16}}>
       <Table size="small" rowKey="window_start" pagination={{pageSize:8}} dataSource={vs}
         columns={[{title:'时间',dataIndex:'window_start',width:150,render:v=>(v||'').replace('T',' ').slice(0,16)},
           {title:'意图',dataIndex:'intent',width:120,render:v=><Tag style={{background:'var(--brand-soft)',color:'var(--brand)',border:'1px solid var(--brand)'+'40'}}>{INTENT[v]||v}</Tag>},

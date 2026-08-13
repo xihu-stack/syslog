@@ -201,12 +201,18 @@ def employee(emp: str):
         # 全量研判统计(不受 vs limit 20 影响,供画像研判次数/最高风险)
         vd_total = s.query(func.count(VerdictRow.id)).filter(VerdictRow.employee_id == emp).scalar() or 0
         vd_max = s.query(func.max(VerdictRow.risk_score)).filter(VerdictRow.employee_id == emp).scalar()
+        # 该员工的告警明细(与用户视图'告警N条'同源,供画像对齐展示)
+        emp_alerts = s.query(AlertRow).filter(AlertRow.employee_id == emp).order_by(desc(AlertRow.risk_score)).all()
         return {
             "employee": emp,
             "category_counts": cat_counts,
             "source_counts": src_counts,
             "verdict_count": vd_total,
             "max_risk": vd_max,
+            "alert_count": len(emp_alerts),
+            "alerts": [{"scenario": a.scenario, "severity": a.severity, "risk_score": a.risk_score,
+                        "status": a.status, "summary": a.summary,
+                        "window_start": a.window_start.isoformat() if a.window_start else None} for a in emp_alerts],
             "profile": p.payload if p else None,
             "profile_summary": (profiles.summarize_for_llm(p.payload) if p else None) or "样本不足，按通用可疑度判断",
             "events": [_event_dict(e) for e in evs],
