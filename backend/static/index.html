@@ -954,6 +954,7 @@ function DictEditor({name,label,initial,onSave}){
 function Config(){
   const [cfg,setCfg]=useState({}); const [dicts,setDicts]=useState({}); const [syslog,setSyslog]=useState({}); const [saving,setSaving]=useState(false); const [excs,setExcs]=useState([]);
   const [sugs,setSugs]=useState(null); const [loadingSug,setLoadingSug]=useState(false);
+  const [sugModal,setSugModal]=useState(null);  // 采纳疑似风险时,选归入哪个字典
   const [form]=Form.useForm();
   const load=async()=>{ const c=await GET('/api/config'); setCfg(c); form.setFieldsValue({base_url:c.llm_base_url,active:c.llm_active||'qwen',qwen_model:(c.qwen||{}).model,deepseek_model:(c.deepseek||{}).model,deepseek_base_url:(c.deepseek||{}).base_url}); setDicts(await GET('/api/dicts')); setSyslog(await GET('/api/syslog/status')); setExcs(await GETL('/api/exceptions')); };
   useEffect(()=>{ load(); const t=setInterval(()=>GET('/api/syslog/status').then(setSyslog),5000); return ()=>clearInterval(t); },[]);
@@ -962,7 +963,14 @@ function Config(){
     await PUTJ('/api/config',body); setSaving(false); message.success('已保存'); load(); };
   const saveDict=async(n,val)=>{ await PUTJ('/api/dicts/'+n,val); message.success('已保存'); };
   const loadSugs=async()=>{ setLoadingSug(true); const r=await POST('/api/rules/suggest'); setSugs(r.suggestions||[]); setLoadingSug(false); };
-  const applySug=async(s)=>{ await POST('/api/rules/apply',{headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:s.domain,target_dict:s.target,cat:s.cat||''})}); message.success('已采纳 '+s.domain); setSugs((sugs||[]).filter(x=>x!==s)); };
+  const applySug=async(s,target)=>{
+    // suspect_new 是"AI不确定归哪类",采纳时必须人工指定真实字典(防误归类)
+    const tgt = target || (s.target==='suspect_new' ? null : s.target);
+    if(!tgt){ setSugModal(s); return; }  // 弹选择框
+    await POST('/api/rules/apply',{headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:s.domain,target_dict:tgt,cat:s.cat||''})});
+    message.success('已采纳 '+s.domain+' → '+({netdisk_domains:'网盘',personal_email_domains:'邮箱',recruitment_sites:'招聘',remote_control_domains:'远程控制',vpn_domains:'VPN',code_repo_domains:'代码仓库',wechat_file_domains:'微信文件助手',ai_assistant_domains:'AI助手',slack_domains:'摸鱼'}[tgt]||tgt));
+    setSugs((sugs||[]).filter(x=>x!==s)); setSugModal(null);
+  };
   const delExc=async(id)=>{ await DEL('/api/exceptions/'+id); message.success('已删除豁免'); load(); };
   const toggleSys=async(on)=>{ await POST('/api/syslog/'+(on?'start':'stop')); message.success(on?'已启动':'已停止'); load(); };
   const uploadLog=f=>{ const fd=new FormData(); fd.append('file',f); message.loading({content:'导入中…',key:'up',duration:0});
@@ -1021,10 +1029,30 @@ function Config(){
                  return <Tag color={color}>{lbl}</Tag>;
                }},
                {title:'理由',dataIndex:'reason',ellipsis:true,render:v=><span style={{fontSize:12,color:'var(--ink2)'}}>{v}</span>},
-               {title:'',width:70,render:(_,r)=><Button size="small" type="primary" ghost disabled={r.target==='ignore'} onClick={()=>applySug(r)}>采纳</Button>},
+               {title:'',width:80,render:(_,r)=>{
+                 if(r.target==='ignore') return <span style={{color:'var(--ink3)',fontSize:11}}>—</span>;
+                 if(r.target==='suspect_new') return <Button size="small" danger onClick={()=>applySug(r)}>采纳</Button>;
+                 return <Button size="small" type="primary" onClick={()=>applySug(r)}>采纳</Button>;
+               }},
              ]}/>}
-          <Alert type="info" showIcon style={{marginTop:8}} message="AI 建议仅供参考，采纳后写入词库立即生效（影响后续研判）。不放心可忽略。"/>
+          <Alert type="info" showIcon style={{marginTop:8}} message="AI 建议仅供参考，点'采纳'才写入词库生效（影响后续研判）。红色⚠️疑似新风险需人工指定归类。不放心可忽略。"/>
         </Card>
+        <Modal open={!!sugModal} title={sugModal?('疑似新风险 — '+sugModal.domain):''} okText="采纳" cancelText="取消"
+          onCancel={()=>setSugModal(null)} onOk={()=>{}}
+          footer={null}>
+          {sugModal && <>
+            <div style={{marginBottom:10,padding:10,background:'var(--danger-soft)',borderRadius:8,fontSize:12,color:'var(--ink2)'}}>
+              <b>AI 理由:</b> {sugModal.reason}<br/>
+              <span style={{color:'var(--ink3)'}}>AI 不确定归类,请人工判断这个域名属于哪类风险,纳入对应监控字典:</span>
+            </div>
+            <Space wrap>
+              {[['netdisk_domains','网盘/云盘'],['personal_email_domains','个人邮箱'],['recruitment_sites','招聘'],['remote_control_domains','远程控制'],['vpn_domains','VPN/翻墙'],['code_repo_domains','代码仓库'],['wechat_file_domains','微信文件助手'],['ai_assistant_domains','AI助手']].map(([k,lbl])=>
+                <Button key={k} size="small" onClick={()=>applySug(sugModal,k)}>{lbl}</Button>
+              )}
+            </Space>
+            <div style={{marginTop:10}}><Button size="small" onClick={()=>setSugModal(null)}>取消(不采纳)</Button></div>
+          </>}
+        </Modal>
         <Card className="card" title="检测字典（可选，默认全自动）" size="small" extra={<Upload showUploadList={false} beforeUpload={uploadLog}><Button size="small" type="primary">导入日志</Button></Upload>}>
           {Object.keys(DM).map(n=><DictEditor key={n} name={n} label={DM[n]} initial={dicts[n]} onSave={saveDict}/>)}
           <Alert type="info" showIcon style={{marginTop:8}} message="检测默认全自动（不依赖这些词）。标为误报的行为会自动豁免，下次同类不再告警。"/>
