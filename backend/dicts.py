@@ -195,10 +195,12 @@ def set_setting(key: str, value):
 
 def risk_patterns() -> list:
     """返回 [(中文标签, [域名子串...])]：当前生效的高风险域名模式。
-    全部走 DB 字典(后台「字典」页可增删),新增远程工具/VPN/网盘等无需改代码。"""
+    全部走 DB 字典(后台「字典」页可增删),新增远程工具/网盘等无需改代码。
+    注: VPN/翻墙经业务确认不算违规(2026-08-13),从风险识别移除——
+    vpn_domains 字典保留(以后要恢复只需把下面这行加回 + 改 RISK_TIER)。"""
     return [
         ("远程控制", list(get("remote_control_domains"))),
-        ("VPN/翻墙", list(get("vpn_domains"))),
+        # ("VPN/翻墙", list(get("vpn_domains"))),  # 业务规则:翻墙不算违规,不再识别/告警
         ("代码外发", list(get("code_repo_domains"))),    # github子串覆盖github.io等
         ("网盘/云盘", list(get("netdisk_domains"))),       # 公司禁止
         ("个人邮箱", list(get("personal_email_domains"))), # 公司禁止
@@ -239,7 +241,7 @@ def risk_class(domain: str):
 # 普通微信访问=正常办公(不入此表); 远程控制降为mid(工具使用,凌晨/密集才告警); 招聘=job。
 RISK_TIER = {
     "远程控制": "mid",           # 工具使用(降权,凌晨/密集才告警)
-    "VPN/翻墙": "high",          # 翻墙=违规+绕监控,访问即告警
+    # "VPN/翻墙" 已移除(业务规则:翻墙不算违规,不再告警)
     "代码外发": "mid",           # 代码仓库上传嫌疑,凌晨/密集才告警
     "网盘/云盘": "high",         # 公司禁止→访问即违规告警
     "个人邮箱": "high",          # 公司禁止→访问即违规告警
