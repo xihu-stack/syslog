@@ -517,9 +517,9 @@ function Dashboard({go, goProfile}){
       </Card>;
     })()}
       </Col>
-      <Col span={7}>
+      <Col span={7} style={{display:'flex',flexDirection:'column'}}>
         <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警分布</b><span style={{color:'var(--ink3)',fontSize:11,marginLeft:10}}>按场景</span></div>
-        <Card className="card" size="small" style={{marginBottom:16}} bodyStyle={{padding:'14px 18px'}}>
+        <Card className="card" size="small" style={{marginBottom:16,flex:1,display:'flex',flexDirection:'column'}} bodyStyle={{padding:'14px 18px',flex:1,display:'flex',flexDirection:'column',justifyContent:'center'}}>
           {(()=>{const cnt={};(sysAl.list||[]).forEach(a=>{const s=a.scenario||'unknown';cnt[s]=(cnt[s]||0)+1;});const tot=Object.values(cnt).reduce((a,b)=>a+b,0)||1;const rows=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,5);
           return rows.length?<div>{rows.map(([k,v])=>{const L=LVL(k==='policy_violation'?80:k==='data_exfiltration'?70:50);const pct=Math.round(v/tot*100);return <div key={k} title={'点击查看「'+(INTENT[k]||k)+'」告警明细'} onClick={()=>go('alerts',{scenario:k})} style={{display:'flex',alignItems:'center',gap:10,padding:'11px 0',cursor:'pointer'}}>
             <span style={{width:72,fontSize:12,color:'var(--ink2)',fontWeight:500}}>{INTENT[k]||k}</span>
@@ -527,11 +527,11 @@ function Dashboard({go, goProfile}){
             <span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{v}</span></div>})}</div>:<Empty description="暂无告警" style={{padding:16}}/>;})()}
         </Card>
         <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警状态</b></div>
-        <Card className="card" size="small" bodyStyle={{padding:'12px 18px'}}>
+        <Card className="card" size="small" style={{flex:1,display:'flex',flexDirection:'column'}} bodyStyle={{padding:'12px 18px',flex:1,display:'flex',flexDirection:'column',justifyContent:'center'}}>
           {(()=>{const st_map={NEW:['#ef4444','待处理'],CONFIRMED:['#6366f1','已确认'],FP:['#94a3b8','误报'],CLOSED:['#22c55e','已关闭']};const sc=sysAl.status||{};const tot=Object.values(sc).reduce((a,b)=>a+b,0)||1;const rows=Object.keys(st_map).filter(k=>sc[k]);if(!rows.length) return <Empty description="暂无" style={{padding:16}}/>;return <div>{rows.map(k=>{const pct=Math.round((sc[k]||0)/tot*100);const cc=st_map[k][0];return <div key={k} title={'点击查看「'+st_map[k][1]+'」告警'} onClick={()=>go('alerts',{status:k==='NEW'?'NEW':'handled'})} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 0',cursor:'pointer'}}><span style={{width:60,fontSize:12,color:'var(--ink2)'}}>{st_map[k][1]}</span><div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:cc,borderRadius:4}}></div></div><span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{sc[k]||0}</span></div>})}</div>;})()}
         </Card>
         <div style={{marginBottom:10,marginTop:16}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警级别</b></div>
-        <Card className="card" size="small" bodyStyle={{padding:'12px 18px'}}>
+        <Card className="card" size="small" style={{flex:1,display:'flex',flexDirection:'column'}} bodyStyle={{padding:'12px 18px',flex:1,display:'flex',flexDirection:'column',justifyContent:'center'}}>
           {(()=>{const lv=[['crit',s=>s>=76,'严重76+','#ef4444'],['high',s=>s>=56&&s<76,'高危56-75','#f59e0b'],['mid',s=>s>=31&&s<56,'关注31-55','#eab308'],['low',s=>s<31,'正常0-30','#94a3b8']];const tot=(sysAl.list||[]).length||1;const rows=lv.map(([k,fn,label,c])=>[k,label,c,(sysAl.list||[]).filter(a=>fn(a.risk_score||0)).length]).filter(r=>r[3]>0);if(!rows.length) return <Empty description="暂无" style={{padding:16}}/>;return <div>{rows.map(([k,label,c,v])=>{const pct=Math.round(v/tot*100);return <div key={k} title={'点击查看「'+label+'」告警'} onClick={()=>go('alerts',{lvl:k==='low'?'all':k})} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 0',cursor:'pointer'}}><span style={{width:72,fontSize:12,color:'var(--ink2)'}}>{label}</span><div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:c,borderRadius:4}}></div></div><span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{v}</span></div>})}</div>;})()}
         </Card>
       </Col>
