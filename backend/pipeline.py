@@ -222,12 +222,15 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                                     verdict_id=vr.id, summary=v.get("explanation"), dedup_key=key, window_start=wstart))
                                 if v.get("risk_score", 0) >= 75:
                                     _notify_webhook(emp, v.get("risk_score", 0), v.get("explanation", ""))
-                            elif v.get("risk_score", 0) > (existing.risk_score or 0):
-                                existing.risk_score = v.get("risk_score", 0)
-                                existing.severity = severity_of(v.get("risk_score", 0))
-                                existing.summary = v.get("explanation")
-                                existing.verdict_id = vr.id
+                            else:
+                                # 已有告警:当天再犯即刷新最近活动时间(window_start),让"今日告警"/趋势图
+                                # 如实反映当日复犯;分数只升不降(取峰值),summary/verdict 仅在创新高时更新。
                                 existing.window_start = wstart
+                                if v.get("risk_score", 0) > (existing.risk_score or 0):
+                                    existing.risk_score = v.get("risk_score", 0)
+                                    existing.severity = severity_of(v.get("risk_score", 0))
+                                    existing.summary = v.get("explanation")
+                                    existing.verdict_id = vr.id
                     wsession.commit()
                     break  # 提交成功
                 except _OpErr as e:
