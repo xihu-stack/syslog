@@ -452,31 +452,14 @@ function App(){
 }
 
 function Dashboard({go, goProfile}){
-  const [st,setSt]=useState({}); const [vs,setVs]=useState([]); const [sys,setSys]=useState({}); const [eff,setEff]=useState([]);
-  const pie=useRef(),bar=useRef(),alertTrend=useRef();
-  const pieChart=useRef(null),barChart=useRef(null),alertTrendChart=useRef(null);
-  const load=async()=>{
-    GET('/api/stats').then(setSt);
-    GETL('/api/verdicts?limit=300').then(setVs);
-    GET('/api/system/stats').then(setSys);
-    GETL('/api/efficiency').then(setEff);
-  };
-  useEffect(()=>{ load(); const t=setInterval(load,15000); return ()=>clearInterval(t); },[]);
-  useEffect(()=>{
-    // 饼图：告警按场景分布。用 system_stats.alerts.by_scenario(SQL 全量 group_by，无 risk 排序截断/偏差)；
-    // 无告警时退回 verdicts 分布(冷启动期有参考)。
-    const _bs=((sys.alerts||{}).by_scenario)||{};
-    let cnt=Object.keys(_bs).length?_bs:{}; if(!Object.keys(cnt).length){cnt={};vs.forEach(v=>{const k=v.scenario||v.intent||'unknown';cnt[k]=(cnt[k]||0)+1;});}
-    if(pie.current){ if(pieChart.current){pieChart.current.dispose();pieChart.current=null;} if(Object.keys(cnt).length){ const c=echarts.init(pie.current); pieChart.current=c;
-      c.setOption({tooltip:{trigger:'item'},legend:{bottom:0,textStyle:{color:'#475569',fontSize:11},icon:'circle',itemWidth:8,itemHeight:8},
-        color:['#ef4444','#f97316','#f59e0b','#6366f1','#22c55e'],
-        series:[{type:'pie',radius:['42%','70%'],label:{color:'#475569'},itemStyle:{borderColor:'#fff',borderWidth:2},data:Object.entries(cnt).map(([k,v])=>({name:INTENT[k]||k,value:v}))}]}); c.on('click',()=>go('alerts'));} else { pie.current.innerHTML='<div style="text-align:center;color:var(--ink3);padding-top:60px">暂无告警分布</div>'; }}
-    if(bar.current){ if(barChart.current){barChart.current.dispose();barChart.current=null;} if(vs.length){ const er={}; vs.forEach(v=>er[v.employee]=Math.max(er[v.employee]||0,v.risk_score));
-      const top=Object.entries(er).sort((a,b)=>b[1]-a[1]).slice(0,5); if(!top.length){ bar.current.innerHTML='<div style="text-align:center;color:var(--ink3);padding-top:60px">暂无高风险用户</div>'; } else { const c=echarts.init(bar.current); barChart.current=c;
-      c.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0].name+'：'+p[0].value+'分'},grid:{left:200,right:60},xAxis:{type:'value',max:100,axisLine:{lineStyle:{color:'#e2e8f0'}},axisLabel:{color:'#94a3b8'},splitLine:{lineStyle:{color:'var(--bg)'}}},
-        yAxis:{type:'category',data:top.map(x=>x[0]).reverse(),axisLabel:{color:'#475569',fontSize:13,interval:0},axisLine:{lineStyle:{color:'#e2e8f0'}}},
-        series:[{type:'bar',data:top.map(x=>x[1]).reverse(),barCategoryGap:'30%',itemStyle:{color:'#6366f1',borderRadius:[0,6,6,0]},label:{show:true,position:'right',color:'var(--ink2)',formatter:'{c}分'}}]}); c.on('click',p=>goProfile&&goProfile(p.name));}} else { bar.current.innerHTML='<div style="text-align:center;color:var(--ink3);padding-top:60px">暂无高风险用户</div>'; }}
-  },[vs, sys]);
+  const [vs,setVs]=useState([]); const [sys,setSys]=useState({}); const [eff,setEff]=useState([]);
+  const [tab,setTab]=useState('risk');
+  const alertTrend=useRef();
+  const alertTrendChart=useRef(null);
+  // system_stats 6s(引擎进度/Syslog 要新鲜)，verdicts+efficiency 30s(重且变化慢)
+  const load=async()=>{ GETL('/api/verdicts?limit=300').then(setVs); GETL('/api/efficiency').then(setEff); };
+  const loadSys=()=>GET('/api/system/stats').then(setSys);
+  useEffect(()=>{ load(); loadSys(); const t1=setInterval(loadSys,6000); const t2=setInterval(load,30000); return ()=>{clearInterval(t1);clearInterval(t2);}; },[]);
   useEffect(()=>{
     const days=sys.alerts_by_day||[];
     if(days.length&&alertTrend.current){
@@ -492,6 +475,8 @@ function Dashboard({go, goProfile}){
   const ev=(sys.events||{}), vd=(sys.verdicts||{}), sysAl=(sys.alerts||{}), src=(sys.sources||{});
   const ago=ts=>{if(!ts)return '-';const d=Math.floor((Date.now()/1000-ts)/60);if(d<1)return '刚刚';if(d<60)return d+'分钟前';const h=Math.floor(d/60);return h<24?h+'小时前':Math.floor(h/24)+'天前';};
   const sl=sys.syslog||{};
+  // 系统健康 Tab 派生：引擎状态、人均事件
+  const det=sys.detect||{}, pct=det.total?Math.round(det.done/det.total*100):0, srcT=src.total||{}, perUser=(sys.employees&&ev.today)?Math.round((ev.today||0)/sys.employees):0;
   const sp60=eff.length?eff.filter(r=>(r.slack_avg||0)>=60).length:'—';  // 日均摸鱼≥60分钟=重度
   const KPIS=[
     {k:'alert', icon:'fa-bell', v:sysAl.today, l:'今日告警', sub:'涉及 '+(sysAl.today_people||0)+' 人 · '+(sysAl.today_critical||0)+' 严重', tip:'今日(北京时间0点起)新增的告警条数。按"员工+意图"合并去重后计数。86+为严重。', go:()=>go('alerts',{today:true}), danger:true, loaded:Object.keys(sys).length>0},
@@ -499,7 +484,8 @@ function Dashboard({go, goProfile}){
     {k:'user', icon:'fa-users', v:sys.employees, l:'今日活跃', sub:'累计 '+(((sys.events||{}).total?Math.round((sys.events.total)/10000):0))+' 万条事件', tip:'今日有行为记录的员工数。事件经降噪聚合(同域名10分钟内合并),非原始日志行数。', go:()=>go('computers',{today:true}), loaded:Object.keys(sys).length>0},
   ];
   const Ske=()=> <span style={{display:'inline-block',width:54,height:30,verticalAlign:-7,borderRadius:6,background:'linear-gradient(90deg,var(--ink4) 25%,var(--bg) 37%,var(--ink4) 63%)',backgroundSize:'400% 100%',animation:'sk 1.2s ease infinite'}}/>;
-  return (<div>
+  return (<Tabs activeKey={tab} onChange={k=>{setTab(k); if(k==='risk')setTimeout(()=>alertTrendChart.current&&alertTrendChart.current.resize(),0);}} items={[
+    {key:'risk', label:<span><i className="fa-solid fa-shield-halved" style={{marginRight:6}}></i>风险概览</span>, children:<div>
     <Row gutter={[16,16]}>
       {KPIS.map(c=>(
         <Col span={8} key={c.k}>
@@ -546,7 +532,65 @@ function Dashboard({go, goProfile}){
       </Col>
     </Row>
     {(sysAl.today_critical>0)&&<Alert type="error" message={<span>⚠️ 今日严重告警(86+) <b>{sysAl.today_critical}</b> 条需立即关注</span>} style={{marginBottom:8,marginTop:8}} showIcon/>}
-  </div>);
+    </div>},
+    {key:'health', label:<span><i className="fa-solid fa-heart-pulse" style={{marginRight:6}}></i>系统健康</span>, children:<div>
+    <Card className="card" title="日志量统计" size="small" style={{marginBottom:16}}>
+      <Table size="small" pagination={false} dataSource={[
+        {key:'today',period:'今日',sangfor:(src.today||{})['sangfor']||0,ipguard:(src.today||{})['ipguard']||0,total:ev.today||0},
+        {key:'yesterday',period:'昨日',sangfor:(src.yesterday||{})['sangfor']||0,ipguard:(src.yesterday||{})['ipguard']||0,total:ev.yesterday||0},
+        {key:'week',period:'近7天',sangfor:(src.week||{})['sangfor']||0,ipguard:(src.week||{})['ipguard']||0,total:ev.week||0},
+        {key:'total',period:'累计',sangfor:srcT['sangfor']||0,ipguard:srcT['ipguard']||0,total:ev.total||0},
+      ]} columns={[
+        {title:'时间段',dataIndex:'period',width:70},
+        {title:'深信服',dataIndex:'sangfor',width:100,render:v=><span className="num">{v}</span>},
+        {title:'IP-Guard',dataIndex:'ipguard',width:100,render:v=><span className="num">{v}</span>},
+        {title:'合计',dataIndex:'total',width:80,render:v=><span className="num" style={{fontWeight:600}}>{v}</span>},
+      ]}/>
+    </Card>
+    <Row gutter={20} style={{marginBottom:16}}>
+      <Col span={8}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title="AI研判(今日)" value={vd.today||0} valueStyle={{fontSize:18}}/><div style={{fontSize:11,color:'#94a3b8',marginTop:2}}>累计 {vd.total||0}</div></Card></Col>
+      <Col span={8}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title="AI成功" value={vd.ai||0} valueStyle={{fontSize:18}}/><div style={{fontSize:11,color:'#94a3b8',marginTop:2}}>兜底 {vd.fallback||0}</div></Card></Col>
+      <Col span={8}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title="今日人均事件" value={perUser} valueStyle={{fontSize:18}}/><div style={{fontSize:11,color:'#94a3b8',marginTop:2}}>今日 {ev.today||0} / 累计 {ev.total||0}</div></Card></Col>
+    </Row>
+    <Row gutter={16} style={{marginBottom:16}}>
+      <Col span={12}><Card className="card" title="Syslog 接收" size="small">
+        <Row gutter={8}>
+          <Col span={8}><div style={{textAlign:'center',paddingTop:6}}><Badge status={sl.enabled?'success':'default'} text={sl.enabled?'监听中':'停止'}/></div></Col>
+          <Col span={8}><Statistic title="已接收" value={sl.count||0}/></Col>
+          <Col span={8}><Statistic title="已入库" value={sl.ingested||0}/></Col>
+        </Row>
+        {sl.error&&<div style={{color:'var(--danger)',fontSize:12,marginTop:4}}>{sl.error}</div>}
+        {sl.recent&&sl.recent.length>0&&<div style={{marginTop:8,fontSize:11,maxHeight:64,overflow:'auto',borderTop:'1px solid var(--line)',paddingTop:6}}>
+          {sl.recent.slice(0,5).map((m,i)=><div key={i} style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><b>{m.t}</b> {m.msg.slice(20,70)}</div>)}
+        </div>}
+      </Card></Col>
+      <Col span={12}><Card className="card" title="AI 研判引擎" size="small" extra={!det.running&&<Button size="small" type="primary" ghost onClick={async()=>{message.loading({content:'已启动增量研判…',key:'det',duration:2});await POST('/api/run');loadSys();}}>增量研判</Button>}>
+        {det.running ? (<div>
+          <Progress percent={pct} status="active" format={()=>det.done+'/'+det.total}/>
+          <div style={{marginTop:4,color:'var(--ink2)',fontSize:12}}>4线程并发 · 已研判 {det.done}/{det.total} 窗口{det.total?(' · '+pct+'%'):''}</div>
+        </div>) : det.error ? (
+          <div style={{padding:'4px 0'}}>
+            <Badge status="error" text={<span style={{color:'var(--danger)',fontSize:13,fontWeight:700}}>上次研判失败（未跑完）</span>}/>
+            <div style={{marginTop:6,fontSize:11,color:'var(--danger)',background:'var(--bg)',padding:'6px 8px',borderRadius:6,fontFamily:'Consolas,monospace'}}>{String(det.error).split('\n')[0]}</div>
+          </div>
+        ) : (
+          <div style={{padding:'6px 0'}}>
+            <Badge status="success" text={<span style={{color:'#22c55e',fontSize:13}}>引擎就绪 · 空闲</span>}/>
+            {det.last_finished&&<div style={{marginTop:4,fontSize:12,color:'var(--ink3)'}}>上次：{det.last_judged||0}窗口 / {det.last_alerts||0}告警 · {String(det.last_finished).replace('T',' ').slice(0,16)}</div>}
+          </div>
+        )}
+      </Card></Col>
+    </Row>
+    <Card className="card" title="用户与系统" size="small">
+      <Descriptions column={2} size="small">
+        <Descriptions.Item label="监控用户">{sys.employees||0}</Descriptions.Item>
+        <Descriptions.Item label="有效豁免">{sys.exceptions||0} 条</Descriptions.Item>
+        <Descriptions.Item label="WEB占比">{ev.web_ratio||0}%</Descriptions.Item>
+        <Descriptions.Item label="自动清理">90天 / 每小时</Descriptions.Item>
+      </Descriptions>
+    </Card>
+    </div>},
+  ]}/>);
 }
 
 function Computers({goProfile,filter}){
@@ -769,119 +813,6 @@ function Verdicts({goProfile,filter}){
   </div>);
 }
 
-function Monitor(){
-  const [data,setData]=useState({});
-  const load=async()=> setData(await GET('/api/system/stats'));
-  useEffect(()=>{ load(); const t=setInterval(load,5000); return ()=>clearInterval(t); },[]);
-  const d=data.detect||{}, sl=data.syslog||{};
-  const ev=data.events||{}, vd=data.verdicts||{}, al=data.alerts||{}, src=data.sources||{};
-  const pct = d.total ? Math.round(d.done/d.total*100) : 0;
-  const st=src.total||{};
-  const perUser=(data.employees&&ev.today)?Math.round((ev.today||0)/data.employees):0;
-  return (<div>
-    <Card className="card" title="日志量统计" size="small" style={{marginBottom:16}}>
-      <Table size="small" pagination={false} dataSource={[
-        {key:'today',period:'今日',sangfor:(src.today||{})['sangfor']||0,ipguard:(src.today||{})['ipguard']||0,total:ev.today||0},
-        {key:'yesterday',period:'昨日',sangfor:(src.yesterday||{})['sangfor']||0,ipguard:(src.yesterday||{})['ipguard']||0,total:ev.yesterday||0},
-        {key:'week',period:'近7天',sangfor:(src.week||{})['sangfor']||0,ipguard:(src.week||{})['ipguard']||0,total:ev.week||0},
-        {key:'total',period:'累计',sangfor:st['sangfor']||0,ipguard:st['ipguard']||0,total:ev.total||0},
-      ]} columns={[
-        {title:'时间段',dataIndex:'period',width:70},
-        {title:'深信服',dataIndex:'sangfor',width:100,render:v=><span className="num">{v}</span>},
-        {title:'IP-Guard',dataIndex:'ipguard',width:100,render:v=><span className="num">{v}</span>},
-        {title:'合计',dataIndex:'total',width:80,render:v=><span className="num" style={{fontWeight:600}}>{v}</span>},
-      ]}/>
-    </Card>
-    <Row gutter={20} style={{marginBottom:16}}>
-      <Col span={6}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title="AI研判(今日)" value={vd.today||0} valueStyle={{fontSize:18}}/><div style={{fontSize:11,color:'#94a3b8',marginTop:2}}>累计 {vd.total||0}</div></Card></Col>
-      <Col span={6}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title="AI成功" value={vd.ai||0} valueStyle={{fontSize:18}}/><div style={{fontSize:11,color:'#94a3b8',marginTop:2}}>兜底 {vd.fallback||0}</div></Card></Col>
-      <Col span={6}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title="告警(今日)" value={al.today||0} valueStyle={{fontSize:18}}/><div style={{fontSize:11,color:'#94a3b8',marginTop:2}}>累计 {al.total||0}</div></Card></Col>
-      <Col span={6}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title="今日人均事件" value={perUser} valueStyle={{fontSize:18}}/><div style={{fontSize:11,color:'#94a3b8',marginTop:2}}>今日 {ev.today||0} / 累计 {ev.total||0}</div></Card></Col>
-    </Row>
-    <Row gutter={16} style={{marginBottom:16}}>
-      <Col span={12}><Card className="card" title="Syslog 接收" size="small">
-        <Row gutter={8}>
-          <Col span={6}><div style={{textAlign:'center'}}><Badge status={sl.enabled?'success':'default'} text={sl.enabled?'监听中':'停止'}/></div></Col>
-          <Col span={6}><Statistic title="已接收" value={sl.count||0}/></Col>
-          <Col span={6}><Statistic title="已入库" value={sl.ingested||0}/></Col>
-          <Col span={6}><Statistic title="刷新" value="30秒"/></Col>
-        </Row>
-        {sl.error&&<div style={{color:'var(--danger)',fontSize:12,marginTop:4}}>{sl.error}</div>}
-        {sl.recent&&sl.recent.length>0&&<div style={{marginTop:6,fontSize:11,maxHeight:40,overflow:'auto'}}>
-          {sl.recent.slice(0,2).map((m,i)=><div key={i} style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{m.t} {m.msg.slice(20,70)}</div>)}
-        </div>}
-      </Card></Col>
-      <Col span={12}><Card className="card" title="AI 研判引擎" size="small" extra={!d.running&&<Button size="small" type="primary" ghost onClick={async()=>{message.loading({content:'已启动增量研判…',key:'det',duration:2});await POST('/api/run');load();}}>增量研判</Button>}>
-        {d.running ? (<div>
-          <Progress percent={pct} status="active" format={()=>d.done+'/'+d.total}/>
-          <div style={{marginTop:4,color:'var(--ink2)',fontSize:12}}>4线程并发 · 已研判 {d.done}/{d.total} 窗口{d.total?(' · '+pct+'%'):''}</div>
-        </div>) : d.error ? (
-          <div style={{padding:'4px 0'}}>
-            <Badge status="error" text={<span style={{color:'var(--danger)',fontSize:13,fontWeight:700}}>上次研判失败（未跑完）</span>}/>
-            <div style={{marginTop:6,fontSize:11,color:'var(--danger)',background:'var(--bg)',padding:'6px 8px',borderRadius:6,fontFamily:'Consolas,monospace'}}>{String(d.error).split('\n')[0]}</div>
-            <div style={{marginTop:4,fontSize:11,color:'var(--ink3)'}}>点右上"增量研判"重试（数据库锁等待已加长至30s）</div>
-          </div>
-        ) : (
-          <div style={{padding:'6px 0'}}>
-            <Badge status="success" text={<span style={{color:'#22c55e',fontSize:13}}>引擎就绪 · 空闲</span>}/>
-            {d.last_finished&&<div style={{marginTop:4,fontSize:12,color:'var(--ink3)'}}>上次：{d.last_judged||0}窗口 / {d.last_alerts||0}告警 · {String(d.last_finished).replace('T',' ').slice(0,16)}</div>}
-          </div>
-        )}
-      </Card></Col>
-    </Row>
-    <Row gutter={16}>
-      <Col span={8}><Card className="card" title="告警状态" size="small">
-        {Object.keys(al.status||{}).length ? <Table size="small" pagination={false} dataSource={Object.entries(al.status||{}).map(([k,v])=>({key:k,status:k,count:v}))}
-          columns={[{title:'状态',dataIndex:'status',width:60,render:v=><StatusTag s={v}/>},{title:'数量',dataIndex:'count',render:v=><span className="num">{v}</span>}]}/> : <Empty/>}
-      </Card></Col>
-      <Col span={8}><Card className="card" title="用户与豁免" size="small">
-        <Descriptions column={1} size="small">
-          <Descriptions.Item label="监控用户">{data.employees||0}</Descriptions.Item>
-          <Descriptions.Item label="有效豁免">{data.exceptions||0} 条</Descriptions.Item>
-          <Descriptions.Item label="WEB占比">{(ev||{}).web_ratio||0}%</Descriptions.Item>
-          <Descriptions.Item label="自动清理">90天/每小时</Descriptions.Item>
-        </Descriptions>
-      </Card></Col>
-      <Col span={8}><Card className="card" title="最近报文" size="small">
-        {sl.recent&&sl.recent.length>0 ? <div style={{fontSize:11,maxHeight:80,overflow:'auto'}}>
-          {sl.recent.slice(0,4).map((m,i)=><div key={i} style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginBottom:2}}><b>{m.t}</b> {m.msg.slice(20,65)}</div>)}
-        </div> : <div style={{color:'var(--ink3)',fontSize:12,padding:8}}>等待推送...</div>}
-      </Card></Col>
-    </Row>
-    <Row gutter={16} style={{marginTop:16}}>
-      <Col span={12}><Card className="card" title="告警场景分布" size="small" extra={<span style={{fontSize:11,color:'var(--ink3)'}}>共 {al.total||0} 条告警</span>}>
-        {Object.keys(al.by_scenario||{}).length ? (()=>{
-          const tot=Object.values(al.by_scenario||{}).reduce((a,b)=>a+b,0)||1;
-          const scColor={data_exfiltration:'#ef4444',job_seeking:'#f97316',policy_violation:'#8b5cf6',baseline_deviation:'#6366f1',normal_work:'#94a3b8'};
-          return <div style={{paddingTop:4}}>{Object.entries(al.by_scenario||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>{
-            const p=Math.round(v/tot*100);
-            return <div key={k} style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
-              <span style={{width:64,fontSize:12,color:'var(--ink2)'}}>{INTENT[k]||k}</span>
-              <div className="pbar" style={{flex:1}}><i style={{width:p+'%',background:scColor[k]||'var(--brand)'}}></i></div>
-              <span className="num" style={{width:52,textAlign:'right',fontSize:12,fontWeight:600,color:'var(--ink)'}}>{v}条 · {p}%</span>
-            </div>;})}
-          </div>;
-        })() : <Empty description="暂无告警" style={{padding:24}}/>}
-      </Card></Col>
-      <Col span={12}><Card className="card" title="近 7 天告警趋势" size="small">
-        {(() => {
-          const days=data.alerts_by_day||[];
-          if(!days.length) return <Empty description="暂无数据" style={{padding:24}}/>;
-          const mx=Math.max(1,...days.map(x=>x[1]));
-          return <div style={{display:'flex',alignItems:'flex-end',gap:6,height:128,padding:'8px 4px 0'}}>
-            {days.map(([dt,n])=>{const h=Math.max(2,n/mx*92);return (
-              <div key={dt} style={{flex:1,textAlign:'center'}}>
-                <div className="num" style={{fontSize:11,color:n>0?'var(--brand)':'var(--ink4)',marginBottom:3,fontWeight:600}}>{n}</div>
-                <div style={{height:h+'px',background:n>0?'var(--brand)':'var(--ink4)',opacity:n>0?1:0.25,borderRadius:'4px 4px 0 0',margin:'0 auto',width:'62%',transition:'height .3s'}}></div>
-                <div style={{fontSize:10,color:'var(--ink3)',marginTop:5}}>{dt.slice(5)}</div>
-              </div>);})}
-          </div>;
-        })()}
-      </Card></Col>
-    </Row>
-  </div>);
-}
-
 function Efficiency({items,loading,gen,msg,goProfile}){
   const [board,setBoard]=useState(null); const [lastUpd,setLastUpd]=useState(null); const [bdLoading,setBdLoading]=useState(true);
   const [tier,setTier]=useState('30');  // 默认≥30min,与大屏"摸鱼人数"口径一致
@@ -1025,8 +956,7 @@ function Config(){
     fetch('/api/ingest',{method:'POST',body:fd}).then(r=>r.json()).then(r=>message.success({content:'已导入 '+r.imported+' 条',key:'up',duration:2})); return false; };
   const DM={sensitive_keywords:'敏感文件名关键词',recruitment_sites:'招聘网站域名',netdisk_domains:'网盘域名',personal_email_domains:'个人邮箱域名',job_search_terms:'求职搜索词',risk_search_terms:'高危搜索词',work_domains:'工作网站白名单(算工作占比)',remote_control_domains:'远程控制工具(降权,凌晨才告警)',vpn_domains:'VPN/翻墙工具(访问即违规)',code_repo_domains:'代码仓库(降权,凌晨才告警)',wechat_file_domains:'微信文件助手(外发通道)',ai_assistant_domains:'AI助手(ChatGPT/DeepSeek等,高频才告警)'};
   return (
-    <Tabs defaultActiveKey="monitor" items={[
-      {key:'monitor', label:'系统监控', children:<Monitor/>},
+    <Tabs defaultActiveKey="model" items={[
       {key:'model', label:'模型配置', children:<Card className="card" title="模型配置（活动优先·失败自动切换）" size="small">
         <Form form={form} layout="vertical" onFinish={saveLlm}>
           <Form.Item label="接口地址" name="base_url"><Input placeholder="http://10.4.128.18:4000/v1"/></Form.Item>
