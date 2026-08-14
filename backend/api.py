@@ -735,7 +735,7 @@ def efficiency():
                 day_tot[s_.date()] = day_tot.get(s_.date(), 0) + sec
             mx = max(day_tot.values(), default=0.0)  # 单日摸鱼累计
             active_days = len(r["days"]) or 1
-            slack_avg = round(total_min / 60 / active_days)  # 日均摸鱼分钟
+            slack_avg = round(total_min / active_days)  # 日均摸鱼分钟(total_min已是分钟)
             wh = r["wh"]
             out.append({"employee": k, "total": wh, "slack": r["slack"],
                         "pct": round(r["slack"] / wh * 100, 1) if wh else 0,
