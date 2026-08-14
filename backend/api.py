@@ -570,6 +570,8 @@ def system_stats():
         ex_count = s.query(ExceptionRow).filter(
             (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > _utc_now)
         ).count()
+        # 事件保留期(天)——供前端"系统健康"卡展示真实配置，而非写死 90
+        retention_days = int(dicts.get_setting("retention_days", "90"))
 
         # 数据库大小
         import os as _os
@@ -624,6 +626,8 @@ def system_stats():
             "exceptions": ex_count,
             "db_size_mb": round(db_size / 1024 / 1024, 1),
             "employees": s.query(EventRow.employee_id).filter(EventRow.occurred_at >= today_start).distinct().count(),
+            "employees_total": s.query(EventRow.employee_id).distinct().count(),
+            "retention_days": retention_days,
             "detect": pipeline.detection_status(),
             "syslog": syslog_recv.status(),
             "profile_updated_ts": profile_updated_ts,

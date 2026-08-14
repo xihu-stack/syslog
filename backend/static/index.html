@@ -583,10 +583,10 @@ function Dashboard({go, goProfile}){
     </Row>
     <Card className="card" title="用户与系统" size="small">
       <Descriptions column={2} size="small">
-        <Descriptions.Item label="监控用户">{sys.employees||0}</Descriptions.Item>
+        <Descriptions.Item label="监控用户">{sys.employees_total||0} 人</Descriptions.Item>
         <Descriptions.Item label="有效豁免">{sys.exceptions||0} 条</Descriptions.Item>
-        <Descriptions.Item label="WEB占比">{ev.web_ratio||0}%</Descriptions.Item>
-        <Descriptions.Item label="自动清理">90天 / 每小时</Descriptions.Item>
+        <Descriptions.Item label="数据库大小">{sys.db_size_mb||0} MB</Descriptions.Item>
+        <Descriptions.Item label="自动清理">{sys.retention_days||90}天 / 每小时</Descriptions.Item>
       </Descriptions>
     </Card>
     </div>},
