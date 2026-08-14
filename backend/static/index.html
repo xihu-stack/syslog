@@ -501,8 +501,8 @@ function Dashboard({go, goProfile}){
     </Row>
     <Row gutter={[16,16]} style={{marginTop:16}} align="stretch">
       <Col span={16}>
-        <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警日趋势</b><span style={{color:'var(--ink3)',fontSize:11,marginLeft:10}}>近7天每日告警数</span></div>
-        <Card className="card" size="small" style={{marginBottom:16}} bodyStyle={{padding:'14px 18px'}}><div ref={alertTrend} style={{height:200}}></div></Card>
+        <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警日趋势</b><span style={{color:'var(--ink3)',fontSize:11,marginLeft:10}}>近7天每日告警数 · 点击查看明细</span></div>
+        <Card className="card" size="small" hoverable style={{marginBottom:16,cursor:'pointer'}} bodyStyle={{padding:'14px 18px'}} onClick={()=>go('alerts',{when:'week'})}><div ref={alertTrend} style={{height:200}}></div></Card>
         {(()=>{
       const ag={};(sysAl.list||[]).forEach(a=>{if(!ag[a.employee])ag[a.employee]={key:a.employee,employee:a.employee,scenario:'',scenarios:[],maxRisk:0,summary:'',status:a.status};const g=ag[a.employee];const sc=INTENT[a.scenario]||a.scenario;if(!g.scenarios.includes(sc))g.scenarios.push(sc);if((a.risk_score||0)>g.maxRisk){g.maxRisk=a.risk_score;g.summary=a.summary;g.scenario=sc;}});
       const ga=Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);
@@ -520,18 +520,18 @@ function Dashboard({go, goProfile}){
         <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警分布</b><span style={{color:'var(--ink3)',fontSize:11,marginLeft:10}}>按场景</span></div>
         <Card className="card" size="small" style={{marginBottom:16}} bodyStyle={{padding:'14px 18px'}}>
           {(()=>{const cnt={};(sysAl.list||[]).forEach(a=>{const s=a.scenario||'unknown';cnt[s]=(cnt[s]||0)+1;});const tot=Object.values(cnt).reduce((a,b)=>a+b,0)||1;const rows=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,5);
-          return rows.length?<div>{rows.map(([k,v])=>{const L=LVL(k==='policy_violation'?80:k==='data_exfiltration'?70:50);const pct=Math.round(v/tot*100);return <div key={k} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 0'}}>
+          return rows.length?<div>{rows.map(([k,v])=>{const L=LVL(k==='policy_violation'?80:k==='data_exfiltration'?70:50);const pct=Math.round(v/tot*100);return <div key={k} title={'点击查看「'+(INTENT[k]||k)+'」告警明细'} onClick={()=>go('alerts',{scenario:k})} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 0',cursor:'pointer'}}>
             <span style={{width:72,fontSize:12,color:'var(--ink2)',fontWeight:500}}>{INTENT[k]||k}</span>
             <div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:LVL(k==='policy_violation'?80:70).c,borderRadius:4}}></div></div>
             <span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{v}</span></div>})}</div>:<Empty description="暂无告警" style={{padding:16}}/>;})()}
         </Card>
         <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警状态</b></div>
         <Card className="card" size="small" bodyStyle={{padding:'12px 18px'}}>
-          {(()=>{const st_map={NEW:['#ef4444','待处理'],CONFIRMED:['#6366f1','已确认'],FP:['#94a3b8','误报'],CLOSED:['#22c55e','已关闭']};const sc=sysAl.status||{};const tot=Object.values(sc).reduce((a,b)=>a+b,0)||1;const rows=Object.keys(st_map).filter(k=>sc[k]);if(!rows.length) return <Empty description="暂无" style={{padding:16}}/>;return <div>{rows.map(k=>{const pct=Math.round((sc[k]||0)/tot*100);const cc=st_map[k][0];return <div key={k} style={{display:'flex',alignItems:'center',gap:10,padding:'7px 0'}}><span style={{width:60,fontSize:12,color:'var(--ink2)'}}>{st_map[k][1]}</span><div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:cc,borderRadius:4}}></div></div><span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{sc[k]||0}</span></div>})}</div>;})()}
+          {(()=>{const st_map={NEW:['#ef4444','待处理'],CONFIRMED:['#6366f1','已确认'],FP:['#94a3b8','误报'],CLOSED:['#22c55e','已关闭']};const sc=sysAl.status||{};const tot=Object.values(sc).reduce((a,b)=>a+b,0)||1;const rows=Object.keys(st_map).filter(k=>sc[k]);if(!rows.length) return <Empty description="暂无" style={{padding:16}}/>;return <div>{rows.map(k=>{const pct=Math.round((sc[k]||0)/tot*100);const cc=st_map[k][0];return <div key={k} title={'点击查看「'+st_map[k][1]+'」告警'} onClick={()=>go('alerts',{status:k==='NEW'?'NEW':'handled'})} style={{display:'flex',alignItems:'center',gap:10,padding:'7px 0',cursor:'pointer'}}><span style={{width:60,fontSize:12,color:'var(--ink2)'}}>{st_map[k][1]}</span><div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:cc,borderRadius:4}}></div></div><span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{sc[k]||0}</span></div>})}</div>;})()}
         </Card>
       </Col>
     </Row>
-    {(sysAl.today_critical>0)&&<Alert type="error" message={<span>⚠️ 今日严重告警(86+) <b>{sysAl.today_critical}</b> 条需立即关注</span>} style={{marginBottom:8,marginTop:8}} showIcon/>}
+    {(sysAl.today_critical>0)&&<div title="点击查看今日严重告警明细" onClick={()=>go('alerts',{today:true,lvl:'crit'})} style={{cursor:'pointer'}}><Alert type="error" message={<span>⚠️ 今日严重告警(86+) <b>{sysAl.today_critical}</b> 条需立即关注 · 点击查看 ›</span>} style={{marginBottom:8,marginTop:8}} showIcon/></div>}
     </div>},
     {key:'health', label:<span><i className="fa-solid fa-heart-pulse" style={{marginRight:6}}></i>系统健康</span>, children:<div>
     <Card className="card" title="日志量统计" size="small" style={{marginBottom:16}}>
@@ -668,10 +668,11 @@ function Computers({goProfile,filter}){
 
 function Alerts({goProfile,filter}){
   const isToday=!!(filter&&filter.today);
-  const [when,setWhen]=useState(isToday?'today':'all');         // today|yesterday|week|all
-  const [statusF,setStatusF]=useState(isToday?'all':'NEW');     // NEW(未处理)|handled(已处理)|all
-  const [rows,setRows]=useState(null); const [q,setQ]=useState(''); const [lvl,setLvl]=useState('all');
-  const [scenario,setScenario]=useState('all');
+  // 支持从大屏各区块下钻传入：when/status/lvl/scenario（仅挂载时读取一次）
+  const [when,setWhen]=useState((filter&&filter.when)||(isToday?'today':'all'));         // today|yesterday|week|all
+  const [statusF,setStatusF]=useState((filter&&filter.status)||(isToday?'all':'NEW'));   // NEW(未处理)|handled(已处理)|all
+  const [rows,setRows]=useState(null); const [q,setQ]=useState(''); const [lvl,setLvl]=useState((filter&&filter.lvl)||'all');
+  const [scenario,setScenario]=useState((filter&&filter.scenario)||'all');
   const [lastUpd,setLastUpd]=useState(null); const [loading,setLoading]=useState(true);
   const load=async()=>{const p=new URLSearchParams();p.set('limit','300');if(when!=='all')p.set('when',when);if(statusF!=='all')p.set('status',statusF);const r=await GETL('/api/alerts?'+p.toString());setRows(r);setLastUpd(new Date());setLoading(false);};
   useEffect(()=>{ load(); const t=setInterval(load,15000); return ()=>clearInterval(t); },[when,statusF]);
