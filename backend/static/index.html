@@ -181,7 +181,7 @@ const { Layout, Menu, Card, Row, Col, Table, Tag, Button, Input, Form, message, 
 const { Sider, Header, Content } = Layout;
 const { useState, useEffect, useRef } = React;
 
-const LVL = s => (s==null)?{c:'#94a3b8',l:'-'} : s>=86?{c:'#ef4444',l:'严重'} : s>=61?{c:'#f97316',l:'高危'} : s>=31?{c:'#3b82f6',l:'关注'} : {c:'#22c55e',l:'正常'};
+const LVL = s => (s==null)?{c:'#94a3b8',l:'-'} : s>=76?{c:'#ef4444',l:'严重'} : s>=56?{c:'#f97316',l:'高危'} : s>=31?{c:'#3b82f6',l:'关注'} : {c:'#22c55e',l:'正常'};
 const INTENT = {data_exfiltration:'数据外发', job_seeking:'求职离职', baseline_deviation:'行为偏离', policy_violation:'违规', normal_work:'正常', unknown:'未知'};
 const DEV = {none:'无', minor:'轻微', major:'重大', severe:'严重', unknown:'未知'};
 const STATUS_MAP = {NEW:{c:'#ef4444',t:'待处理',i:'fa-clock'}, TRIAGING:{c:'#f59e0b',t:'处理中',i:'fa-spinner'}, CONFIRMED:{c:'#6366f1',t:'已确认',i:'fa-circle-exclamation'}, FP:{c:'#94a3b8',t:'误报',i:'fa-xmark'}, CLOSED:{c:'#22c55e',t:'已关闭',i:'fa-circle-check'}};
@@ -208,7 +208,7 @@ function ProfilePage({user, goBack, from}){
     if(!data) return;
     const vs=data.verdicts||[];
     if(vs.length&&trendRef.current){ const c=echarts.init(trendRef.current);
-      const riskColors=vs.map(v=>v.risk_score>=86?'#ef4444':v.risk_score>=61?'#f97316':v.risk_score>=31?'#f59e0b':'#22c55e');
+      const riskColors=vs.map(v=>v.risk_score>=76?'#ef4444':v.risk_score>=56?'#f97316':v.risk_score>=31?'#f59e0b':'#22c55e');
       c.setOption({tooltip:{trigger:'axis',formatter:p=>p[0].name+'<br/>风险分: <b>'+p[0].value+'</b>'},grid:{left:40,right:20,top:20,bottom:35},
         xAxis:{type:'category',data:vs.map(v=>(v.window_start||'').replace('T',' ').slice(5,16)),axisLabel:{color:'#94a3b8',fontSize:11,rotate:30}},
         yAxis:{type:'value',max:100,axisLabel:{color:'#94a3b8'},splitLine:{lineStyle:{color:'#f1f5f9'}}},
@@ -479,7 +479,7 @@ function Dashboard({go, goProfile}){
   const det=sys.detect||{}, pct=det.total?Math.round(det.done/det.total*100):0, srcT=src.total||{}, perUser=(sys.employees&&ev.today)?Math.round((ev.today||0)/sys.employees):0;
   const sp60=eff.length?eff.filter(r=>(r.slack_avg||0)>=60).length:'—';  // 日均摸鱼≥60分钟=重度
   const KPIS=[
-    {k:'alert', icon:'fa-bell', v:sysAl.today, l:'今日告警', sub:'涉及 '+(sysAl.today_people||0)+' 人 · '+(sysAl.today_critical||0)+' 严重', tip:'今日(北京时间0点起)新增的告警条数。按"员工+意图"合并去重后计数。86+为严重。', go:()=>go('alerts',{today:true}), danger:true, loaded:Object.keys(sys).length>0},
+    {k:'alert', icon:'fa-bell', v:sysAl.today, l:'今日告警', sub:'涉及 '+(sysAl.today_people||0)+' 人 · '+(sysAl.today_critical||0)+' 严重', tip:'今日(北京时间0点起)新增的告警条数。按"员工+意图"合并去重后计数。76+为严重。', go:()=>go('alerts',{today:true}), danger:true, loaded:Object.keys(sys).length>0},
     {k:'eff', icon:'fa-fire', v:(sp60==='—'?null:sp60), l:'重度摸鱼', sub:'日均摸鱼≥1小时', tip:'日均摸鱼时长≥60分钟的员工数。摸鱼时长=工作时段娱乐访问按天聚合估算(同天≤30分钟gap连段累计÷活跃天数)。≥1小时才算重度。', go:()=>go('efficiency'), loaded:eff.length>0},
     {k:'user', icon:'fa-users', v:sys.employees, l:'今日活跃', sub:'累计 '+(((sys.events||{}).total?Math.round((sys.events.total)/10000):0))+' 万条事件', tip:'今日有行为记录的员工数。事件经降噪聚合(同域名10分钟内合并),非原始日志行数。', go:()=>go('computers',{today:true}), loaded:Object.keys(sys).length>0},
   ];
@@ -531,7 +531,7 @@ function Dashboard({go, goProfile}){
         </Card>
       </Col>
     </Row>
-    {(sysAl.today_critical>0)&&<div title="点击查看今日严重告警明细" onClick={()=>go('alerts',{today:true,lvl:'crit'})} style={{cursor:'pointer'}}><Alert type="error" message={<span>⚠️ 今日严重告警(86+) <b>{sysAl.today_critical}</b> 条需立即关注 · 点击查看 ›</span>} style={{marginBottom:8,marginTop:8}} showIcon/></div>}
+    {(sysAl.today_critical>0)&&<div title="点击查看今日严重告警明细" onClick={()=>go('alerts',{today:true,lvl:'crit'})} style={{cursor:'pointer'}}><Alert type="error" message={<span>⚠️ 今日严重告警(76+) <b>{sysAl.today_critical}</b> 条需立即关注 · 点击查看 ›</span>} style={{marginBottom:8,marginTop:8}} showIcon/></div>}
     </div>},
     {key:'health', label:<span><i className="fa-solid fa-heart-pulse" style={{marginRight:6}}></i>系统健康</span>, children:<div>
     <Card className="card" title="日志量统计" size="small" style={{marginBottom:16}}>
@@ -605,19 +605,19 @@ function Computers({goProfile,filter}){
     if(uq&&!(r.computer||'').toLowerCase().includes(uq.toLowerCase()))return false;
     return true;
   });
-  // 风险分档(互斥): 正常0-30 / 关注31-60 / 高危61-85 / 严重86+。
+  // 风险分档(互斥): 正常0-30 / 关注31-55 / 高危56-75 / 严重76+。
   // 各档不重叠,数字相加=总数,符合直觉。旧版"关注以上/高危以上"是包含关系(62含41),误导。
   const CARDS=[
     {k:'all',   label:'用户总数', sub:'全部', value:base.length, color:'#6366f1', icon:'fa-users'},
-    {k:'watch', label:'关注',     sub:'31-60', value:base.filter(r=>{const x=r.max_risk||0;return x>=31&&x<61;}).length, color:'#3b82f6', icon:'fa-eye'},
-    {k:'high',  label:'高危',     sub:'61-85', value:base.filter(r=>{const x=r.max_risk||0;return x>=61&&x<86;}).length, color:'#f97316', icon:'fa-triangle-exclamation'},
-    {k:'crit',  label:'严重',     sub:'86+',   value:base.filter(r=>(r.max_risk||0)>=86).length, color:'#ef4444', icon:'fa-circle-exclamation'},
+    {k:'watch', label:'关注',     sub:'31-55', value:base.filter(r=>{const x=r.max_risk||0;return x>=31&&x<56;}).length, color:'#3b82f6', icon:'fa-eye'},
+    {k:'high',  label:'高危',     sub:'56-75', value:base.filter(r=>{const x=r.max_risk||0;return x>=56&&x<76;}).length, color:'#f97316', icon:'fa-triangle-exclamation'},
+    {k:'crit',  label:'严重',     sub:'76+',   value:base.filter(r=>(r.max_risk||0)>=76).length, color:'#ef4444', icon:'fa-circle-exclamation'},
   ];
   const filtered=base.filter(r=>{
     const x=r.max_risk||0;
-    if(riskFilter==='watch'&&(x<31||x>=61))return false;   // 关注档 31-60
-    if(riskFilter==='high'&&(x<61||x>=86))return false;     // 高危档 61-85
-    if(riskFilter==='crit'&&x<86)return false;              // 严重档 86+
+    if(riskFilter==='watch'&&(x<31||x>=56))return false;   // 关注档 31-55
+    if(riskFilter==='high'&&(x<56||x>=76))return false;     // 高危档 56-75
+    if(riskFilter==='crit'&&x<76)return false;              // 严重档 76+
     if(riskFilter==='clean'&&(r.alert_count||0)>0)return false;
     return true;
   });
@@ -644,10 +644,10 @@ function Computers({goProfile,filter}){
         {isToday&&<Tag color="blue">仅今日活跃用户</Tag>}
         <Input.Search placeholder="搜索用户名" allowClear style={{width:180}} onChange={e=>setUq(e.target.value)} />
         <Segmented value={riskFilter} onChange={setRiskFilter} size="small" options={[
-          {label:'全部',value:'all'},{label:'关注31-60',value:'watch'},{label:'高危61-85',value:'high'},{label:'严重86+',value:'crit'},{label:'无告警',value:'clean'}]}/>
+          {label:'全部',value:'all'},{label:'关注31-55',value:'watch'},{label:'高危56-75',value:'high'},{label:'严重76+',value:'crit'},{label:'无告警',value:'clean'}]}/>
       </Space>
       <div style={{marginBottom:8,padding:'7px 12px',background:'var(--bg)',borderRadius:8,fontSize:12,color:'var(--ink2)',display:'flex',alignItems:'center',gap:8}}>
-        {riskFilter!=='all' && <Tag color={riskFilter==='crit'?'red':riskFilter==='high'?'orange':riskFilter==='watch'?'blue':'default'} style={{marginRight:0}}>{riskFilter==='crit'?'严重86+':riskFilter==='high'?'高危61-85':riskFilter==='watch'?'关注31-60':riskFilter==='clean'?'无告警':''}</Tag>}
+        {riskFilter!=='all' && <Tag color={riskFilter==='crit'?'red':riskFilter==='high'?'orange':riskFilter==='watch'?'blue':'default'} style={{marginRight:0}}>{riskFilter==='crit'?'严重76+':riskFilter==='high'?'高危56-75':riskFilter==='watch'?'关注31-55':riskFilter==='clean'?'无告警':''}</Tag>}
         <span>当前 <b className="num" style={{color:'var(--ink)',fontSize:14}}>{filtered.length}</b> / {base.length} 人{isToday?' (今日)':''} · {isToday?'今日':''}事件 <b className="num">{evtTotal}</b></span>
       </div>
       <Table size="small" rowKey="computer" pagination={{pageSize:14}} loading={loading}
@@ -656,7 +656,7 @@ function Computers({goProfile,filter}){
         columns={[
           {title:<TH t="用户" />,dataIndex:'computer',width:170,
             render:(v,r)=>{const rk=r.max_risk||0;const ex=exMap[v];return (<span><a className="uname">{v}</a>{ex&&<Tooltip title={'已豁免：'+ex.join('、')}><Tag color="default" style={{marginLeft:6,fontSize:11,lineHeight:'16px'}}>豁免</Tag></Tooltip>}</span>);}},
-          {title:<TH t="风险" tip="该员工历史最高研判风险分(0-100)。86+严重/61+高危/31+关注/0-30正常。" />,dataIndex:'max_risk',width:95,render:v=><RiskBadge s={v}/>},
+          {title:<TH t="风险" tip="该员工历史最高研判风险分(0-100)。76+严重/56+高危/31+关注/0-30正常。" />,dataIndex:'max_risk',width:95,render:v=><RiskBadge s={v}/>},
           {title:<TH t="告警" tip="合并后的告警条数(同员工同意图合并为1条,取最高分)。非研判次数。" />,dataIndex:'alert_count',width:64,render:v=>v>0?<Tag color="red">{v}条</Tag>:<span style={{color:'var(--ink4)'}}>—</span>},
           {title:<TH t={isToday?'今日事件':'事件'} tip="降噪聚合后的事件条数(同域名10分钟内合并),非原始上网次数。今日=北京时间当日0点起。" />,width:80,render:(_,r)=><span className="num" style={{color:'var(--ink2)'}}>{isToday?(r.event_count_today||0):(r.event_count||0)}</span>},
           {title:<TH t="最近活动" tip="该员工最后一次产生行为的时间。" />,dataIndex:'last_seen',width:130,render:fmt},
@@ -683,7 +683,7 @@ function Alerts({goProfile,filter}){
     POST('/api/verdicts/'+fpModal.vid+'/false_positive?reason='+encodeURIComponent(fpModal.reason)+'&signal_type='+fpModal.intent+'&expires_days='+(fpModal.reason==='临时项目'?'30':'0')).then(()=>{ message.success('已标记误报，后续同类不再告警'); setFpModal({...fpModal,open:false}); load(); });
   };
   const scenSet=[...new Set((rows||[]).map(r=>r.scenario).filter(Boolean))];
-  const agData=(()=>{const filtered=(rows||[]).filter(v=>{if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;if(lvl==='crit'&&v.risk_score<86)return false;if(lvl==='high'&&(v.risk_score<61||v.risk_score>85))return false;if(lvl==='mid'&&(v.risk_score<31||v.risk_score>60))return false;if(scenario!=='all'&&v.scenario!==scenario)return false;return true;});const ag={};filtered.forEach(v=>{if(!ag[v.employee])ag[v.employee]={key:v.employee,employee:v.employee,scenarios:[],maxRisk:0,count:0,latest:v.window_start,summary:'',verdict_id:v.verdict_id,intent:v.scenario};const g=ag[v.employee];const sc=INTENT[v.scenario]||v.scenario;if(!g.scenarios.find(s=>s.label===sc))g.scenarios.push({label:sc,risk:v.risk_score});if((v.risk_score||0)>g.maxRisk){g.maxRisk=v.risk_score;g.summary=v.summary;g.verdict_id=v.verdict_id;g.intent=v.scenario;}g.count++;if(v.window_start>g.latest)g.latest=v.window_start;});return Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);})();
+  const agData=(()=>{const filtered=(rows||[]).filter(v=>{if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;if(lvl==='crit'&&v.risk_score<76)return false;if(lvl==='high'&&(v.risk_score<56||v.risk_score>75))return false;if(lvl==='mid'&&(v.risk_score<31||v.risk_score>55))return false;if(scenario!=='all'&&v.scenario!==scenario)return false;return true;});const ag={};filtered.forEach(v=>{if(!ag[v.employee])ag[v.employee]={key:v.employee,employee:v.employee,scenarios:[],maxRisk:0,count:0,latest:v.window_start,summary:'',verdict_id:v.verdict_id,intent:v.scenario};const g=ag[v.employee];const sc=INTENT[v.scenario]||v.scenario;if(!g.scenarios.find(s=>s.label===sc))g.scenarios.push({label:sc,risk:v.risk_score});if((v.risk_score||0)>g.maxRisk){g.maxRisk=v.risk_score;g.summary=v.summary;g.verdict_id=v.verdict_id;g.intent=v.scenario;}g.count++;if(v.window_start>g.latest)g.latest=v.window_start;});return Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);})();
   const alertN=agData.reduce((s,g)=>s+(g.count||0),0);
   return (<div>
     <div className="sec-title" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -698,9 +698,9 @@ function Alerts({goProfile,filter}){
         <Input.Search placeholder="搜索用户" allowClear style={{width:160}} onChange={e=>setQ(e.target.value)} />
         <Select value={lvl} style={{width:120}} onChange={setLvl}>
           <Select.Option value="all">全部风险</Select.Option>
-          <Select.Option value="crit">严重86+</Select.Option>
-          <Select.Option value="high">高危61-85</Select.Option>
-          <Select.Option value="mid">关注31-60</Select.Option>
+          <Select.Option value="crit">严重76+</Select.Option>
+          <Select.Option value="high">高危56-75</Select.Option>
+          <Select.Option value="mid">关注31-55</Select.Option>
         </Select>
         {scenSet.length>1&&<Select value={scenario} style={{width:130}} onChange={setScenario}>
           <Select.Option value="all">全部场景</Select.Option>
@@ -713,7 +713,7 @@ function Alerts({goProfile,filter}){
           {title:<TH t="风险场景" tip="该员工当前最高分告警的场景(主场景,加粗)。+N 表示还涉及N个其他场景,鼠标移上查看。" />,dataIndex:'scenarios',width:150,render:(v,r)=>{const mainL=INTENT[r.intent]||r.intent;const L=LVL(r.maxRisk);const subs=v.filter(s=>s.label!==mainL);return <Space wrap size={[4,3]}><Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40',fontWeight:600}}>{mainL} {r.maxRisk}</Tag>{subs.length>0&&<Tooltip title={'另涉及：'+subs.map(s=>s.label).join('、')}><Tag style={{fontSize:11,color:'var(--ink3)',background:'var(--bg)',border:'1px solid var(--ink4)'}}>+{subs.length}</Tag></Tooltip>}</Space>}},
           {title:<TH t="告警数" tip="该员工在当前筛选范围内的告警条数(合并前)。同一员工同意图会合并展示。" />,dataIndex:'count',width:60,render:v=><span className="num" style={{color:'var(--ink2)',fontWeight:600}}>{v}</span>},
           {title:<TH t="最近告警" tip="该员工最近一次告警的行为发生时间。" />,dataIndex:'latest',width:135,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
-          {title:<TH t="风险" tip="该员工告警中的最高风险分(0-100)。86+严重/61+高危/31+关注。" />,dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
+          {title:<TH t="风险" tip="该员工告警中的最高风险分(0-100)。76+严重/56+高危/31+关注。" />,dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
           {title:<TH t="说明" />,dataIndex:'summary',render:v=><span style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>},
           {title:'操作',width:120,render:(_,r)=>(<Space size={4}>
             <Button size="small" type="primary" onClick={(e)=>doConfirm(e,r.verdict_id)}>确认</Button>
@@ -764,9 +764,9 @@ function Verdicts({goProfile,filter}){
   const filtered=(rows||[]).filter(v=>{
     if(isToday&&(v.window_start||'').slice(0,10)!==tStr)return false;
     if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;
-    if(lvl==='crit'&&v.risk_score<86)return false;
-    if(lvl==='high'&&(v.risk_score<61||v.risk_score>85))return false;
-    if(lvl==='mid'&&(v.risk_score<31||v.risk_score>60))return false;
+    if(lvl==='crit'&&v.risk_score<76)return false;
+    if(lvl==='high'&&(v.risk_score<56||v.risk_score>75))return false;
+    if(lvl==='mid'&&(v.risk_score<31||v.risk_score>55))return false;
     if(aisel==='ai'&&!v.ai_participated)return false;
     if(aisel==='fallback'&&v.ai_participated)return false;
     return true;
@@ -783,9 +783,9 @@ function Verdicts({goProfile,filter}){
         <Input.Search placeholder="搜索用户" allowClear style={{width:180}} onChange={e=>setQ(e.target.value)} />
         <Select value={lvl} style={{width:120}} onChange={setLvl}>
           <Select.Option value="all">全部风险</Select.Option>
-          <Select.Option value="crit">严重86+</Select.Option>
-          <Select.Option value="high">高危61-85</Select.Option>
-          <Select.Option value="mid">关注31-60</Select.Option>
+          <Select.Option value="crit">严重76+</Select.Option>
+          <Select.Option value="high">高危56-75</Select.Option>
+          <Select.Option value="mid">关注31-55</Select.Option>
         </Select>
         <Select value={aisel} style={{width:120}} onChange={setAisel}>
           <Select.Option value="all">全部来源</Select.Option>
@@ -799,7 +799,7 @@ function Verdicts({goProfile,filter}){
           {title:<TH t="用户" />,dataIndex:'employee',width:110,render:v=><span className="uname" style={{cursor:'inherit'}}>{v}</span>},
           {title:<TH t="意图" tip="AI判定的行为意图。数据外发/求职离职/行为偏离/违规/正常。" />,dataIndex:'intent',width:110,render:v=><Tag style={{background:'var(--brand-soft)',color:'var(--brand)',border:'1px solid var(--brand)'+'33'}}>{INTENT[v]||v}</Tag>},
           {title:<TH t="研判次数" tip="该员工+该意图被AI研判的总次数(合并前)。≥10次标橙,提示重复性风险。" />,dataIndex:'count',width:90,render:v=><span className="num" style={{fontWeight:700,color:v>=10?'var(--orange)':'var(--ink)'}}>{v}</span>},
-          {title:<TH t="最高风险" tip="这些研判中的最高风险分(0-100)。86+严重/61+高危/31+关注。" />,dataIndex:'maxRisk',width:100,render:v=><RiskBadge s={v}/>},
+          {title:<TH t="最高风险" tip="这些研判中的最高风险分(0-100)。76+严重/56+高危/31+关注。" />,dataIndex:'maxRisk',width:100,render:v=><RiskBadge s={v}/>},
           {title:<TH t="最近" tip="最近一次研判的时间(行为发生时间)。" />,dataIndex:'latest',width:140,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
           {title:<TH t="最近一次说明" />,dataIndex:'explanation',render:v=><span style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>},
         ]:[

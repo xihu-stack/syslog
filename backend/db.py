@@ -195,8 +195,8 @@ def upsert_event(session, ev) -> bool:
 
 
 def severity_of(score: int) -> str:
-    if score >= 86: return "CRITICAL"
-    if score >= 61: return "HIGH"
+    if score >= 76: return "CRITICAL"
+    if score >= 56: return "HIGH"
     if score >= 31: return "MEDIUM"
     return "LOW"
 

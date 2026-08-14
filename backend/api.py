@@ -555,10 +555,10 @@ def system_stats():
         # 供大屏"涉及 N 人"。不再由前端从有限(risk 排序 limit)列表推算，避免被截断。
         al_today_people = s.query(_f.count(_f.distinct(AlertRow.employee_id))).filter(
             AlertRow.window_start >= today_start).scalar() or 0
-        # 今日严重告警(86+)条数——供大屏"今日严重告警"N 值。SQL 层计数，避免前端从
+        # 今日严重告警(76+)条数——供大屏"今日严重告警"N 值。SQL 层计数，避免前端从
         # risk 排序 limit 的样本推算、超过样本量时漏算。
         al_today_critical = s.query(AlertRow).filter(
-            AlertRow.window_start >= today_start, AlertRow.risk_score >= 86).count()
+            AlertRow.window_start >= today_start, AlertRow.risk_score >= 76).count()
         # 告警按场景分布(全量 group_by，无 risk 排序截断)——供大屏饼图，避免前端用
         # risk 排序 limit 样本导致高风险场景被系统性放大。
         al_by_scenario = {r[0] or "未识别": r[1] for r in
