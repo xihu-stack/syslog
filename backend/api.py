@@ -184,28 +184,32 @@ def employee(emp: str):
                 ev_hash = e.event_hash
                 if not any(x.event_hash == ev_hash for x in risk_evs):
                     risk_evs.append(e)
-        # 摸鱼会话: 连续娱乐事件(60min内)聚合成一段,算时长(什么时候看/看什么/看多久)
+        # 摸鱼会话(与效率榜同口径:工作时段 + 30min gap + 统一时长公式,见 _slack_segments)。
+        # 取近14天(时间窗)而非"最近500条"(条数窗:办公事件多的人娱乐事件被挤出窗口→漏会话)。
+        from datetime import timedelta as _td
+        _since = bj_now() - _td(days=14)
         _se = []
-        for e in (s.query(EventRow).filter_by(employee_id=emp).filter(EventRow.category == "WEB")
-                  .order_by(desc(EventRow.occurred_at)).limit(500).all()):
+        for e in (s.query(EventRow).filter_by(employee_id=emp)
+                  .filter(EventRow.category == "WEB", EventRow.occurred_at >= _since).all()):
             dom = (e.raw or {}).get("domain") or ""
             sc = dicts.slack_category(dom)
-            if sc and e.occurred_at:
+            if sc and e.occurred_at and _is_work_hours(e.occurred_at):
                 _se.append((e.occurred_at, dom, sc))
         _se.sort(key=lambda x: x[0])
-        sessions, cur = [], None
+        _meta = {}
         for occ, dom, sc in _se:
-            if cur and (occ - cur["end"]).total_seconds() <= 3600:
-                cur["end"] = occ; cur["domains"][dom] = cur["domains"].get(dom, 0) + 1; cur["count"] += 1
-            else:
-                if cur:
-                    sessions.append(cur)
-                cur = {"start": occ, "end": occ, "domains": {dom: 1}, "cat": sc, "count": 1}
-        if cur:
-            sessions.append(cur)
-        for ss in sessions:
-            ss["duration"] = int((ss["end"] - ss["start"]).total_seconds() / 60)
-            ss["domains"] = sorted(ss["domains"].keys())
+            _meta.setdefault(occ, []).append((dom, sc))
+        sessions = []
+        for s_, e_, _sec, stamps in _slack_segments([x[0] for x in _se]):
+            _doms, _cats = {}, {}
+            for t in stamps:
+                for dom, sc in _meta.get(t, []):
+                    _doms[dom] = _doms.get(dom, 0) + 1
+                    _cats[sc] = _cats.get(sc, 0) + 1
+            sessions.append({"start": s_, "end": e_, "duration": int(_sec / 60),
+                             "cat": max(_cats, key=_cats.get) if _cats else "",
+                             "domains": sorted(_doms, key=_doms.get, reverse=True),
+                             "count": len(stamps)})
         sessions.sort(key=lambda x: -x["duration"])
         vs = (s.query(VerdictRow).filter_by(employee_id=emp)
               .order_by(desc(VerdictRow.window_start)).limit(20).all())
@@ -640,6 +644,47 @@ def system_stats():
 _eff_cache = {"data": None, "ts": 0}
 _eff_summary_cache = {"data": None, "ts": 0}
 
+# ---------- 摸鱼口径(全站唯一实现,效率榜/画像页/AI问答/AI总结共用) ----------
+def _is_work_hours(t) -> bool:
+    """工作时段 9-12, 14-18(排除午休);摸鱼统计一律只算工作时段。"""
+    return 9 <= t.hour < 12 or 14 <= t.hour < 18
+
+
+def _slack_segments(stamps):
+    """娱乐访问时间戳列表 → 摸鱼段 [(start, end, seconds, 段内时间戳列表)]。
+    事件入库前已按 用户×域名×10分钟桶 聚合,行数≈访问桶数:
+        段时长 = max(min(首末跨度, 桶数×10min), 5min)
+      - 连续观看: 跨度≈桶数×10 → 取跨度
+      - 碎片闪现(2次隔28min): 被桶数封顶为 2×10=20min,不再按跨度虚高
+      - 单次访问(跨度0): 保底5min,不再算0分钟
+    同天内 gap≤30min 连段;跨天独立。"""
+    from collections import defaultdict as _dd
+
+    def _mk(s, e, ts):
+        span = (e - s).total_seconds()
+        return (s, e, max(min(span, len(ts) * 600), 300), ts)
+
+    by_day = _dd(list)
+    for t in stamps:
+        by_day[t.date()].append(t)
+    segs = []
+    for _, ts in by_day.items():
+        ts.sort()
+        s = e = None
+        bucket = []
+        for t in ts:
+            if e is not None and (t - e).total_seconds() <= 1800:
+                e = t
+                bucket.append(t)
+            else:
+                if e is not None:
+                    segs.append(_mk(s, e, bucket))
+                s, e, bucket = t, t, [t]
+        if e is not None:
+            segs.append(_mk(s, e, bucket))
+    return segs
+
+
 @app.get("/api/efficiency")
 def efficiency():
     """工作效率统计: 每员工工作时段(9-12,14-18 排除午休)访问构成(摸鱼/工作)+在岗天数/时段。"""
@@ -663,7 +708,9 @@ def efficiency():
             r = emp.setdefault(emp_id, {"wh": 0, "slack": 0, "work": 0, "cats": Counter(),
                                         "days": set(), "hours": set(), "stimes": []})
             if occ:
-                r["days"].add(occ.date()); r["hours"].add(occ.hour)
+                r["hours"].add(occ.hour)
+                if _is_work_hours(occ):          # 活跃天数只计工作时段在岗日,深夜/周末加班不稀释日均
+                    r["days"].add(occ.date())
             d = dom or ""
             if d not in dom_cache:
                 cat = dicts.slack_category(d)
@@ -680,40 +727,23 @@ def efficiency():
         out = []
         for k, r in emp.items():
             hours = sorted(r["hours"])
-            st = sorted(r["stimes"])
-            # 摸鱼时长估算:日志只有访问时刻无停留时长,用'段累计'近似——
-            # 同一天内 ≤30min gap 的娱乐访问连成一段,每段时长=首末跨度(碎片化摸鱼聚合)。
-            # 各段相加=总摸鱼时长,÷活跃天数=日均。比旧'最长跨度'更准(旧算法把跨天断续当连续)。
-            from collections import defaultdict as _dd
-            by_day = _dd(list)
-            for t in st:
-                by_day[t.date()].append(t)
-            total_min = 0.0
-            mx = 0.0  # 保留 max_span(单日最长一段),用30min gap 更严
-            for d, ts in by_day.items():
-                ts.sort(); seg_s = seg_e = None; day_min = 0.0
-                for t in ts:
-                    if seg_e is not None and (t - seg_e).total_seconds() <= 1800:  # 30min gap
-                        seg_e = t
-                    else:
-                        if seg_e is not None:
-                            day_min += (seg_e - seg_s).total_seconds()
-                        seg_s = seg_e = t
-                if seg_e is not None:
-                    day_min += (seg_e - seg_s).total_seconds()
-                total_min += day_min
-                mx = max(mx, day_min)
+            # 统一摸鱼时长口径(见 _slack_segments):桶数封顶防碎片虚高,保底5min防单次=0
+            segs = _slack_segments(r["stimes"])
+            total_min = sum(x[2] for x in segs) / 60.0
+            day_tot = {}
+            for s_, _, sec, _ in segs:
+                day_tot[s_.date()] = day_tot.get(s_.date(), 0) + sec
+            mx = max(day_tot.values(), default=0.0)  # 单日摸鱼累计
             active_days = len(r["days"]) or 1
             slack_avg = round(total_min / 60 / active_days)  # 日均摸鱼分钟
             wh = r["wh"]
-            classified = r["slack"] + r["work"]
             out.append({"employee": k, "total": wh, "slack": r["slack"],
-                        "pct": round(r["slack"] / classified * 100, 1) if classified else 0,
+                        "pct": round(r["slack"] / wh * 100, 1) if wh else 0,
                         "cats": dict(r["cats"]), "active_days": len(r["days"]),
                         "hour_min": hours[0] if hours else None, "hour_max": hours[-1] if hours else None,
                         "slack_avg": slack_avg, "max_span": round(mx / 60), "work": r["work"],
-                        "work_pct": round(r["work"] / classified * 100, 1) if classified else 0,
-                        "classified": classified})
+                        "work_pct": round(r["work"] / wh * 100, 1) if wh else 0,
+                        "classified": r["slack"] + r["work"]})
         out.sort(key=lambda x: -(x.get("slack_avg") or 0))
         _eff_cache["data"] = out; _eff_cache["ts"] = time.time()
         return out
@@ -753,7 +783,9 @@ def efficiency_summary():
                 by_day[occ.strftime("%m-%d")][cat] += cnt
             parts = ["%s %s" % (d, "、".join("%s%d次" % (c, n) for c, n in cats.most_common()))
                      for d, cats in sorted(by_day.items())]
-            lines.append("%s: %s" % (emp, "; ".join(parts)))
+            segs = _slack_segments([occ for occ, _, _ in evs])
+            tot = int(sum(x[2] for x in segs) / 60)
+            lines.append("%s: 近7天估摸鱼共约%d分钟; %s" % (emp, tot, "; ".join(parts)))
         if not lines:
             return {"items": [], "msg": "近7天工作时段无明显摸鱼行为"}
         ctx = "\n".join(lines[:60])
@@ -931,24 +963,12 @@ def _ask_query(action, employee, category=""):
             lines += ["", f"今日告警 {_td_count} 条(按行为时间):"] + [f"  {a.employee_id} | {a.scenario} | R{a.risk_score} | {a.summary}" for a in _td] if _td else ["", f"今日告警: {_td_count} 条"]
             return "\n".join(lines)
         if action == "slack":
-            # 优化:SQL 取 (employee, occurred_at, domain),Python 对 distinct 域名缓存 slack_category。
-            et = Counter(); es = Counter()
-            dom_expr = json_field(EventRow.raw, 'domain')
-            rows = s.query(EventRow.employee_id, EventRow.occurred_at, dom_expr).filter(EventRow.category == "WEB").all()
-            dom_cache = {}
-            for emp_id, occ, dom in rows:
-                et[emp_id] += 1
-                d = (dom or "").lower()
-                cat = dom_cache.get(d) if d else None
-                if d and cat is None:
-                    cat = dicts.slack_category(d) or ""
-                    dom_cache[d] = cat
-                if cat and occ and (9 <= occ.hour < 12 or 14 <= occ.hour < 18):  # 工作时间,排除午休12-14
-                    es[emp_id] += 1
-            top = sorted([(e, es[e], et[e]) for e in es if et[e] > 50], key=lambda x: -x[1])[:10]
+            eff = efficiency()  # 与效率监控页完全同源同口径(近7天工作时段,日均摸鱼时长)
+            top = [r for r in eff if (r.get("slack_avg") or 0) > 0][:10]
             if not top:
                 return "无摸鱼数据。"
-            return "摸鱼榜 top10(工作时段娱乐占比):\n" + "\n".join(f"{e} 摸鱼{sn}/{tn} ({round(sn/tn*100)}%)" for e, sn, tn in top)
+            return ("摸鱼榜 top10(近7天工作时段日均摸鱼时长,与效率监控页同口径):\n" +
+                    "\n".join(f"{r['employee']} 日均{r['slack_avg']}分钟 · 娱乐占上班上网{r['pct']}%" for r in top))
         if action == "who_risk":
             # category(远程控制/网盘/邮箱/招聘/文件助手) → risk_class 标签模糊匹配
             cat_map = {"远程控制": "远程控制", "网盘": "网盘", "邮箱": "个人邮箱", "招聘": "招聘", "文件助手": "微信文件助手"}
