@@ -196,7 +196,7 @@ const PUTJ=(u,b)=>fetch(u,{method:'PUT',headers:{'Content-Type':'application/jso
 const DEL=(u)=>fetch(u,{method:'DELETE'}).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('DEL '+u,e);message.error('删除失败');return {};});
 
 // 带说明的表头:鼠标悬停显示口径/单位说明,让每个数字可懂
-function TH({t, tip}){ return tip ? <Tooltip title={tip}><span style={{cursor:'help',borderBottom:'1px dotted var(--ink3)'}}>{t} <i className="fa-solid fa-circle-info" style={{fontSize:10,color:'var(--ink3)',marginLeft:2}}/></span></Tooltip> : <span>{t}</span>; }
+function TH({t, tip}){ const sp={whiteSpace:'nowrap'}; return tip ? <Tooltip title={tip}><span style={{...sp,cursor:'help',borderBottom:'1px dotted var(--ink3)'}}>{t} <i className="fa-solid fa-circle-info" style={{fontSize:10,color:'var(--ink3)',marginLeft:2}}/></span></Tooltip> : <span style={sp}>{t}</span>; }
 function RiskBadge({s}){ const v=LVL(s); return <span className="risk" style={{background:v.c+'1a',color:v.c,border:'1px solid '+v.c+'66'}}><i className="fa-solid fa-shield-halved" style={{marginRight:4,fontSize:11}}></i>{s==null?'-':s} {v.l}</span>; }
 function StatusTag({s}){ const v=STATUS_MAP[s]||{c:'#999',t:s}; return <span className="st-tag" style={{background:v.c+'1a',color:v.c}}>{v.i&&<i className={'fa-solid '+v.i} style={{marginRight:4,fontSize:11}}></i>}{v.t}</span>; }
 const FROM_TITLE={computers:'用户视图',alerts:'告警管理',verdicts:'研判记录',efficiency:'效率监控',dashboard:'监控大屏'};
@@ -711,7 +711,7 @@ function Alerts({goProfile,filter}){
         columns={[
           {title:<TH t="用户" />,dataIndex:'employee',width:100,render:v=><a className="uname" onClick={(e)=>{e.stopPropagation();goProfile(v);}}>{v}</a>},
           {title:<TH t="风险场景" tip="该员工当前最高分告警的场景(主场景,加粗)。+N 表示还涉及N个其他场景,鼠标移上查看。" />,dataIndex:'scenarios',width:150,render:(v,r)=>{const mainL=INTENT[r.intent]||r.intent;const L=LVL(r.maxRisk);const subs=v.filter(s=>s.label!==mainL);return <Space wrap size={[4,3]}><Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40',fontWeight:600}}>{mainL} {r.maxRisk}</Tag>{subs.length>0&&<Tooltip title={'另涉及：'+subs.map(s=>s.label).join('、')}><Tag style={{fontSize:11,color:'var(--ink3)',background:'var(--bg)',border:'1px solid var(--ink4)'}}>+{subs.length}</Tag></Tooltip>}</Space>}},
-          {title:<TH t="告警数" tip="该员工在当前筛选范围内的告警条数(合并前)。同一员工同意图会合并展示。" />,dataIndex:'count',width:60,render:v=><span className="num" style={{color:'var(--ink2)',fontWeight:600}}>{v}</span>},
+          {title:<TH t="告警数" tip="该员工在当前筛选范围内的告警条数(合并前)。同一员工同意图会合并展示。" />,dataIndex:'count',width:80,render:v=><span className="num" style={{color:'var(--ink2)',fontWeight:600}}>{v}</span>},
           {title:<TH t="最近告警" tip="该员工最近一次告警的行为发生时间。" />,dataIndex:'latest',width:135,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
           {title:<TH t="风险" tip="该员工告警中的最高风险分(0-100)。76+严重/56+高危/31+关注。" />,dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
           {title:<TH t="说明" />,dataIndex:'summary',render:v=><span style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>},
