@@ -54,8 +54,12 @@ def _candidates():
     return [(pairs[m][0], pairs[m][1], pairs[m][2]) for m in order if pairs[m][0] and pairs[m][0].startswith("http")]
 
 
+LAST_MODEL = ""  # 最近一次成功调用实际使用的模型(研判落库时读,替代硬编码)
+
+
 def chat(messages, model=None, temperature=0.1, max_tokens=1000, timeout=120):
     """调用 /chat/completions。活动模型优先，失败自动切换另一个兜底；都失败才抛异常。"""
+    global LAST_MODEL
     base_body = {"messages": messages, "temperature": temperature, "max_tokens": max_tokens}
     last_err = None
     for base, key, mdl in _candidates():
@@ -67,6 +71,7 @@ def chat(messages, model=None, temperature=0.1, max_tokens=1000, timeout=120):
                 method="POST")
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
+            LAST_MODEL = model or mdl  # 记录实际命中模型(可能是兜底切换后的)
             return data["choices"][0]["message"]["content"]
         except Exception as e:
             last_err = e

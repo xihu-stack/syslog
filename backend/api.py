@@ -923,6 +923,7 @@ def _ask_query(action, employee, category=""):
     """按 action 复用现有查询逻辑,返回文本上下文喂总结 LLM。"""
     import detector
     from collections import Counter, defaultdict
+    from datetime import timedelta
     s = Session()
     try:
         if action == "employee_risk" and employee:
@@ -978,7 +979,9 @@ def _ask_query(action, employee, category=""):
             # 再聚合——避免对 98 万行逐行调 risk_class 导致超时。
             rcnt = Counter()
             dom_expr = json_field(EventRow.raw, 'domain')
-            rows = s.query(EventRow.employee_id, dom_expr).filter(EventRow.category == 'WEB').all()
+            _since = bj_now() - timedelta(days=30)  # 问答看近期即可,避免全表扫描
+            rows = s.query(EventRow.employee_id, dom_expr).filter(
+                EventRow.category == 'WEB', EventRow.occurred_at >= _since).all()
             dom_cache = {}
             for emp_id, dom in rows:
                 d = (dom or "").lower()
@@ -997,7 +1000,9 @@ def _ask_query(action, employee, category=""):
             # 优化:SQL 取 distinct (employee, date(occurred_at), hour) 聚合,避免逐行遍历98万事件。
             today = bj_now().date().isoformat()
             today_active = set(); eh = defaultdict(set)
-            rows = s.query(EventRow.employee_id, EventRow.occurred_at).filter(EventRow.occurred_at.isnot(None)).all()
+            _since = bj_now() - timedelta(days=30)  # 看近30天,避免全表扫描
+            rows = s.query(EventRow.employee_id, EventRow.occurred_at).filter(
+                EventRow.occurred_at.isnot(None), EventRow.occurred_at >= _since).all()
             for emp_id, occ in rows:
                 if not _is_person(emp_id):  # 排除 IP/MAC 等设备标识，否则被当成"未上线的人"拉低上线比例
                     continue
@@ -1089,7 +1094,7 @@ def rules_suggest():
         sys_p = ("你是企业数据安全助手。分析这些【未分类】的域名,判断是否需要纳入风险监控。\n"
                  "对每个域名输出 JSON: {domain, target, cat, reason}\n"
                  "target 取值:\n"
-                 "- 已知风险类(纳入对应字典): netdisk_domains(网盘云盘) / personal_email_domains(个人邮箱) / recruitment_sites(招聘求职) / remote_control_domains(远程控制) / vpn_domains(翻墙) / code_repo_domains(代码仓库) / wechat_file_domains(微信文件助手) / ai_assistant_domains(AI助手chatgpt/deepseek等,往AI塞数据) / slack_domains(摸鱼娱乐)\n"
+                 "- 已知风险类(纳入对应字典): netdisk_domains(网盘云盘) / personal_email_domains(个人邮箱) / recruitment_sites(招聘求职) / remote_control_domains(远程控制) / code_repo_domains(代码仓库) / wechat_file_domains(微信文件助手) / ai_assistant_domains(AI助手chatgpt/deepseek等,往AI塞数据) / slack_domains(摸鱼娱乐)  (注: 翻墙VPN经业务确认不算风险,勿建议)\n"
                  "- **suspect_new(疑似新风险)**: 不属于上述任何类,但像数据外发/泄露/规避监控的可疑行为(如未知网盘、匿名传输、临时邮箱、屏幕共享、代码粘贴pastebin、内网穿透ngrok/frp、加密货币、敏感数据爬取等)。这类即使无法精确归类也要标出,供人工审核。\n"
                  "- ignore: 明确的正常办公/厂商后台/CDN/SDK/系统更新/认证服务\n"
                  "cat: 仅 target=slack_domains 时填 视频/社交/购物/资讯/音乐 之一,否则空字符串。\n"

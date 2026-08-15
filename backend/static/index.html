@@ -959,7 +959,7 @@ function Config(){
   const toggleSys=async(on)=>{ await POST('/api/syslog/'+(on?'start':'stop')); message.success(on?'已启动':'已停止'); load(); };
   const uploadLog=f=>{ const fd=new FormData(); fd.append('file',f); message.loading({content:'导入中…',key:'up',duration:0});
     fetch('/api/ingest',{method:'POST',body:fd}).then(r=>r.json()).then(r=>message.success({content:'已导入 '+r.imported+' 条',key:'up',duration:2})); return false; };
-  const DM={sensitive_keywords:'敏感文件名关键词',recruitment_sites:'招聘网站域名',netdisk_domains:'网盘域名',personal_email_domains:'个人邮箱域名',job_search_terms:'求职搜索词',risk_search_terms:'高危搜索词',work_domains:'工作网站白名单(算工作占比)',remote_control_domains:'远程控制工具(降权,凌晨才告警)',vpn_domains:'VPN/翻墙工具(访问即违规)',code_repo_domains:'代码仓库(降权,凌晨才告警)',wechat_file_domains:'微信文件助手(外发通道)',ai_assistant_domains:'AI助手(ChatGPT/DeepSeek等,高频才告警)'};
+  const DM={sensitive_keywords:'敏感文件名关键词',recruitment_sites:'招聘网站域名',netdisk_domains:'网盘域名',personal_email_domains:'个人邮箱域名',job_search_terms:'求职搜索词',risk_search_terms:'高危搜索词',work_domains:'工作网站白名单(算工作占比)',remote_control_domains:'远程控制工具(降权,凌晨才告警)',vpn_domains:'VPN/翻墙工具(已停用·翻墙非违规)',code_repo_domains:'代码仓库(降权,凌晨才告警)',wechat_file_domains:'微信文件助手(外发通道)',ai_assistant_domains:'AI助手(ChatGPT/DeepSeek等,高频才告警)'};
   return (
     <Tabs defaultActiveKey="model" items={[
       {key:'model', label:'模型配置', children:<Card className="card" title="模型配置（活动优先·失败自动切换）" size="small">
@@ -1029,7 +1029,7 @@ function Config(){
               <span style={{color:'var(--ink3)'}}>AI 不确定归类,请人工判断这个域名属于哪类风险,纳入对应监控字典:</span>
             </div>
             <Space wrap>
-              {[['netdisk_domains','网盘/云盘'],['personal_email_domains','个人邮箱'],['recruitment_sites','招聘'],['remote_control_domains','远程控制'],['vpn_domains','VPN/翻墙'],['code_repo_domains','代码仓库'],['wechat_file_domains','微信文件助手'],['ai_assistant_domains','AI助手']].map(([k,lbl])=>
+              {[['netdisk_domains','网盘/云盘'],['personal_email_domains','个人邮箱'],['recruitment_sites','招聘'],['remote_control_domains','远程控制'],['code_repo_domains','代码仓库'],['wechat_file_domains','微信文件助手'],['ai_assistant_domains','AI助手']].map(([k,lbl])=>
                 <Button key={k} size="small" onClick={()=>applySug(sugModal,k)}>{lbl}</Button>
               )}
             </Space>

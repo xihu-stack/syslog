@@ -201,11 +201,13 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
             for attempt in range(30):
                 wsession = Session()
                 try:
+                    import llm_client as _lc
                     for emp, device, wstart, wend, hashes, v in buf:
                         vr = VerdictRow(employee_id=emp, device=device, window_start=wstart, window_end=wend,
                             intent=v.get("intent"), deviation=v.get("deviation"), risk_score=v.get("risk_score", 0),
                             explanation=v.get("explanation"), channels=v.get("channels"),
-                            ai_participated=1 if v.get("ai_participated", True) else 0, event_hashes=hashes, model="Qwen3-32B")
+                            ai_participated=1 if v.get("ai_participated", True) else 0, event_hashes=hashes,
+                            model=(_lc.LAST_MODEL or "unknown") if v.get("ai_participated", True) else "rule-fallback")
                         wsession.add(vr); wsession.flush()
                         if v.get("risk_score", 0) >= risk_threshold:
                             _exc = wsession.query(ExceptionRow).filter(
@@ -322,7 +324,7 @@ def start_detection(risk_threshold: int = 50) -> dict:
 
             judged, alerts = run_detection(risk_threshold, on_progress=_prog)
             _detect_status.update(running=False, judged=judged, alerts=alerts,
-                                  last_finished=datetime.utcnow().isoformat(),
+                                  last_finished=bj_now().isoformat(),  # 北京时间,前端直接显示(旧utcnow差8h)
                                   last_judged=judged, last_alerts=alerts)
         except Exception as e:
             _detect_status.update(running=False, error=str(e))
@@ -343,7 +345,7 @@ def auto_close_alerts():
     init_db()
     s = Session()
     try:
-        now = datetime.utcnow()
+        now = bj_now()  # created_at 存的是北京时间,同源比较(旧版utcnow导致3天关闭晚8小时)
         cutoff_3d = now - timedelta(days=3)
         # 立即关闭：偏离类 + 低分
         n1 = s.query(AlertRow).filter(

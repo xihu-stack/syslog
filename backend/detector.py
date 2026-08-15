@@ -252,7 +252,9 @@ def _work_hours_cap(window, dev=None) -> int | None:
     for e in window:
         if e.category == "WEB":
             t = dicts.risk_tier((e.raw or {}).get("domain") or e.target_value)
-            cap = max(cap, {"mid": 40, "job": 85}.get(t, 0))  # 远程控制40/招聘85(抬到与外发同档);high(邮箱/网盘/文件助手)禁止类不夹
+            if t == "high":
+                return None  # 窗口含禁止类(邮箱/网盘/文件助手)→不夹(旧版取max会把high夹到mid的40,外发被低估)
+            cap = max(cap, {"mid": 40, "job": 85}.get(t, 0))  # 仅纯 mid/job 窗口才夹:远程控制40/招聘85
     return cap or None
 
 
