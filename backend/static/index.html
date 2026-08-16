@@ -395,12 +395,15 @@ function LoginPage({onOk}){
     }catch(e){ setErr('网络错误'); }
     setBusy(false);
   };
-  return (<div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#0b0f1a 0%,#151c30 55%,#1a2240 100%)',padding:'24px 16px'}}>
-    <div style={{textAlign:'center',marginBottom:20}}>
-      <img src="/logo.png" alt="HELIXON 华深智药" style={{height:44,display:'inline-block'}}/>
-      <div style={{fontSize:12,color:'rgba(255,255,255,.7)',letterSpacing:6,textIndent:6,marginTop:8}}>员工行为分析系统</div>
-    </div>
-    <div style={{width:380,padding:'30px 36px 26px',background:'rgba(255,255,255,.92)',backdropFilter:'blur(24px)',borderRadius:'20px',boxShadow:'0 24px 60px rgba(0,0,0,.45)'}}>
+  return (<div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(160deg,#f5f7fc 0%,#e9edf8 55%,#e4e9f6 100%)',position:'relative',overflow:'hidden',padding:'24px 16px'}}>
+    <div style={{position:'absolute',width:440,height:440,borderRadius:'50%',background:'radial-gradient(circle,rgba(99,102,241,.13),transparent 70%)',top:-140,left:'10%'}}/>
+    <div style={{position:'absolute',width:560,height:560,borderRadius:'50%',background:'radial-gradient(circle,rgba(139,92,246,.11),transparent 70%)',bottom:-200,right:'4%'}}/>
+    <div style={{width:380,padding:'34px 36px 26px',background:'rgba(255,255,255,.86)',backdropFilter:'blur(24px)',borderRadius:'20px',boxShadow:'0 18px 50px rgba(30,41,80,.13)',border:'1px solid rgba(255,255,255,.9)',position:'relative'}}>
+      <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:7,marginBottom:2}}>
+        <img src="/logo.png" alt="HELIXON 华深智药" style={{height:40,display:'block',filter:'drop-shadow(0 1px 2px rgba(15,23,42,.2))'}}/>
+        <div style={{fontSize:12,color:'var(--ink3)',letterSpacing:6,textIndent:6}}>员工行为分析系统</div>
+      </div>
+      <Divider style={{margin:'14px 0 18px'}}/>
       <div style={{fontSize:13,color:'var(--ink2)',marginBottom:16}}>请输入管理员账号登录</div>
       <Input size="large" prefix={<i className="fa-solid fa-user" style={{color:'var(--ink3)'}}></i>} placeholder="用户名" value={u} onChange={e=>setU(e.target.value)} onPressEnter={doLogin} style={{marginBottom:12}}/>
       <Input.Password size="large" prefix={<i className="fa-solid fa-lock" style={{color:'var(--ink3)'}}></i>} placeholder="密码" value={p} onChange={e=>setP(e.target.value)} onPressEnter={doLogin} style={{marginBottom:6}}/>
