@@ -165,8 +165,20 @@ def all_dicts() -> dict:
 
 # ---------------- 应用配置（key-value）----------------
 
+_db_ready = False
+
+
+def _init_once():
+    """init_db 只跑一次。旧版 get/set_setting 每次都 create_all(拿连接做 DDL 检查),
+    在 NullPool+syslog 写库竞争下慢到秒级,改密等多次调用的接口会超时。"""
+    global _db_ready
+    if not _db_ready:
+        init_db()
+        _db_ready = True
+
+
 def get_setting(key: str, default=None):
-    init_db()
+    _init_once()
     s = Session()
     try:
         r = s.query(SettingRow).filter_by(key=key).first()
@@ -176,7 +188,7 @@ def get_setting(key: str, default=None):
 
 
 def set_setting(key: str, value):
-    init_db()
+    _init_once()
     s = Session()
     try:
         r = s.query(SettingRow).filter_by(key=key).first()

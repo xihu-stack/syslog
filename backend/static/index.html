@@ -51,6 +51,22 @@
   /* flex 列里的卡片撑满等高 */
   .ant-col[style*="display: flex"]>.card{flex:1;display:flex;flex-direction:column;}
   .ant-col[style*="display: flex"]>.card>.ant-card-body{flex:1;}
+  /* 使用手册 */
+  .hb-nav{display:flex;align-items:center;gap:9px;padding:8px 12px;border-radius:8px;color:var(--ink2);font-size:12.5px;text-decoration:none;}
+  .hb-nav .fa-solid{width:15px;text-align:center;color:var(--ink3);font-size:12px;}
+  .hb-nav:hover{background:var(--brand-soft);color:var(--brand);}
+  .hb-sec{margin-bottom:16px;scroll-margin-top:70px;}
+  .hb-sec .ant-card-body{font-size:13px;color:var(--ink2);line-height:1.75;}
+  .hb-sec p{margin:0 0 8px;}
+  .hb-sec ul{margin:0 0 8px;padding-left:20px;}
+  .hb-sec b{color:var(--ink);}
+  .hb-sec code{background:var(--bg);padding:1px 6px;border-radius:4px;font-size:12px;}
+  .hb-pre{background:var(--ink);color:#e2e8f0;border-radius:10px;padding:12px 14px;font-size:11.5px;line-height:1.7;font-family:var(--mono);overflow-x:auto;white-space:pre;margin:6px 0 8px;}
+  .hb-tip{background:var(--brand-soft);border-left:3px solid var(--brand);border-radius:0 8px 8px 0;padding:8px 12px !important;font-size:12px;}
+  .hb-row{display:flex;gap:12px;padding:8px 0;border-bottom:1px dashed var(--ink4);}
+  .hb-row:last-child{border-bottom:none;}
+  .hb-k{width:170px;flex-shrink:0;font-weight:600;color:var(--ink);}
+  .hb-v{flex:1;}
   .uname{color:var(--ink) !important;font-weight:600;cursor:pointer;}
   .uname:hover{color:var(--brand) !important;}
   /* ===== 深色侧栏(Linear 风)===== */
@@ -189,11 +205,16 @@ const STATUS_MAP = {NEW:{c:'#ef4444',t:'待处理',i:'fa-clock'}, TRIAGING:{c:'#
 function debounce(fn, delay){ let t; return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), delay); }; }
 const STATUS_OPTS = [{label:'待处理',value:'NEW'},{label:'处理中',value:'TRIAGING'},{label:'已确认',value:'CONFIRMED'},{label:'误报',value:'FP'},{label:'已关闭',value:'CLOSED'}];
 const fmt = s => (s||'').replace('T',' ').slice(0,16);
-const GET = u=>fetch(u).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('GET '+u,e);return {};});
-const GETL = u=>fetch(u).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).then(d=>Array.isArray(d)?d:[]).catch(e=>{console.error('GETL '+u,e);return [];});
-const POST=(u,o)=>fetch(u,{method:'POST',...o}).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('POST '+u,e);message.error('请求失败');return {};});
-const PUTJ=(u,b)=>fetch(u,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('PUT '+u,e);message.error('保存失败');return {};});
-const DEL=(u)=>fetch(u,{method:'DELETE'}).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('DEL '+u,e);message.error('删除失败');return {};});
+// ---- 登录态:token 存 localStorage;任何请求 401 → 清 token 重登 ----
+const TOKEN_KEY='bg_token';
+const _authHdr=()=>{const t=localStorage.getItem(TOKEN_KEY);return t?{'Authorization':'Bearer '+t}:{};};
+const _on401=()=>{ if(localStorage.getItem(TOKEN_KEY)!==null){ localStorage.removeItem(TOKEN_KEY); location.reload(); } };
+const _handle401=r=>{ if(r && r.status===401){ _on401(); throw new Error('401'); } return r; };
+const GET = u=>fetch(u,{headers:_authHdr()}).then(_handle401).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('GET '+u,e);return {};});
+const GETL = u=>fetch(u,{headers:_authHdr()}).then(_handle401).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).then(d=>Array.isArray(d)?d:[]).catch(e=>{console.error('GETL '+u,e);return [];});
+const POST=(u,o)=>fetch(u,{method:'POST',...o,headers:{...((o&&o.headers)||{}),..._authHdr()}}).then(_handle401).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('POST '+u,e);message.error('请求失败');return {};});
+const PUTJ=(u,b)=>fetch(u,{method:'PUT',headers:{'Content-Type':'application/json',..._authHdr()},body:JSON.stringify(b)}).then(_handle401).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('PUT '+u,e);message.error('保存失败');return {};});
+const DEL=(u)=>fetch(u,{method:'DELETE',headers:_authHdr()}).then(_handle401).then(r=>r.ok?r.json():r.text().then(t=>Promise.reject(new Error('HTTP '+r.status)))).catch(e=>{console.error('DEL '+u,e);message.error('删除失败');return {};});
 
 // 带说明的表头:鼠标悬停显示口径/单位说明,让每个数字可懂
 function TH({t, tip}){ const sp={whiteSpace:'nowrap'}; return tip ? <Tooltip title={tip}><span style={{...sp,cursor:'help',borderBottom:'1px dotted var(--ink3)'}}>{t} <i className="fa-solid fa-circle-info" style={{fontSize:10,color:'var(--ink3)',marginLeft:2}}/></span></Tooltip> : <span style={sp}>{t}</span>; }
@@ -354,7 +375,44 @@ function ProfilePage({user, goBack, from}){
   </div>);
 }
 
+// ---------------- 管理员登录页 ----------------
+function LoginPage({onOk}){
+  const [u,setU]=useState('admin'); const [p,setP]=useState(''); const [busy,setBusy]=useState(false); const [err,setErr]=useState('');
+  const doLogin=async()=>{
+    if(busy) return; setBusy(true); setErr('');
+    try{
+      const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+      const d=r.ok?await r.json():null;
+      if(d&&d.ok){ localStorage.setItem(TOKEN_KEY,d.token); onOk&&onOk(); }
+      else setErr(d&&d.detail||'登录失败');
+    }catch(e){ setErr('网络错误'); }
+    setBusy(false);
+  };
+  return (<div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#0b0f1a 0%,#151c30 55%,#1a2240 100%)'}}>
+    <div style={{width:380,padding:'38px 36px 30px',background:'rgba(255,255,255,.92)',backdropFilter:'blur(24px)',borderRadius:'20px',boxShadow:'0 24px 60px rgba(0,0,0,.45)'}}>
+      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:6}}>
+        <div className="logo" style={{height:'auto',background:'transparent',boxShadow:'none',padding:0}}><span className="ic"><i className="fa-solid fa-shield-halved"></i></span></div>
+        <div><div style={{fontWeight:700,fontSize:17,color:'var(--ink)'}}>Behavior Guard</div>
+        <div style={{fontSize:11,color:'var(--ink3)',letterSpacing:1}}>员工行为分析系统</div></div>
+      </div>
+      <Divider style={{margin:'14px 0 18px'}}/>
+      <div style={{fontSize:13,color:'var(--ink2)',marginBottom:16}}>请输入管理员账号登录</div>
+      <Input size="large" prefix={<i className="fa-solid fa-user" style={{color:'var(--ink3)'}}></i>} placeholder="用户名" value={u} onChange={e=>setU(e.target.value)} onPressEnter={doLogin} style={{marginBottom:12}}/>
+      <Input.Password size="large" prefix={<i className="fa-solid fa-lock" style={{color:'var(--ink3)'}}></i>} placeholder="密码" value={p} onChange={e=>setP(e.target.value)} onPressEnter={doLogin} style={{marginBottom:6}}/>
+      {err&&<div style={{color:'var(--danger)',fontSize:12,margin:'4px 0 6px'}}><i className="fa-solid fa-circle-exclamation" style={{marginRight:5}}></i>{err}</div>}
+      <Button type="primary" size="large" block loading={busy} onClick={doLogin} style={{marginTop:8,height:42,fontWeight:600}}>登 录</Button>
+      <div style={{marginTop:16,fontSize:11,color:'var(--ink3)',textAlign:'center'}}>初始密码 admin123,登录后请在「系统设置→修改密码」更改</div>
+    </div>
+  </div>);
+}
+
 function App(){
+  // ---- 登录门:有 token 先探测 /api/me,无效/无 token 渲染登录页 ----
+  const [authed,setAuthed]=useState(localStorage.getItem(TOKEN_KEY)?null:false);
+  useEffect(()=>{
+    if(!localStorage.getItem(TOKEN_KEY)){ setAuthed(false); return; }
+    fetch('/api/me',{headers:_authHdr()}).then(r=>{ if(r.ok) setAuthed(true); else { localStorage.removeItem(TOKEN_KEY); setAuthed(false);} }).catch(()=>setAuthed(false));
+  },[]);
   const [key,setKey]=useState('dashboard'); const [profileUser,setProfileUser]=useState(null); const [profileFrom,setProfileFrom]=useState('alerts');
   const [filter,setFilter]=useState({}); const navigate=(k,f={})=>{setFilter(f);setKey(k);};
   // 效率总结状态提升到 App：跨页保留上次结果 + 后台生成不随切页中断
@@ -373,7 +431,7 @@ function App(){
   const [now,setNow]=useState('');
   useEffect(()=>{ const f=()=>setNow(new Date().toLocaleString('zh-CN',{hour12:false})); f(); const t=setInterval(f,1000); return ()=>clearInterval(t); },[]);
   const pollDetect=()=>{
-    const tick=()=>fetch('/api/detect/status').then(r=>r.json()).then(s=>{
+    const tick=()=>fetch('/api/detect/status',{headers:_authHdr()}).then(r=>r.json()).then(s=>{
       if(s.running){
         const pct = s.total ? Math.round(s.done/s.total*100) : 0;
         message.loading({content:'研判中 '+s.done+'/'+s.total+' ('+pct+'%)',key:'det',duration:0});
@@ -386,10 +444,12 @@ function App(){
     tick();
   };
   // 页面加载时自动检测是否有正在运行的研判
-  useEffect(()=>{ fetch('/api/detect/status').then(r=>r.json()).then(s=>{ if(s.running&&s.total>0) pollDetect(); }); },[]);
+  useEffect(()=>{ fetch('/api/detect/status',{headers:_authHdr()}).then(r=>r.json()).then(s=>{ if(s.running&&s.total>0) pollDetect(); }); },[]);
   const uploadLog=f=>{ const fd=new FormData(); fd.append('file',f);
     message.loading({content:'导入中…',key:'up',duration:0});
-    fetch('/api/ingest',{method:'POST',body:fd}).then(r=>r.json()).then(r=>{ message.success({content:'已导入 '+r.imported+' 条，开始研判…',key:'up',duration:2}); pollDetect(); }); return false; };
+    fetch('/api/ingest',{method:'POST',headers:_authHdr(),body:fd}).then(r=>r.json()).then(r=>{ message.success({content:'已导入 '+r.imported+' 条，开始研判…',key:'up',duration:2}); pollDetect(); }); return false; };
+  if(authed===null) return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'var(--bg)',color:'var(--ink3)'}}>检查登录状态…</div>;
+  if(!authed) return <LoginPage onOk={()=>setAuthed(true)}/>;
   return (
     <ConfigProvider theme={{token:{colorPrimary:'#6366f1',borderRadius:8,colorText:'#0f172a',colorTextSecondary:'#475569',fontFamily:'inherit'}}}>
     <Layout style={{minHeight:'100vh'}}>
@@ -411,6 +471,7 @@ function App(){
               {key:'ask',label:<span><i className="fa-solid fa-robot"></i><span>AI 问答</span></span>},
             ]},
             {type:'group',label:<span className="sb-group">系统</span>,children:[
+              {key:'handbook',label:<span><i className="fa-solid fa-book-open"></i><span>使用手册</span></span>},
               {key:'config',label:<span><i className="fa-solid fa-gear"></i><span>系统设置</span></span>},
             ]},
           ]}/>
@@ -425,7 +486,7 @@ function App(){
               <span onClick={()=>{navigate(profileFrom||'alerts');setProfileUser(null);}} style={{color:'var(--ink3)',cursor:'pointer'}}>{FROM_TITLE[profileFrom]||'告警管理'}</span>
               <span style={{color:'var(--ink4)'}}>/</span>
               <span style={{fontWeight:700,color:'var(--ink)',fontSize:15}}>{profileUser}</span>
-            </>) : (<span style={{fontWeight:700,color:'var(--ink)',fontSize:15}}>{({dashboard:'监控大屏',computers:'用户视图',alerts:'告警管理',verdicts:'研判记录',efficiency:'效率监控',ask:'AI 问答',rawlogs:'原始日志',config:'系统设置'})[key]}</span>)}
+            </>) : (<span style={{fontWeight:700,color:'var(--ink)',fontSize:15}}>{({dashboard:'监控大屏',computers:'用户视图',alerts:'告警管理',verdicts:'研判记录',efficiency:'效率监控',ask:'AI 问答',rawlogs:'原始日志',config:'系统设置',handbook:'使用手册'})[key]}</span>)}
           </div>
           <Space size={8}>
             <Upload showUploadList={false} beforeUpload={uploadLog}><Button type="primary"><i className="fa-solid fa-upload" style={{marginRight:6}}></i>导入日志</Button></Upload>
@@ -441,6 +502,7 @@ function App(){
           {key==='verdicts' && <Verdicts filter={filter} goProfile={(u)=>{setProfileFrom('verdicts');setProfileUser(u);setKey('profile');}}/>}
           {key==='rawlogs' && <RawLogs/>}
           {key==='config' && <Config/>}
+          {key==='handbook' && <Handbook/>}
           {key==='efficiency' && <Efficiency items={effItems} loading={effLoading} gen={effGen} msg={effMsg} goProfile={(u)=>{setProfileFrom('efficiency');setProfileUser(u);setKey('profile');}}/>}
           {key==='ask' && <Ask/>}
           {key==='profile' && profileUser && <ProfilePage user={profileUser} from={profileFrom} goBack={()=>{setKey(profileFrom||'alerts');setProfileUser(null);}}/>}
@@ -935,6 +997,103 @@ function DictEditor({name,label,initial,onSave}){
     <Button size="small" style={{marginTop:4}} onClick={()=>onSave(name,vals)}>保存</Button>
   </div>);
 }
+
+// ---------------- 使用手册(运维在线文档) ----------------
+function Handbook(){
+  const SECS=[
+    {id:'overview',icon:'fa-sitemap',title:'1. 系统概览与数据流',body:<> <p>本系统对员工终端行为日志(深信服上网行为)做 <b>AI 增量研判</b>,识别数据外发、求职离职、违规等内部风险。</p><pre className="hb-pre">深信服 AC --syslog(UDP 8514)--> 解析归一化 --> 降噪聚合(同域名10分钟合并) --> 入库 events
+  --> 按员工攒60分钟行为窗口 --> 触发门筛(有风险信号才判) --> 本地大模型研判 --> verdicts
+  --> 风险≥50 生成告警(按 员工+意图 合并) --> 告警页人工处置(确认/误报/豁免)</pre><p className="hb-tip">原始报文存 raw_logs(排查用,7天滚动);事件 events 保留 90 天;研判/告警长期保留。</p></>},
+    {id:'daily',icon:'fa-clipboard-check',title:'2. 每日巡检(监控大屏)',items:[
+      ['今日告警 / 涉及人数 / 严重数','点击进入告警页(自动带"今日"过滤),逐条处置,见 §3'],
+      ['重度摸鱼','日均摸鱼≥1小时的员工数,点击进效率榜看明细(口径见 §6)'],
+      ['今日活跃 / 累计事件','数据在跑的直观信号;骤降=深信服推送或本服务异常,先看 §10'],
+      ['告警日趋势 / 告警分布 / 告警状态','周趋势是否抬升;分布里哪类风险多;待处理积压多少'],
+    ]},
+    {id:'alerts',icon:'fa-bell',title:'3. 告警处理流程',body:<><p>告警页按"员工+意图"合并(同人同类只保留最高分一条)。每条两个动作:</p>
+      <ul><li><b>确认</b>:属实的风险,状态→已确认(归档,不再出现在"未处理")。</li>
+      <li><b>误报</b>:选择原因(岗位/工作/时间正常等)后可创建<b>豁免</b>——该员工该场景后续研判时 AI 会看到豁免标签,且不再重复生成同类告警。豁免可在 系统设置→豁免管理 查看/删除(删除后恢复告警)。</li></ul>
+      <p className="hb-tip">数字口径:用户视图"告警 N 条" = alerts 表条数;画像页顶部"告警明细"与之同源。研判次数(远大于告警数)是 AI 分析过的窗口总数,风险≥50 才升级为告警。</p></>},
+    {id:'policy',icon:'fa-shield-halved',title:'4. 风险类型与当前策略',items:[
+      ['个人邮箱 / 网盘 / 微信文件助手','公司禁止,访问即违规(高危档 61-85),AI 判 data_exfiltration / policy_violation'],
+      ['翻墙 VPN/代理','【业务确认:不算违规,不告警】(2026-08 起)。字典里 vpn_domains 已停用,仅留档'],
+      ['远程控制 / 代码仓库 / AI助手','降权(mid 档):工作时段正常使用不告警,凌晨或高频才研判'],
+      ['招聘网站','单次低频=正常;反复访问(≥3次)或凌晨→求职意图'],
+      ['风险分档','0-30 正常 / 31-60 关注(蓝) / 61-85 高危(橙) / 86+ 严重(红),AI 按锚点打分+代码兜底校准'],
+    ]},
+    {id:'dict',icon:'fa-book-bookmark',title:'5. 字典维护与 AI 规则建议',body:<><p>所有风险/摸鱼/工作域名都是<b>数据库字典</b>,在 系统设置→字典&AI规则 直接增删保存,立即生效(无需重启)。新网盘、新招聘站在这里加。</p>
+      <p><b>AI 规则建议</b>:点"开始扫描"→系统扫未分类高频域名→AI 判断归类→<b>必须人工点"采纳"才写入</b>(不点永不生效)。红色 <b>⚠️疑似新风险</b> 是 AI 不确定归类的可疑域名(未知网盘/匿名传输/内网穿透等),采纳时需人工指定归入哪类。</p>
+      <p className="hb-tip">建议每周跑一次扫描,持续堵住新风险类型的遗漏。</p></>},
+    {id:'eff',icon:'fa-mug-hot',title:'6. 效率监控口径',items:[
+      ['统计范围','工作时段 9-12、14-18(排除午休),娱乐类域名访问'],
+      ['日均摸鱼','按天聚合:同天 ≤30分钟间隔连段;段时长=桶数×10分钟封顶(防碎片虚高)、单次保底5分钟;合计÷活跃天数'],
+      ['重度摸鱼','日均 ≥60 分钟才算(大屏口径与此一致),可按 全部/≥30/≥60/≥2h 分档'],
+      ['估算说明','日志只有访问时刻无停留时长,以上为<b>估算值</b>,量级参考而非精确计时'],
+    ]},
+    {id:'lifecycle',icon:'fa-database',title:'7. 数据生命周期与容量',items:[
+      ['raw_logs 原始报文','7 天滚动清理(每小时维护任务自动执行),仅排查"深信服推了什么"用'],
+      ['events 事件','90 天滚动清理;告警/研判长期保留'],
+      ['自动关告警','行为偏离类:低分立即关、中分3天后关(北京时间口径);其他类需人工'],
+      ['容量参考','约 7万条报文/天;清理为 DELETE,空间需 VACUUM 回收(见 §10)'],
+    ]},
+    {id:'settings',icon:'fa-gear',title:'8. 系统设置',items:[
+      ['模型配置','活动模型(Qwen)+兜底(DeepSeek),失败自动切换;研判落库记录实际命中模型'],
+      ['Syslog 接收','启停/端口(默认 UDP 8514);看门狗每60秒自愈;状态页有接收/入库计数'],
+      ['通知 webhook','风险≥75 的告警自动推钉钉/飞书/企微(填 webhook 地址即可)'],
+      ['豁免管理','查看/删除豁免;删除后该员工该场景恢复告警'],
+      ['管理员密码','初始 admin/admin123,首次登录后请立即在 系统设置→修改密码 更改;改密后所有会话失效需重登'],
+    ]},
+    {id:'deploy',icon:'fa-rocket',title:'9. 部署与更新',body:<><pre className="hb-pre"># 服务器(10.0.20.249) /root/syslog
+git pull                                  # 拉最新代码
+docker compose up -d --build              # 标准方式(重建镜像)
+# 注意:容器代码是 COPY 进镜像的,docker restart 不会更新代码;
+# 临时热修可 docker cp 到 /app/ 后 restart,但下次 build 前记得先 git 提交</pre><p className="hb-tip">前端更新后浏览器要强刷:URL 加 <code>?cb=任意新值</code>(如 index.html?cb=2026),否则走缓存看不到新版。</p></>},
+    {id:'faq',icon:'fa-circle-question',title:'10. 常见问题 FAQ',items:[
+      ['页面数字没更新/样式旧','浏览器缓存。URL 加 ?cb=新值 强刷(见 §9)'],
+      ['AI 问答转圈/超时','问答含两次大模型调用,4-10 秒正常;超过1分钟查 LLM 服务是否可用(系统设置→模型配置)'],
+      ['服务整体无响应','历史上因 DB 连接池耗尽(慢查询占满),已改 NullPool 根治;若复发,查 /api/efficiency 是否异常慢并重启容器'],
+      ['想重跑全部历史研判','系统设置→重新研判(清空 verdicts/alerts 后按当前规则全量重判,约几分钟;会丢失已有处置状态,谨慎)'],
+      ['DB 文件越来越大','清理是 DELETE 不缩文件;低峰期在容器内对 SQLite 执行 VACUUM 回收'],
+      ['导入 Excel/CSV','大屏右上"导入日志"上传,自动识别深信服/IP-Guard 格式,导入后自动研判'],
+      ['忘记管理员密码','服务器容器内执行: docker exec ipguard-ai python3 -c "import sys;sys.path.insert(0,\'/app\');import dicts;dicts.set_setting(\'admin_salt\',\'\');dicts.set_setting(\'admin_pwd\',\'\')" 后重启容器,恢复初始密码 admin123'],
+    ]},
+  ];
+  return (<div>
+    <div className="sec-title">运维使用手册 · 在线文档(与本系统当前版本口径一致,更新代码后同步维护)</div>
+    <Row gutter={[16,16]}>
+      <Col span={6}>
+        <Card className="card" size="small" bodyStyle={{padding:'10px 8px'}}>
+          {SECS.map(s=><a key={s.id} href={'#hb-'+s.id} className="hb-nav"><i className={'fa-solid '+s.icon}></i>{s.title.replace(/^\d+\.\s/,'')}</a>)}
+        </Card>
+      </Col>
+      <Col span={18}>
+        {SECS.map(s=><Card key={s.id} id={'hb-'+s.id} className="card hb-sec" size="small" title={<span><span className="brand-bar"></span><i className={'fa-solid '+s.icon} style={{marginRight:8,color:'var(--brand)',fontSize:13}}></i>{s.title}</span>}>
+          {s.body || (s.items||[]).map((it,i)=><div key={i} className="hb-row"><div className="hb-k">{it[0]}</div><div className="hb-v">{it[1]}</div></div>)}
+        </Card>)}
+      </Col>
+    </Row>
+  </div>);
+}
+function PwdCard(){
+  const [old,setOld]=useState(''); const [nw,setNw]=useState(''); const [nw2,setNw2]=useState(''); const [busy,setBusy]=useState(false);
+  const submit=async()=>{
+    if(busy) return;
+    if(!old||!nw){ message.warning('请填写旧密码和新密码'); return; }
+    if(nw.length<6){ message.warning('新密码至少 6 位'); return; }
+    if(nw!==nw2){ message.warning('两次输入的新密码不一致'); return; }
+    setBusy(true);
+    const r=await POST('/api/change_pwd',{headers:{'Content-Type':'application/json'},body:JSON.stringify({old,new:nw})});
+    setBusy(false);
+    if(r&&r.ok){ message.success('密码已修改,请用新密码重新登录'); setTimeout(()=>{ localStorage.removeItem(TOKEN_KEY); location.reload(); },1200); }
+  };
+  return (<Card className="card" title="修改管理员密码" size="small" style={{maxWidth:420}}>
+    <div style={{fontSize:12,color:'var(--ink3)',marginBottom:12}}>修改后所有会话失效,需用新密码重新登录。</div>
+    <Input.Password placeholder="旧密码" value={old} onChange={e=>setOld(e.target.value)} style={{marginBottom:10}}/>
+    <Input.Password placeholder="新密码(至少6位)" value={nw} onChange={e=>setNw(e.target.value)} style={{marginBottom:10}}/>
+    <Input.Password placeholder="确认新密码" value={nw2} onChange={e=>setNw2(e.target.value)} style={{marginBottom:14}}/>
+    <Button type="primary" loading={busy} onClick={submit}><i className="fa-solid fa-key" style={{marginRight:6}}></i>修改密码</Button>
+  </Card>);
+}
 function Config(){
   const [cfg,setCfg]=useState({}); const [dicts,setDicts]=useState({}); const [syslog,setSyslog]=useState({}); const [saving,setSaving]=useState(false); const [excs,setExcs]=useState([]);
   const [sugs,setSugs]=useState(null); const [loadingSug,setLoadingSug]=useState(false);
@@ -958,10 +1117,11 @@ function Config(){
   const delExc=async(id)=>{ await DEL('/api/exceptions/'+id); message.success('已删除豁免'); load(); };
   const toggleSys=async(on)=>{ await POST('/api/syslog/'+(on?'start':'stop')); message.success(on?'已启动':'已停止'); load(); };
   const uploadLog=f=>{ const fd=new FormData(); fd.append('file',f); message.loading({content:'导入中…',key:'up',duration:0});
-    fetch('/api/ingest',{method:'POST',body:fd}).then(r=>r.json()).then(r=>message.success({content:'已导入 '+r.imported+' 条',key:'up',duration:2})); return false; };
+    fetch('/api/ingest',{method:'POST',headers:_authHdr(),body:fd}).then(r=>r.json()).then(r=>message.success({content:'已导入 '+r.imported+' 条',key:'up',duration:2})); return false; };
   const DM={sensitive_keywords:'敏感文件名关键词',recruitment_sites:'招聘网站域名',netdisk_domains:'网盘域名',personal_email_domains:'个人邮箱域名',job_search_terms:'求职搜索词',risk_search_terms:'高危搜索词',work_domains:'工作网站白名单(算工作占比)',remote_control_domains:'远程控制工具(降权,凌晨才告警)',vpn_domains:'VPN/翻墙工具(已停用·翻墙非违规)',code_repo_domains:'代码仓库(降权,凌晨才告警)',wechat_file_domains:'微信文件助手(外发通道)',ai_assistant_domains:'AI助手(ChatGPT/DeepSeek等,高频才告警)'};
   return (
     <Tabs defaultActiveKey="model" items={[
+      {key:'pwd', label:'修改密码', children:<PwdCard/>},
       {key:'model', label:'模型配置', children:<Card className="card" title="模型配置（活动优先·失败自动切换）" size="small">
         <Form form={form} layout="vertical" onFinish={saveLlm}>
           <Form.Item label="接口地址" name="base_url"><Input placeholder="http://10.4.128.18:4000/v1"/></Form.Item>

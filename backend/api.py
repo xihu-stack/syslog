@@ -6,8 +6,12 @@ import os
 import re
 import shutil
 import tempfile
+import hashlib
+import secrets
+import time as _time
 
-from fastapi import Body, FastAPI, File, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, HTTPException, UploadFile, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import desc, func
 
@@ -19,6 +23,85 @@ import syslog_recv
 
 app = FastAPI(title="IP-Guard 员工行为分析")
 init_db()
+
+# ---------------- 管理员登录(单账号,密码哈希存 settings,token 内存会话) ----------------
+ADMIN_USER = "admin"
+INITIAL_PWD = os.environ.get("ADMIN_INITIAL_PWD", "admin123")  # 初始密码,首次登录后请在设置中修改
+_TOKENS: dict = {}          # token -> 过期epoch(7天);服务重启需重新登录
+_TOKEN_TTL = 7 * 86400
+
+
+def _pwd_hash(pwd: str, salt: str) -> str:
+    return hashlib.sha256((salt + pwd).encode("utf-8")).hexdigest()
+
+
+def _ensure_admin():
+    """首次启动:生成 salt 并写入初始密码哈希。"""
+    if not dicts.get_setting("admin_salt"):
+        dicts.set_setting("admin_salt", secrets.token_hex(8))
+    if not dicts.get_setting("admin_pwd"):
+        dicts.set_setting("admin_pwd", _pwd_hash(INITIAL_PWD, dicts.get_setting("admin_salt")))
+        print(f"[auth] 已初始化管理员 {ADMIN_USER},初始密码: {INITIAL_PWD}(请尽快在系统设置中修改)")
+
+
+_ensure_admin()
+
+
+def _check_token(auth_header: str | None) -> bool:
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return False
+    t = auth_header[7:]
+    exp = _TOKENS.get(t)
+    if not exp or exp < _time.time():
+        _TOKENS.pop(t, None)
+        return False
+    return True
+
+
+@app.middleware("http")
+async def _auth_guard(request: Request, call_next):
+    """API 鉴权:/api/login 放行;其余 /api/* 需带有效 Bearer token;静态页面放行。"""
+    p = request.url.path
+    if p.startswith("/api") and p != "/api/login":
+        if not _check_token(request.headers.get("authorization")):
+            return JSONResponse({"detail": "未登录或会话过期"}, status_code=401)
+    return await call_next(request)
+
+
+@app.post("/api/login")
+def login(body: dict = Body(...)):
+    u = (body.get("username") or "").strip()
+    p = (body.get("password") or "").strip()
+    if u == ADMIN_USER and _pwd_hash(p, dicts.get_setting("admin_salt")) == dicts.get_setting("admin_pwd"):
+        token = secrets.token_hex(16)
+        _TOKENS[token] = _time.time() + _TOKEN_TTL
+        return {"ok": True, "token": token, "username": u}
+    raise HTTPException(401, "用户名或密码错误")
+
+
+@app.get("/api/me")
+def me(request: Request):
+    return {"ok": True, "username": ADMIN_USER}
+
+
+@app.post("/api/change_pwd")
+def change_pwd(body: dict = Body(...)):
+    """修改管理员密码(需已登录;中间件已挡未登录)。"""
+    old = (body.get("old") or "").strip()
+    new = (body.get("new") or "").strip()
+    if len(new) < 6:
+        raise HTTPException(400, "新密码至少 6 位")
+    salt = dicts.get_setting("admin_salt")
+    if _pwd_hash(old, salt) != dicts.get_setting("admin_pwd"):
+        raise HTTPException(400, "旧密码不正确")
+    # 换 salt 重哈希(改密即废所有旧哈希参照),并踢掉全部现有会话强制重登
+    salt2 = secrets.token_hex(8)
+    dicts.set_setting("admin_salt", salt2)
+    dicts.set_setting("admin_pwd", _pwd_hash(new, salt2))
+    _TOKENS.clear()
+    return {"ok": True}
+
+
 # 若上次启用了 syslog，自动恢复监听
 _se = dicts.get_setting("syslog_enabled", "0")
 print("[startup] syslog_enabled =", _se)
