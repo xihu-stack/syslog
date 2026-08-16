@@ -421,7 +421,7 @@ function LoginPage({onOk}){
       <Input size="large" prefix={<i className="fa-solid fa-user" style={{color:'rgba(255,255,255,.4)'}}></i>} placeholder="用户名" value={u} onChange={e=>setU(e.target.value)} onPressEnter={doLogin} style={{marginBottom:12}}/>
       <Input.Password size="large" prefix={<i className="fa-solid fa-lock" style={{color:'rgba(255,255,255,.4)'}}></i>} placeholder="密码" value={p} onChange={e=>setP(e.target.value)} onPressEnter={doLogin} style={{marginBottom:6}}/>
       {err&&<div style={{color:'#f87171',fontSize:12,margin:'4px 0 6px'}}><i className="fa-solid fa-circle-exclamation" style={{marginRight:5}}></i>{err}</div>}
-      <Button type="primary" size="large" block loading={busy} onClick={doLogin} style={{marginTop:8,height:42,fontWeight:600'}}>登 录</Button>
+      <Button type="primary" size="large" block loading={busy} onClick={doLogin} style={{marginTop:8,height:42,fontWeight:600}}>登 录</Button>
       <div style={{marginTop:16,fontSize:11,color:'rgba(255,255,255,.38)',textAlign:'center'}}>初始密码 admin123,登录后请在「系统设置→修改密码」更改</div>
     </div>
   </div>);
