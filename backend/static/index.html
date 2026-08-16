@@ -77,8 +77,7 @@
   /* ===== 深色侧栏(Linear 风)===== */
   .ant-layout-sider{background:var(--sb-bg) !important;box-shadow:none !important;}
   .logo{min-height:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:12px 14px;background:linear-gradient(180deg,var(--sb-bg2),var(--sb-bg));border-bottom:1px solid var(--sb-border);}
-  .logo .lg-img{background:#fff;border-radius:9px;padding:5px 10px;box-shadow:0 2px 8px rgba(0,0,0,.35);max-width:100%;}
-  .logo .lg-img img{height:24px;display:block;}
+  .logo img{height:26px;display:block;max-width:calc(100% - 24px);object-fit:contain;}
   .logo s{text-decoration:none;color:var(--sb-fg);font-size:10.5px;letter-spacing:2px;}
   .logo .ic{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;flex-shrink:0;box-shadow:0 2px 8px rgba(99,102,241,.4);}
   .logo .tx{display:flex;flex-direction:column;line-height:1.2;}
@@ -396,13 +395,12 @@ function LoginPage({onOk}){
     }catch(e){ setErr('网络错误'); }
     setBusy(false);
   };
-  return (<div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#0b0f1a 0%,#151c30 55%,#1a2240 100%)'}}>
-    <div style={{width:380,padding:'38px 36px 30px',background:'rgba(255,255,255,.92)',backdropFilter:'blur(24px)',borderRadius:'20px',boxShadow:'0 24px 60px rgba(0,0,0,.45)'}}>
-      <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,marginBottom:4}}>
-        <img src="/logo.png" alt="HELIXON 华深智药" style={{height:40,display:'block'}}/>
-        <div style={{fontSize:12,color:'var(--ink3)',letterSpacing:2}}>员工行为分析系统</div>
-      </div>
-      <Divider style={{margin:'14px 0 18px'}}/>
+  return (<div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#0b0f1a 0%,#151c30 55%,#1a2240 100%)',padding:'24px 16px'}}>
+    <div style={{textAlign:'center',marginBottom:20}}>
+      <img src="/logo.png" alt="HELIXON 华深智药" style={{height:44,display:'inline-block'}}/>
+      <div style={{fontSize:12,color:'rgba(255,255,255,.7)',letterSpacing:6,textIndent:6,marginTop:8}}>员工行为分析系统</div>
+    </div>
+    <div style={{width:380,padding:'30px 36px 26px',background:'rgba(255,255,255,.92)',backdropFilter:'blur(24px)',borderRadius:'20px',boxShadow:'0 24px 60px rgba(0,0,0,.45)'}}>
       <div style={{fontSize:13,color:'var(--ink2)',marginBottom:16}}>请输入管理员账号登录</div>
       <Input size="large" prefix={<i className="fa-solid fa-user" style={{color:'var(--ink3)'}}></i>} placeholder="用户名" value={u} onChange={e=>setU(e.target.value)} onPressEnter={doLogin} style={{marginBottom:12}}/>
       <Input.Password size="large" prefix={<i className="fa-solid fa-lock" style={{color:'var(--ink3)'}}></i>} placeholder="密码" value={p} onChange={e=>setP(e.target.value)} onPressEnter={doLogin} style={{marginBottom:6}}/>
@@ -461,7 +459,7 @@ function App(){
     <ConfigProvider theme={{token:{colorPrimary:'#6366f1',borderRadius:8,colorText:'#0f172a',colorTextSecondary:'#475569',fontFamily:'inherit'}}}>
     <Layout style={{minHeight:'100vh'}}>
       <Sider width={222} theme="dark" style={{background:'var(--sb-bg)',position:'fixed',left:0,top:0,bottom:0,height:'100vh',overflowY:'auto'}}>
-        <div className="logo"><div className="lg-img"><img src="/logo.png" alt="HELIXON 华深智药"/></div><s>员工行为分析系统</s></div>
+        <div className="logo"><img src="/logo.png" alt="HELIXON 华深智药"/><s>员工行为分析系统</s></div>
         <Menu mode="inline" theme="dark" selectedKeys={[key==='profile'?(profileFrom||'alerts'):key]} onClick={e=>navigate(e.key)} style={{background:'transparent',borderRight:'none',paddingTop:6}}
           items={[
             {type:'group',label:<span className="sb-group">概览</span>,children:[
