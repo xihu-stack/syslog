@@ -76,6 +76,20 @@
   .uname:hover{color:var(--brand) !important;}
   /* ===== 深色侧栏(Linear 风)===== */
   .ant-layout-sider{background:var(--sb-bg) !important;box-shadow:none !important;}
+  /* 登录页:动态光斑背景 + 深色玻璃卡 */
+  .lg-page{min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;background:linear-gradient(160deg,#0c1122 0%,#121833 60%,#161d3a 100%);padding:24px 16px;}
+  .lg-blob{position:absolute;border-radius:50%;filter:blur(80px);pointer-events:none;}
+  .lg-blob.b1{width:540px;height:540px;background:radial-gradient(circle,#6366f1,transparent 65%);opacity:.5;top:-140px;left:-110px;animation:lgD1 22s ease-in-out infinite;}
+  .lg-blob.b2{width:660px;height:660px;background:radial-gradient(circle,#8b5cf6,transparent 65%);opacity:.42;bottom:-240px;right:-150px;animation:lgD2 28s ease-in-out infinite;}
+  .lg-blob.b3{width:420px;height:420px;background:radial-gradient(circle,#22d3ee,transparent 65%);opacity:.25;top:38%;left:56%;animation:lgD3 19s ease-in-out infinite;}
+  @keyframes lgD1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(90px,60px) scale(1.2)}}
+  @keyframes lgD2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-100px,-70px) scale(1.14)}}
+  @keyframes lgD3{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(-80px,50px) scale(1.15)}66%{transform:translate(60px,-60px) scale(.92)}}
+  .lg-card{width:380px;max-width:100%;padding:34px 36px 26px;background:rgba(16,22,42,.55);backdrop-filter:blur(22px);border-radius:20px;border:1px solid rgba(255,255,255,.09);box-shadow:0 24px 60px rgba(0,0,0,.5);position:relative;}
+  .lg-card .ant-input-affix-wrapper,.lg-card .ant-input{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);color:#fff;}
+  .lg-card .ant-input::placeholder{color:rgba(255,255,255,.38);}
+  .lg-card .ant-input-password-icon{color:rgba(255,255,255,.45);}
+  .lg-card .ant-input-affix-wrapper:focus,.lg-card .ant-input-affix-wrapper-focused{border-color:#818cf8;box-shadow:0 0 0 3px rgba(99,102,241,.22);}
   .logo{min-height:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:12px 14px;background:linear-gradient(180deg,var(--sb-bg2),var(--sb-bg));border-bottom:1px solid var(--sb-border);}
   .logo img{height:26px;display:block;max-width:calc(100% - 24px);object-fit:contain;}
   .logo s{text-decoration:none;color:var(--sb-fg);font-size:10.5px;letter-spacing:2px;}
@@ -395,21 +409,20 @@ function LoginPage({onOk}){
     }catch(e){ setErr('网络错误'); }
     setBusy(false);
   };
-  return (<div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(160deg,#f5f7fc 0%,#e9edf8 55%,#e4e9f6 100%)',position:'relative',overflow:'hidden',padding:'24px 16px'}}>
-    <div style={{position:'absolute',width:440,height:440,borderRadius:'50%',background:'radial-gradient(circle,rgba(99,102,241,.13),transparent 70%)',top:-140,left:'10%'}}/>
-    <div style={{position:'absolute',width:560,height:560,borderRadius:'50%',background:'radial-gradient(circle,rgba(139,92,246,.11),transparent 70%)',bottom:-200,right:'4%'}}/>
-    <div style={{width:380,padding:'34px 36px 26px',background:'rgba(255,255,255,.86)',backdropFilter:'blur(24px)',borderRadius:'20px',boxShadow:'0 18px 50px rgba(30,41,80,.13)',border:'1px solid rgba(255,255,255,.9)',position:'relative'}}>
-      <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:7,marginBottom:2}}>
-        <img src="/logo.png" alt="HELIXON 华深智药" style={{height:40,display:'block',filter:'drop-shadow(0 1px 2px rgba(15,23,42,.2))'}}/>
-        <div style={{fontSize:12,color:'var(--ink3)',letterSpacing:6,textIndent:6}}>员工行为分析系统</div>
+  return (<div className="lg-page">
+    <div className="lg-blob b1"/><div className="lg-blob b2"/><div className="lg-blob b3"/>
+    <div className="lg-card">
+      <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,marginBottom:2}}>
+        <img src="/logo.png" alt="HELIXON 华深智药" style={{height:40,display:'block',filter:'drop-shadow(0 0 16px rgba(99,102,241,.45))'}}/>
+        <div style={{fontSize:12,color:'rgba(255,255,255,.62)',letterSpacing:6,textIndent:6}}>员工行为分析系统</div>
       </div>
-      <Divider style={{margin:'14px 0 18px'}}/>
-      <div style={{fontSize:13,color:'var(--ink2)',marginBottom:16}}>请输入管理员账号登录</div>
-      <Input size="large" prefix={<i className="fa-solid fa-user" style={{color:'var(--ink3)'}}></i>} placeholder="用户名" value={u} onChange={e=>setU(e.target.value)} onPressEnter={doLogin} style={{marginBottom:12}}/>
-      <Input.Password size="large" prefix={<i className="fa-solid fa-lock" style={{color:'var(--ink3)'}}></i>} placeholder="密码" value={p} onChange={e=>setP(e.target.value)} onPressEnter={doLogin} style={{marginBottom:6}}/>
-      {err&&<div style={{color:'var(--danger)',fontSize:12,margin:'4px 0 6px'}}><i className="fa-solid fa-circle-exclamation" style={{marginRight:5}}></i>{err}</div>}
-      <Button type="primary" size="large" block loading={busy} onClick={doLogin} style={{marginTop:8,height:42,fontWeight:600}}>登 录</Button>
-      <div style={{marginTop:16,fontSize:11,color:'var(--ink3)',textAlign:'center'}}>初始密码 admin123,登录后请在「系统设置→修改密码」更改</div>
+      <Divider style={{margin:'14px 0 18px',borderColor:'rgba(255,255,255,.12)'}}/>
+      <div style={{fontSize:13,color:'rgba(255,255,255,.75)',marginBottom:16}}>请输入管理员账号登录</div>
+      <Input size="large" prefix={<i className="fa-solid fa-user" style={{color:'rgba(255,255,255,.4)'}}></i>} placeholder="用户名" value={u} onChange={e=>setU(e.target.value)} onPressEnter={doLogin} style={{marginBottom:12}}/>
+      <Input.Password size="large" prefix={<i className="fa-solid fa-lock" style={{color:'rgba(255,255,255,.4)'}}></i>} placeholder="密码" value={p} onChange={e=>setP(e.target.value)} onPressEnter={doLogin} style={{marginBottom:6}}/>
+      {err&&<div style={{color:'#f87171',fontSize:12,margin:'4px 0 6px'}}><i className="fa-solid fa-circle-exclamation" style={{marginRight:5}}></i>{err}</div>}
+      <Button type="primary" size="large" block loading={busy} onClick={doLogin} style={{marginTop:8,height:42,fontWeight:600'}}>登 录</Button>
+      <div style={{marginTop:16,fontSize:11,color:'rgba(255,255,255,.38)',textAlign:'center'}}>初始密码 admin123,登录后请在「系统设置→修改密码」更改</div>
     </div>
   </div>);
 }
