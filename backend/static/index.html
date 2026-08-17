@@ -218,7 +218,21 @@
 const { Layout, Menu, Card, Row, Col, Table, Tag, Button, Input, Form, message, Select, Modal,
         Space, Upload, Divider, Typography, Badge, Empty, Descriptions, Alert, Radio, ConfigProvider, Statistic, Segmented, Tooltip, Progress, Tabs, DatePicker } = antd;
 const { Sider, Header, Content } = Layout;
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect, useRef, useSyncExternalStore } = React;
+
+/* AI问答会话: 模块级store(跨页/刷新保留,切页后台继续生成) */
+const ASK_KEY='bg_ask_history';
+let _askStore={msgs:[],sending:false,subs:new Set()};
+try{const sv=JSON.parse(localStorage.getItem(ASK_KEY)||'null');if(sv&&Array.isArray(sv.msgs))_askStore.msgs=sv.msgs.slice(-60);}catch(e){}
+function _askSet(patch){ _askStore={..._askStore,...patch};
+  if('msgs' in patch){ try{localStorage.setItem(ASK_KEY,JSON.stringify({msgs:_askStore.msgs.slice(-60)}));}catch(e){} }
+  _askStore.subs.forEach(f=>f()); }
+const _askSend=async(question)=>{
+  if(!question||_askStore.sending)return;
+  _askSet({msgs:[..._askStore.msgs,{role:'user',text:question}],sending:true});
+  const r=await POST('/api/ask',{headers:{'Content-Type':'application/json'},body:JSON.stringify({question})});
+  _askSet({msgs:[..._askStore.msgs,{role:'ai',text:(r&&r.answer)||'（无回答）'}],sending:false});
+};
 
 const LVL = s => (s==null)?{c:'#94a3b8',l:'-'} : s>=76?{c:'#ef4444',l:'严重'} : s>=56?{c:'#f97316',l:'高危'} : s>=31?{c:'#3b82f6',l:'关注'} : {c:'#22c55e',l:'正常'};
 const INTENT = {data_exfiltration:'数据外发', job_seeking:'求职离职', baseline_deviation:'行为偏离', policy_violation:'违规', normal_work:'正常', unknown:'未知'};
@@ -992,24 +1006,22 @@ function RawLogs(){
 }
 
 function Ask(){
-  const [msgs,setMsgs]=useState([]); const [q,setQ]=useState(''); const [sending,setSending]=useState(false);
-  const send=async()=>{
-    if(!q.trim()||sending)return;
-    const question=q.trim(); setQ('');
-    setMsgs(m=>[...m,{role:'user',text:question}]);
-    setSending(true);
-    const r=await POST('/api/ask',{headers:{'Content-Type':'application/json'},body:JSON.stringify({question})});
-    setSending(false);
-    setMsgs(m=>[...m,{role:'ai',text:(r&&r.answer)||'（无回答）'}]);
-  };
+  const store=useSyncExternalStore(cb=>{_askStore.subs.add(cb);return()=>_askStore.subs.delete(cb);},()=>_askStore);
+  const [q,setQ]=useState('');
+  const boxRef=useRef(null);
+  const msgs=store.msgs; const sending=store.sending;
+  const send=()=>{ if(!q.trim()||sending)return; const question=q.trim(); setQ(''); _askSend(question); };
+  useEffect(()=>{ if(boxRef.current) boxRef.current.scrollTop=boxRef.current.scrollHeight; },[msgs.length,sending]);
   return (<div style={{display:'flex',flexDirection:'column',maxWidth:920,margin:'0 auto',width:'100%'}}>
-    <div className="sec-title">AI 问答 · 基于行为数据回答 · <span style={{fontSize:11,color:'#94a3b8'}}>可问:某员工风险行为 / 告警榜 / 摸鱼榜 / 在岗情况 / 规则说明</span></div>
-    <div style={{minHeight:200,maxHeight:'calc(100vh - 280px)',overflow:'auto',background:'#fff',border:'1px solid var(--line)',borderRadius:12,padding:12,boxShadow:'0 1px 3px rgba(15,23,42,.04)'}}>
+    <div className="sec-title">AI 问答 · 基于行为数据回答 · <span style={{fontSize:11,color:'#94a3b8'}}>可问:某员工风险行为 / 告警榜 / 摸鱼榜 / 在岗情况 / 规则说明 · 对话跨页保留</span>
+      {msgs.length>0&&<a style={{marginLeft:12,fontSize:11,color:'var(--ink3)',cursor:'pointer'}} onClick={()=>_askSet({msgs:[]})}><i className="fa-solid fa-eraser" style={{marginRight:4}}></i>清空对话</a>}
+    </div>
+    <div ref={boxRef} style={{minHeight:200,maxHeight:'calc(100vh - 280px)',overflow:'auto',background:'#fff',border:'1px solid var(--line)',borderRadius:12,padding:12,boxShadow:'0 1px 3px rgba(15,23,42,.04)'}}>
       {msgs.length===0?<Empty description="提问开始对话（如：今天谁摸鱼最多？张三有什么风险行为？今天有哪些告警？）" style={{paddingTop:60}}/>:
         msgs.map((m,i)=><div key={i} style={{display:'flex',justifyContent:m.role==='user'?'flex-end':'flex-start',marginBottom:10}}>
           <div style={{maxWidth:'72%',padding:'9px 13px',borderRadius:12,background:m.role==='user'?'#4f46e5':'var(--bg)',color:m.role==='user'?'#fff':'#0f172a',whiteSpace:'pre-wrap',wordBreak:'break-word',lineHeight:1.6,boxShadow:'0 1px 2px rgba(15,23,42,.04)'}}>{m.text}</div>
         </div>)}
-      {sending&&<div style={{color:'#94a3b8',fontSize:13,padding:'4px 8px'}}>AI 思考中…（查数据+总结，约10-20秒）</div>}
+      {sending&&<div style={{color:'#94a3b8',fontSize:13,padding:'4px 8px'}}>AI 思考中…（查数据+总结，约10-20秒，可切到其他页面，回来仍在）</div>}
     </div>
     <div style={{marginTop:10,background:'#fff',border:'1px solid var(--line)',borderRadius:12,padding:'10px 12px',boxShadow:'0 1px 3px rgba(15,23,42,.04)'}}>
       <div style={{display:'flex',gap:8,alignItems:'flex-end'}}>
