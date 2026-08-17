@@ -80,26 +80,27 @@
   @property --lgA{syntax:'<angle>';initial-value:0deg;inherits:false;}
   .lg-page{min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;background:linear-gradient(160deg,#141a3e 0%,#1a2154 55%,#1f2762 100%);padding:24px 16px;}
   .lg-stars,.lg-stars2{position:absolute;inset:0;pointer-events:none;
-    background-image:radial-gradient(1.6px 1.6px at 18% 22%,rgba(255,255,255,.9),transparent 60%),radial-gradient(1.2px 1.2px at 62% 12%,rgba(199,210,254,.9),transparent 60%),radial-gradient(1.4px 1.4px at 82% 58%,rgba(255,255,255,.75),transparent 60%),radial-gradient(1px 1px at 38% 74%,rgba(165,180,252,.8),transparent 60%),radial-gradient(1.5px 1.5px at 12% 62%,rgba(255,255,255,.6),transparent 60%),radial-gradient(1px 1px at 92% 34%,rgba(255,255,255,.7),transparent 60%);
-    background-size:520px 520px;}
-  .lg-stars{animation:lgTwinkle 5s ease-in-out infinite alternate;}
-  .lg-stars2{background-size:760px 760px;opacity:.6;animation:lgTwinkle 7s ease-in-out 1.2s infinite alternate,lgStarDrift 90s linear infinite;}
-  @keyframes lgTwinkle{from{opacity:.45}to{opacity:1}}
-  @keyframes lgStarDrift{to{background-position:760px 380px}}
+    background-image:radial-gradient(2.2px 2.2px at 18% 22%,rgba(255,255,255,.95),transparent 60%),radial-gradient(1.6px 1.6px at 62% 12%,rgba(199,210,254,.95),transparent 60%),radial-gradient(2px 2px at 82% 58%,rgba(255,255,255,.85),transparent 60%),radial-gradient(1.4px 1.4px at 38% 74%,rgba(165,180,252,.9),transparent 60%),radial-gradient(2px 2px at 12% 62%,rgba(255,255,255,.75),transparent 60%),radial-gradient(1.5px 1.5px at 92% 34%,rgba(224,231,255,.9),transparent 60%),radial-gradient(1.8px 1.8px at 50% 44%,rgba(255,255,255,.7),transparent 60%);
+    background-size:340px 340px;}
+  .lg-stars{animation:lgTwinkle 3.2s ease-in-out infinite alternate,lgStarDrift 70s linear infinite;}
+  .lg-stars2{background-size:560px 560px;opacity:.75;animation:lgTwinkle 4.6s ease-in-out 1.2s infinite alternate,lgStarDrift2 110s linear infinite;}
+  @keyframes lgTwinkle{from{opacity:.25}to{opacity:1}}
+  @keyframes lgStarDrift{to{background-position:340px 170px}}
+  @keyframes lgStarDrift2{to{background-position:-560px 280px}}
   .lg-grid{position:absolute;left:-30%;right:-30%;bottom:-12%;height:62%;pointer-events:none;
-    background-image:linear-gradient(rgba(148,163,255,.13) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,255,.13) 1px,transparent 1px);
+    background-image:linear-gradient(rgba(148,163,255,.28) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,255,.28) 1px,transparent 1px);
     background-size:46px 46px;transform:perspective(520px) rotateX(58deg);
-    -webkit-mask-image:linear-gradient(to top,rgba(0,0,0,.9),transparent 82%);mask-image:linear-gradient(to top,rgba(0,0,0,.9),transparent 82%);
-    animation:lgGridMove 2.6s linear infinite;}
+    -webkit-mask-image:linear-gradient(to top,rgba(0,0,0,.95),transparent 88%);mask-image:linear-gradient(to top,rgba(0,0,0,.95),transparent 88%);
+    animation:lgGridMove 1.5s linear infinite;}
   @keyframes lgGridMove{to{background-position:0 46px}}
   .lg-blob{position:absolute;border-radius:50%;pointer-events:none;}
-  .lg-blob.b1{width:560px;height:560px;background:radial-gradient(circle,#818cf8,transparent 65%);opacity:.55;top:-140px;left:-110px;filter:blur(85px);animation:lgD1 20s ease-in-out infinite,lgHue 14s linear infinite;}
-  .lg-blob.b2{width:680px;height:680px;background:radial-gradient(circle,#a78bfa,transparent 65%);opacity:.5;bottom:-240px;right:-150px;filter:blur(95px);animation:lgD2 26s ease-in-out infinite,lgHue 18s linear infinite reverse;}
-  .lg-blob.b3{width:440px;height:440px;background:radial-gradient(circle,#22d3ee,transparent 65%);opacity:.35;top:38%;left:56%;filter:blur(85px);animation:lgD3 17s ease-in-out infinite,lgHue 11s linear infinite;}
-  @keyframes lgD1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(90px,60px) scale(1.2)}}
-  @keyframes lgD2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-100px,-70px) scale(1.14)}}
-  @keyframes lgD3{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(-80px,50px) scale(1.15)}66%{transform:translate(60px,-60px) scale(.92)}}
-  @keyframes lgHue{to{filter:blur(85px) hue-rotate(45deg)}}
+  .lg-blob.b1{width:560px;height:560px;background:radial-gradient(circle,#818cf8,transparent 65%);opacity:.6;top:-140px;left:-110px;filter:blur(85px);animation:lgD1 13s ease-in-out infinite,lgHue 9s linear infinite;}
+  .lg-blob.b2{width:680px;height:680px;background:radial-gradient(circle,#a78bfa,transparent 65%);opacity:.55;bottom:-240px;right:-150px;filter:blur(95px);animation:lgD2 16s ease-in-out infinite,lgHue 12s linear infinite reverse;}
+  .lg-blob.b3{width:440px;height:440px;background:radial-gradient(circle,#22d3ee,transparent 65%);opacity:.42;top:38%;left:56%;filter:blur(85px);animation:lgD3 11s ease-in-out infinite,lgHue 8s linear infinite;}
+  @keyframes lgD1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(160px,110px) scale(1.25)}}
+  @keyframes lgD2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-180px,-120px) scale(1.18)}}
+  @keyframes lgD3{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(-140px,90px) scale(1.2)}66%{transform:translate(110px,-100px) scale(.85)}}
+  @keyframes lgHue{to{filter:blur(85px) hue-rotate(120deg)}}
   .lg-card{width:380px;max-width:100%;padding:34px 36px 26px;background:rgba(22,28,60,.58);backdrop-filter:blur(22px);border-radius:20px;border:1px solid rgba(255,255,255,.1);box-shadow:0 24px 60px rgba(0,0,0,.45),0 0 46px rgba(99,102,241,.14);position:relative;animation:lgGlow 4.5s ease-in-out infinite alternate;}
   .lg-card::before{content:"";position:absolute;inset:-1px;border-radius:21px;padding:1.2px;background:conic-gradient(from var(--lgA),transparent 0deg,transparent 250deg,rgba(129,140,248,.9) 310deg,transparent 360deg);
     -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;pointer-events:none;animation:lgBeam 5.5s linear infinite;}
