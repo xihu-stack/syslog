@@ -809,6 +809,15 @@ function Computers({goProfile,filter}){
   </div>);
 }
 
+function SummaryTxt({text}){
+  const [open,setOpen]=useState(false);
+  if(!text)return <span style={{color:'var(--ink4)'}}>-</span>;
+  return (<div onClick={e=>{e.stopPropagation();setOpen(o=>!o);}} title={open?null:text}
+    style={{color:'var(--ink2)',fontSize:12,lineHeight:1.6,cursor:'pointer',wordBreak:'break-word',...(open?{display:'block'}:{display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'})}}>
+    {text}{open&&<span style={{color:'var(--brand)',fontSize:11,marginLeft:4,whiteSpace:'nowrap'}}>收起 ▲</span>}
+  </div>);
+}
+
 function Alerts({goProfile,filter}){
   const isToday=!!(filter&&filter.today);
   // 支持从大屏各区块下钻传入：when/status/lvl/scenario（仅挂载时读取一次）
@@ -857,7 +866,7 @@ function Alerts({goProfile,filter}){
           {title:<TH t="告警数" tip="该员工在当前筛选范围内的告警条数(合并前)。同一员工同意图会合并展示。" />,dataIndex:'count',width:80,render:v=><span className="num" style={{color:'var(--ink2)',fontWeight:600}}>{v}</span>},
           {title:<TH t="最近告警" tip="该员工最近一次告警的行为发生时间。" />,dataIndex:'latest',width:135,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
           {title:<TH t="风险" tip="该员工告警中的最高风险分(0-100)。76+严重/56+高危/31+关注。" />,dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
-          {title:<TH t="说明" />,dataIndex:'summary',render:v=><span style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>},
+          {title:<TH t="说明" tip="该员工当前最高分告警的AI判定说明。文字默认两行截断,悬浮可预览全文,点击展开/收起。" />,dataIndex:'summary',render:v=><SummaryTxt text={v}/>},
           {title:'操作',width:120,render:(_,r)=>(<Space size={4}>
             <Button size="small" type="primary" onClick={(e)=>doConfirm(e,r.verdict_id)}>确认</Button>
             <Button size="small" onClick={(e)=>doFP(e,r)} style={{color:'var(--danger)',border:'1px solid var(--danger)'+'55',background:'var(--danger-soft)'}}>误报</Button>
