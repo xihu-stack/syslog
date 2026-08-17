@@ -41,6 +41,7 @@ DEFAULTS = {
     ],
     "slack_whitelist_domains": [],   # 摸鱼豁免白名单:公司业务需要访问的娱乐类站(命中不算摸鱼)
     "risk_whitelist_domains": [],    # 风险豁免白名单:公司采购的正规网盘/企业邮箱等(命中不进风险识别)
+    "slack_sdk_domains": [],         # 心跳/埋点排除域名:客户端挂后台的规律上报,不算摸鱼(AI扫描建议+人工采纳维护)
     "slack_domains": {
         "视频": ["bilibili.com", "douyin.com", "iesdouyin.com", "snssdk.com", "kuaishou.com",
                 "youku.com", "iqiyi.com", "mgtv.cn", "youtube.com", "fun.tv"],
@@ -325,6 +326,9 @@ def slack_category(domain: str, label: str = None):
     d = (domain or "").lower()
     if not d or any(d.startswith(h) or h in d for h in _SLACK_SDK_HINT):
         return None
+    for dom in get("slack_sdk_domains") or []:
+        if d == dom or d.endswith("." + dom):
+            return None
     for dom in get("slack_whitelist_domains") or []:
         if d == dom or d.endswith("." + dom):
             return None

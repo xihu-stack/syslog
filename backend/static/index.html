@@ -433,6 +433,7 @@ function ProfilePage({user, goBack, from}){
           <span className="t">{(e.start||'').replace('T',' ').slice(5,16)} → {(e.end||'').slice(11,16)}</span>
           <Tag color={e.duration>=60?'red':'orange'} style={{marginLeft:4,fontSize:11}}>{e.duration>=60?Math.floor(e.duration/60)+'h'+e.duration%60+'m':e.duration>0?e.duration+'分':'单次'}</Tag>
           <Tag color="purple" style={{fontSize:11}}>{e.cat}</Tag>
+          {e.sparse&&<Tooltip title="稀疏会话:单次访问按5分钟保底估算,可能是碎片闪现或挂后台心跳,时长未必真实"><Tag style={{fontSize:11,color:'var(--ink3)',background:'var(--bg)',border:'1px solid var(--ink4)'}}>稀疏</Tag></Tooltip>}
           <b> {(e.domains||[]).join(' / ')}</b>
           {e.count>1&&<span style={{color:'#94a3b8',fontSize:11}}> ({e.count}次访问)</span>}
         </div>)}
@@ -996,7 +997,7 @@ function Efficiency({items,loading,gen,msg,goProfile}){
         columns={[
           {title:<TH t="员工" />,dataIndex:'employee',width:110,render:v=><span className="uname" style={{cursor:'inherit'}}>{v}</span>},
           {title:<TH t="日均摸鱼" tip="日均摸鱼时长(分钟)。算法:工作时段娱乐访问按10分钟访问桶估算(连续看=跨度,碎片闪现=桶数×10min封顶,单次保底5min),÷工作日在岗天数。基于访问记录估算,非精确观看。≥60分钟(1小时)才算重度。" />,dataIndex:'slack_avg',width:110,sorter:(a,b)=>(b.slack_avg||0)-(a.slack_avg||0),defaultSortOrder:'ascend',
-            render:v=>{const n=v||0;const c=n>=120?'#ef4444':n>=60?'#f97316':n>=30?'#f59e0b':'#94a3b8';return <span className="num" style={{color:c,fontWeight:700,fontSize:15}}>{n>=60?Math.floor(n/60)+'h'+(n%60?' '+(n%60)+'m':''):n+(n<60?'min':'')}</span>}},
+            render:(v,r)=>{const n=v||0;const c=n>=120?'#ef4444':n>=60?'#f97316':n>=30?'#f59e0b':'#94a3b8';return <span>{r.sparse&&n>0&&<Tooltip title="稀疏上报模式:多数会话为单次访问(碎片闪现/挂后台心跳),时长为保底估算上限,可能虚高。点员工名进画像看会话明细,或到系统设置→AI规则扫描排除心跳域名。"><i className="fa-solid fa-triangle-exclamation" style={{color:'#f59e0b',fontSize:11,marginRight:5}}></i></Tooltip>}<span className="num" style={{color:c,fontWeight:700,fontSize:15}}>{n>=60?Math.floor(n/60)+'h'+(n%60?' '+(n%60)+'m':''):n+(n<60?'min':'')}</span></span>}},
           {title:<TH t="摸鱼占比" tip="工作时段娱乐访问 ÷ 工作时段全部上网访问(含未分类网站)。反映娱乐占上班上网总量的比例。" />,dataIndex:'pct',width:120,render:v=>{const p=v||0;return <div style={{display:'flex',alignItems:'center',gap:8}}><div className="pbar"><i style={{width:Math.min(p,100)+'%',background:p>=30?'#ef4444':p>=10?'#f59e0b':'var(--brand)'}}></i></div><span className="num" style={{color:'var(--ink2)',fontWeight:600,fontSize:12}}>{p}%</span></div>}},
           {title:<TH t="摸鱼网站" tip="工作时段访问过的娱乐网站类别及占比(占本人摸鱼总量的百分比)。点员工名进画像可看具体域名。" />,dataIndex:'cats',render:(v,r)=>{const e=v||{};const tot=r.slack||Object.values(e).reduce((a,b)=>a+b,0)||1;return <Space wrap size={[4,4]}>{Object.entries(e).sort((a,b)=>b[1]-a[1]).map(([k,n])=>{const pct=Math.round(n/tot*100);return <Tag key={k} style={{background:'var(--bg)',color:'var(--ink2)',border:'1px solid var(--ink4)'}}>{k} <b className="num">{pct}%</b></Tag>})}</Space>}},
           {title:<TH t="在岗" tip="观察期内的活跃天数 · 每日最常见活动时段。" />,width:96,render:(_,r)=><span style={{color:'var(--ink3)',fontSize:11}}>{r.active_days||0}天 · {r.hour_min===null?'-':r.hour_min+'-'+r.hour_max+'点'}</span>},
@@ -1241,7 +1242,7 @@ function Config(){
   const toggleSys=async(on)=>{ await POST('/api/syslog/'+(on?'start':'stop')); message.success(on?'已启动':'已停止'); load(); };
   const uploadLog=f=>{ const fd=new FormData(); fd.append('file',f); message.loading({content:'导入中…',key:'up',duration:0});
     fetch('/api/ingest',{method:'POST',headers:_authHdr(),body:fd}).then(r=>r.json()).then(r=>message.success({content:'已导入 '+r.imported+' 条',key:'up',duration:2})); return false; };
-  const DM={sensitive_keywords:'敏感文件名关键词',recruitment_sites:'招聘网站域名',netdisk_domains:'网盘域名',personal_email_domains:'个人邮箱域名',job_search_terms:'求职搜索词',risk_search_terms:'高危搜索词',work_domains:'工作网站白名单(算工作占比)',remote_control_domains:'远程控制工具(降权,凌晨才告警)',vpn_domains:'VPN/翻墙工具(已停用·翻墙非违规)',code_repo_domains:'代码仓库(降权,凌晨才告警)',wechat_file_domains:'微信文件助手(外发通道)',ai_assistant_domains:'AI助手(ChatGPT/DeepSeek等,高频才告警)',slack_whitelist_domains:'摸鱼豁免白名单(公司业务需要的娱乐站,不算摸鱼)',risk_whitelist_domains:'风险豁免白名单(公司采购的正规网盘/邮箱等,不进风险识别)'};
+  const DM={sensitive_keywords:'敏感文件名关键词',recruitment_sites:'招聘网站域名',netdisk_domains:'网盘域名',personal_email_domains:'个人邮箱域名',job_search_terms:'求职搜索词',risk_search_terms:'高危搜索词',work_domains:'工作网站白名单(算工作占比)',remote_control_domains:'远程控制工具(降权,凌晨才告警)',vpn_domains:'VPN/翻墙工具(已停用·翻墙非违规)',code_repo_domains:'代码仓库(降权,凌晨才告警)',wechat_file_domains:'微信文件助手(外发通道)',ai_assistant_domains:'AI助手(ChatGPT/DeepSeek等,高频才告警)',slack_whitelist_domains:'摸鱼豁免白名单(公司业务需要的娱乐站,不算摸鱼)',risk_whitelist_domains:'风险豁免白名单(公司采购的正规网盘/邮箱等,不进风险识别)',slack_sdk_domains:'心跳/埋点排除域名(客户端挂后台的规律上报,不算摸鱼·AI扫描建议维护)'};
   return (
     <Tabs defaultActiveKey="model" items={[
       {key:'pwd', label:'修改密码', children:<PwdCard/>},
@@ -1302,8 +1303,8 @@ function Config(){
                {title:'域名',dataIndex:'domain',render:v=><span className="num" style={{fontSize:12}}>{v}</span>},
                {title:'命中',dataIndex:'hits',width:60,render:v=><span style={{color:'#94a3b8'}}>{v}</span>},
                {title:'AI建议',width:160,render:(_,r)=>{
-                 const lbl=r.target==='ignore'?'忽略(正常)':r.target==='suspect_new'?'⚠️疑似新风险':r.target==='slack_domains'?'摸鱼·'+(r.cat||''):{netdisk_domains:'网盘',personal_email_domains:'个人邮箱',recruitment_sites:'招聘',remote_control_domains:'远程控制',vpn_domains:'VPN/翻墙',code_repo_domains:'代码仓库',wechat_file_domains:'微信文件助手',ai_assistant_domains:'AI助手'}[r.target]||r.target;
-                 const color=r.target==='ignore'?'default':r.target==='suspect_new'?'red':r.target==='slack_domains'?'purple':'blue';
+                 const lbl=r.target==='ignore'?'忽略(正常)':r.target==='suspect_new'?'⚠️疑似新风险':r.target==='slack_domains'?'摸鱼·'+(r.cat||''):r.target==='slack_sdk_domains'?'⚙️排除·疑似心跳':{netdisk_domains:'网盘',personal_email_domains:'个人邮箱',recruitment_sites:'招聘',remote_control_domains:'远程控制',vpn_domains:'VPN/翻墙',code_repo_domains:'代码仓库',wechat_file_domains:'微信文件助手',ai_assistant_domains:'AI助手'}[r.target]||r.target;
+                 const color=r.target==='ignore'?'default':r.target==='suspect_new'?'red':r.target==='slack_domains'?'purple':r.target==='slack_sdk_domains'?'orange':'blue';
                  return <Tag color={color}>{lbl}</Tag>;
                }},
                {title:'理由',dataIndex:'reason',ellipsis:true,render:v=><span style={{fontSize:12,color:'var(--ink2)'}}>{v}</span>},

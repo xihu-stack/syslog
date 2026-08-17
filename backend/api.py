@@ -47,11 +47,11 @@ def _ensure_admin():
         salt = secrets.token_hex(8)
         con.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_salt', ?)", (salt,))
         real_salt = con.execute("SELECT value FROM settings WHERE key='admin_salt'").fetchone()[0]
-        cur = con.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_pwd', ?)",
-                          (_pwd_hash(INITIAL_PWD, real_salt),))
-        con.commit()
-        if cur.rowcount > 0:  # 仅真正首次初始化时提示,避免每次重启误报"已重置"
+        if con.execute("SELECT 1 FROM settings WHERE key='admin_pwd'").fetchone() is None:  # 仅真正首次初始化
+            con.execute("INSERT INTO settings (key, value) VALUES ('admin_pwd', ?)",
+                        (_pwd_hash(INITIAL_PWD, real_salt),))
             print("[auth] 首次启动:已初始化管理员 admin,初始密码见环境变量(请尽快修改)", flush=True)
+        con.commit()
     finally:
         con.close()
         print(f"[auth] 已初始化管理员 {ADMIN_USER},初始密码: {INITIAL_PWD}(请尽快在系统设置中修改)")
@@ -333,7 +333,9 @@ def employee(emp: str):
             sessions.append({"start": s_, "end": e_, "duration": int(_sec / 60),
                              "cat": max(_cats, key=_cats.get) if _cats else "",
                              "domains": sorted(_doms, key=_doms.get, reverse=True),
-                             "count": len(stamps)})
+                             "count": len(stamps),
+                             # 单事件段=稀疏(碎片闪现/挂机心跳),提示数字为估算上限
+                             "sparse": len(stamps) == 1})
         sessions.sort(key=lambda x: -x["duration"])
         vs = (s.query(VerdictRow).filter_by(employee_id=emp)
               .order_by(desc(VerdictRow.window_start)).limit(20).all())
@@ -862,6 +864,10 @@ def efficiency():
             # 统一摸鱼时长口径(见 _slack_segments):桶数封顶防碎片虚高,保底5min防单次=0
             segs = _slack_segments(r["stimes"])
             total_min = sum(x[2] for x in segs) / 60.0
+            # 碎片度: 单事件段占比高(≥70%且段数≥8)=稀疏上报模式(碎片闪现/挂机心跳),
+            # 时长是保底值堆出来的估算上限,前端标记提示复核(防线:心跳污染自动预警)
+            single = sum(1 for x in segs if len(x[3]) == 1)
+            sparse = len(segs) >= 8 and single / len(segs) >= 0.7
             day_tot = {}
             for s_, _, sec, _ in segs:
                 day_tot[s_.date()] = day_tot.get(s_.date(), 0) + sec
@@ -874,6 +880,7 @@ def efficiency():
                         "cats": dict(r["cats"]), "active_days": len(r["days"]),
                         "hour_min": hours[0] if hours else None, "hour_max": hours[-1] if hours else None,
                         "slack_avg": slack_avg, "max_span": round(mx / 60), "work": r["work"],
+                        "sparse": sparse,
                         "work_pct": round(r["work"] / wh * 100, 1) if wh else 0,
                         "classified": r["slack"] + r["work"]})
         out.sort(key=lambda x: -(x.get("slack_avg") or 0))
@@ -1279,6 +1286,48 @@ def _rules_scan_core() -> dict:
             except Exception:
                 pass
         hit_map = dict(top)
+        # ---- 心跳域名检测(纯规则,不走LLM): 娱乐域名呈"规律稀疏上报"→建议排除 ----
+        # 特征: 同员工同天 ≥5 次访问、平均间隔 ≥15 分钟(真实摸鱼是密集成块的)。
+        # 防客户端挂后台心跳被算成摸鱼时长(2026-08-17 张云淘宝案例),每周扫描自动发现新心跳域名。
+        try:
+            from datetime import timedelta as _td
+            since2 = bj_now() - _td(days=7)
+            rows2 = s.query(EventRow.occurred_at, dom_expr, EventRow.employee_id).filter(
+                EventRow.category == "WEB", EventRow.occurred_at >= since2).all()
+            from collections import defaultdict as _dd
+            by_dom = _dd(list)
+            _sc_cache = {}
+            for occ2, d2, emp2 in rows2:
+                d2 = (d2 or "").strip()
+                if not occ2 or not d2:
+                    continue
+                if d2 not in _sc_cache:
+                    _sc_cache[d2] = dicts.slack_category(d2, lab_of.get(d2, ""))
+                if _sc_cache[d2]:
+                    by_dom[d2].append((emp2, occ2))
+            hb_cands = []
+            for d2, evs in by_dom.items():
+                if len(evs) < 15:
+                    continue
+                byg = _dd(list)
+                for emp2, occ2 in evs:
+                    byg[(emp2, occ2.date().isoformat())].append(occ2)
+                groups = [v for v in byg.values() if len(v) >= 5]
+                if len(groups) < 2:
+                    continue
+                hb = 0
+                for v in groups:
+                    v.sort()
+                    span_min = (v[-1] - v[0]).total_seconds() / 60
+                    if span_min / len(v) >= 15:  # 平均间隔≥15min=稀疏规律上报
+                        hb += 1
+                if hb >= max(2, len(groups) // 2):
+                    hb_cands.append((d2, len(groups), hb))
+            for d2, ng, hb in sorted(hb_cands, key=lambda x: -x[1])[:8]:
+                suggestions.append({"domain": d2, "target": "slack_sdk_domains", "cat": "",
+                                    "reason": f"{ng} 个员工×天呈规律稀疏上报({hb} 组平均间隔≥15分钟),疑似客户端挂后台心跳,建议排除(其余娱乐域名不受影响)"})
+        except Exception as e:
+            print(f"[scan] 心跳检测失败: {e}", flush=True)
         for it in suggestions:
             it["hits"] = hit_map.get((it.get("domain") or "").lower(), 0)
         return {"suggestions": suggestions}
