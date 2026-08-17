@@ -79,6 +79,16 @@ def login(body: dict = Body(...)):
     raise HTTPException(401, "用户名或密码错误")
 
 
+@app.post("/api/logout")
+def logout(request: Request):
+    """退出登录:销毁服务端会话 token。"""
+    h = request.headers.get("authorization", "")
+    t = h[7:].strip() if h.lower().startswith("bearer ") else ""
+    if t:
+        _TOKENS.pop(t, None)
+    return {"ok": True}
+
+
 @app.get("/api/me")
 def me(request: Request):
     return {"ok": True, "username": ADMIN_USER}
