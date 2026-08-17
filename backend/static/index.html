@@ -79,7 +79,7 @@
   /* 登录页:深空蓝底 + 星空/网格/光斑多层动态 + 流光卡片 */
   @property --lgA{syntax:'<angle>';initial-value:0deg;inherits:false;}
   .lg-page{min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;background:linear-gradient(160deg,#141a3e 0%,#1a2154 55%,#1f2762 100%);padding:24px 16px;}
-  .lg-stars,.lg-stars2{position:absolute;inset:0;pointer-events:none;z-index:2;
+  .lg-stars,.lg-stars2{position:absolute;inset:-60px;pointer-events:none;z-index:2;
     background-image:
       radial-gradient(3.2px 3.2px at 18% 22%,#ffffff 0%,rgba(255,255,255,.75) 45%,transparent 80%),
       radial-gradient(2.6px 2.6px at 62% 12%,#dbe4ff 0%,rgba(219,228,255,.7) 45%,transparent 80%),
@@ -472,6 +472,19 @@ function ProfilePage({user, goBack, from}){
 // ---------------- 管理员登录页 ----------------
 function LoginPage({onOk}){
   const [u,setU]=useState('admin'); const [p,setP]=useState(''); const [busy,setBusy]=useState(false); const [err,setErr]=useState('');
+  const pgRef=useRef(null);
+  useEffect(()=>{  // 星空鼠标视差:两层星以不同深度缓动跟随鼠标(近层±22px/远层反向∓12px)
+    const el=pgRef.current; if(!el) return;
+    let tx=0,ty=0,cx=0,cy=0,raf;
+    const onMove=e=>{ tx=(e.clientX/el.clientWidth-0.5)*2; ty=(e.clientY/el.clientHeight-0.5)*2; };
+    const tick=()=>{ cx+=(tx-cx)*0.055; cy+=(ty-cy)*0.055;
+      const s1=el.querySelector('.lg-stars'),s2=el.querySelector('.lg-stars2');
+      if(s1) s1.style.transform=`translate(${cx*22}px,${cy*15}px)`;
+      if(s2) s2.style.transform=`translate(${cx*-12}px,${cy*-9}px)`;
+      raf=requestAnimationFrame(tick); };
+    el.addEventListener('mousemove',onMove); raf=requestAnimationFrame(tick);
+    return ()=>{ el.removeEventListener('mousemove',onMove); cancelAnimationFrame(raf); };
+  },[]);
   const doLogin=async()=>{
     if(busy) return; setBusy(true); setErr('');
     try{
@@ -482,7 +495,7 @@ function LoginPage({onOk}){
     }catch(e){ setErr('网络错误'); }
     setBusy(false);
   };
-  return (<div className="lg-page">
+  return (<div className="lg-page" ref={pgRef}>
     <div className="lg-stars"/><div className="lg-stars2"/>
     <div className="lg-blob b1"/><div className="lg-blob b2"/><div className="lg-blob b3"/>
     <div className="lg-card">
