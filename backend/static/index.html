@@ -351,16 +351,53 @@ function ProfilePage({user, goBack, from}){
     </Card>
       </Col>
       <Col span={8} style={{display:'flex'}}>
-    <Card className="card" title={<span><span className="brand-bar"></span>个人行为基线</span>} size="small">
-      <div style={{background:'var(--bg)',borderRadius:8,padding:'10px 12px',fontSize:12.5,lineHeight:1.8,color:'var(--ink2)'}}>
-        {data.profile_summary?(data.profile_summary.split('；').filter(s=>s.trim()).map((seg,i)=><div key={i} style={{marginBottom:2}}>{seg.trim()}{i<(data.profile_summary.split('；').length-1)?'；':''}</div>)):<span style={{color:'var(--ink3)'}}>样本不足，按通用可疑度判断</span>}
-      </div>
-      <Divider style={{margin:'10px 0'}}/>
-      <Descriptions column={1} size="small" labelStyle={{color:'var(--ink3)',width:72}}>
-        <Descriptions.Item label="日均事件量">{p.daily_doc_op_median||0}（峰值{p.daily_doc_op_max||0}）</Descriptions.Item>
-        {hasDoc&&<Descriptions.Item label="行为类型">{(p.actions_seen||[]).join(', ')||'-'}</Descriptions.Item>}
-        <Descriptions.Item label="常接触词">{p.usual_keywords?(p.usual_keywords.slice(0,5).join(', ')):'-'}</Descriptions.Item>
-      </Descriptions>
+    <Card className="card" title={<span><span className="brand-bar"></span>个人行为基线</span>} size="small"
+      extra={p&&(p.sample_count||0)>=15?<span style={{fontSize:11,color:'var(--ink3)'}}>{(p.sample_count||0)>=50?'成熟画像':'画像较薄'} · 样本{p.sample_count}</span>:null}>
+      {p&&(p.sample_count||0)>=15?(<div>
+        <div style={{display:'flex',gap:8}}>
+          <div style={{flex:1,background:'var(--bg)',borderRadius:8,padding:'8px 6px',textAlign:'center'}}>
+            <div className="num" style={{fontSize:18,fontWeight:700,color:'var(--ink)'}}>{p.active_days||0}</div>
+            <div style={{fontSize:10.5,color:'var(--ink3)'}}>活跃天数</div>
+          </div>
+          <div style={{flex:1,background:'var(--bg)',borderRadius:8,padding:'8px 6px',textAlign:'center'}}>
+            <div className="num" style={{fontSize:18,fontWeight:700,color:'var(--ink)'}}>{p.daily_doc_op_median||0}</div>
+            <div style={{fontSize:10.5,color:'var(--ink3)'}}>日均事件量</div>
+          </div>
+          <div style={{flex:1,background:'var(--bg)',borderRadius:8,padding:'8px 6px',textAlign:'center'}}>
+            <div className="num" style={{fontSize:18,fontWeight:700,color:'var(--orange)'}}>{p.daily_doc_op_max||0}</div>
+            <div style={{fontSize:10.5,color:'var(--ink3)'}}>单日峰值</div>
+          </div>
+        </div>
+        <div style={{marginTop:10}}>
+          <div style={{fontSize:11,color:'var(--ink3)',marginBottom:5}}>常规活跃时段<span style={{marginLeft:4,color:'var(--brand)'}}>■</span> 历史事件最集中的小时</div>
+          <div style={{display:'flex',gap:2,alignItems:'flex-end',height:32}}>
+            {Array.from({length:24},(_,h)=>{const on=(p.active_hours_top||[]).includes(h);
+              return <div key={h} title={h+':00'} style={{flex:1,height:on?'100%':'28%',background:on?'linear-gradient(180deg,#818cf8,#6366f1)':'var(--ink4)',opacity:on?1:.45,borderRadius:2}}/>;})}
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:9.5,color:'var(--ink3)',marginTop:3}}>
+            <span>0点</span><span>6</span><span>12</span><span>18</span><span>23点</span>
+          </div>
+        </div>
+        {(()=>{const wc=Object.entries(p.web_classes||{}).sort((a,b)=>b[1]-a[1]).slice(0,5);const tot=Object.values(p.web_classes||{}).reduce((a,b)=>a+b,0)||1;
+          return wc.length?(<div style={{marginTop:10}}>
+            <div style={{fontSize:11,color:'var(--ink3)',marginBottom:5}}>常访问类别（历史占比）</div>
+            {wc.map(([c,n])=>{const pct=Math.max(Math.round(n/tot*100),3);return (<div key={c} style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
+              <span style={{width:62,fontSize:11,color:'var(--ink2)',textAlign:'right',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c}</span>
+              <div style={{flex:1,height:8,background:'var(--bg)',borderRadius:4,overflow:'hidden'}}><div style={{width:pct+'%',height:'100%',background:'linear-gradient(90deg,#818cf8,#6366f1)',borderRadius:4}}/></div>
+              <span className="num" style={{width:32,fontSize:11,color:'var(--ink2)',fontWeight:600}}>{pct}%</span>
+            </div>);})}
+          </div>):null;})()}
+        <Divider style={{margin:'10px 0 8px'}}/>
+        <div style={{fontSize:11,color:'var(--ink3)',lineHeight:1.9}}>
+          <div>行为类型：{(p.actions_seen||[]).slice(0,8).join(' / ')||'-'}</div>
+          <div>常接触敏感词:{p.usual_keywords&&p.usual_keywords.length?p.usual_keywords.slice(0,5).join('、'):'无'}</div>
+        </div>
+      </div>):(
+        <div style={{background:'var(--bg)',borderRadius:8,padding:'18px 14px',textAlign:'center',color:'var(--ink3)',fontSize:12.5}}>
+          <i className="fa-solid fa-seedling" style={{fontSize:20,color:'var(--brand)',display:'block',marginBottom:8}}></i>
+          样本不足 15 条，暂未建立个人基线<br/>当前按通用可疑度判断
+        </div>
+      )}
     </Card>
       </Col>
     </Row>
