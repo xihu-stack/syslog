@@ -289,9 +289,13 @@ def is_heartbeat(domain: str) -> bool:
 
 
 # 已知SDK埋点/统计/日志子域前缀(排除,避免把app后台请求算作主动摸鱼)
+# 注:纯埋点/采集域名一律排除(挂后台心跳≠人在看);acs/api网关类不排除——
+# 客户端刷内容也走网关,靠连段gap收紧+密度自然区分(埋点低频散布,真浏览密集)。
 _SLACK_SDK_HINT = ("api.", "sdk", "audid", "fourier", "nbsdk", "log.", "error.", "err.", "perf.",
                    "mqtt.", "sugar.", "datahub.", "doubanio", "umdcv4", "cloudvideocdn", "rta",
-                   "cloud.video", "stat.", "analytics.", "monitor.", "ping.", "collector")
+                   "cloud.video", "stat.", "analytics.", "monitor.", "ping.", "collector",
+                   "adashx", "amplitude", "applog", "umeng", "bugly", "sentry", "tongji",
+                   "data-collect", "collect.", "beacon", "track.", "metrics.", "report.")
 
 # 基础设施/CDN/连通性探测子域(任何分类标签下都不算摸鱼——是机器流量不是人在娱乐)
 _SLACK_INFRA_HINT = ("cdn", "cds", "cache", "static", "assets", "geo", "connectivity", "smtcdns",

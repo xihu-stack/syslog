@@ -801,7 +801,9 @@ def _slack_segments(stamps):
         s = e = None
         bucket = []
         for t in ts:
-            if e is not None and (t - e).total_seconds() <= 1800:
+            # 连段gap=15分钟: 真实摸鱼(连刷/换视频)间隔通常<15min;
+            # 20-30min规律间隔是客户端挂后台心跳,不应连成整段(2026-08-17张云案例:3.8h实为淘宝心跳)
+            if e is not None and (t - e).total_seconds() <= 900:
                 e = t
                 bucket.append(t)
             else:
