@@ -72,6 +72,17 @@ def _check_token(auth_header: str | None) -> bool:
 
 
 @app.middleware("http")
+async def _nocache_html(request: Request, call_next):
+    """HTML 页面禁用本地缓存(每次协商):部署新版后用户普通刷新即可生效,
+    不再需要 ?cb=强刷玄学。静态资源(logo/js)仍走 ETag 协商。"""
+    resp = await call_next(request)
+    p = request.url.path
+    if p == "/" or p.endswith(".html"):
+        resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@app.middleware("http")
 async def _auth_guard(request: Request, call_next):
     """API 鉴权:/api/login 放行;其余 /api/* 需带有效 Bearer token;静态页面放行。"""
     p = request.url.path
