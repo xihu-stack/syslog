@@ -893,14 +893,14 @@ function Verdicts({goProfile,filter}){
           {title:<TH t="研判次数" tip="该员工+该意图被AI研判的总次数(合并前)。≥10次标橙,提示重复性风险。" />,dataIndex:'count',width:90,render:v=><span className="num" style={{fontWeight:700,color:v>=10?'var(--orange)':'var(--ink)'}}>{v}</span>},
           {title:<TH t="最高风险" tip="这些研判中的最高风险分(0-100)。76+严重/56+高危/31+关注。" />,dataIndex:'maxRisk',width:100,render:v=><RiskBadge s={v}/>},
           {title:<TH t="最近" tip="最近一次研判的时间(行为发生时间)。" />,dataIndex:'latest',width:140,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
-          {title:<TH t="最近一次说明" />,dataIndex:'explanation',render:v=><span style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>},
+          {title:<TH t="最近一次说明" />,dataIndex:'explanation',render:v=><span title={v} style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>},
         ]:[
           {title:<TH t="用户" />,dataIndex:'employee',width:110,render:v=><span className="uname" style={{cursor:'inherit'}}>{v}</span>},
           {title:<TH t="时间" tip="研判窗口的起始时间(行为发生时间)。" />,dataIndex:'window_start',width:140,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
           {title:<TH t="意图" tip="AI判定的行为意图。" />,dataIndex:'intent',width:110,render:v=><Tag style={{background:'var(--brand-soft)',color:'var(--brand)',border:'1px solid var(--brand)'+'33'}}>{INTENT[v]||v}</Tag>},
           {title:<TH t="风险" tip="AI对该行为窗口的打分(0-100)。" />,dataIndex:'risk_score',width:90,render:v=><RiskBadge s={v}/>},
           {title:<TH t="来源" tip="AI=大模型判定;兜底=LLM不可用时规则引擎判定。" />,dataIndex:'ai_participated',width:80,render:v=><Tag color={v?'green':'default'}>{v?'AI':'兜底'}</Tag>},
-          {title:<TH t="说明" />,dataIndex:'explanation',render:v=><span style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>},
+          {title:<TH t="说明" />,dataIndex:'explanation',render:v=><span title={v} style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>},
         ]}/>
     </Card>
   </div>);
@@ -974,12 +974,18 @@ function RawLogs(){
         <span style={{fontSize:11,color:'#475569'}}>共 {total} 条（显示 {rows.length}）</span>
       </Space>
       <Table size="small" rowKey="id" pagination={{pageSize:20,showTotal:t=>'共 '+t+' 条'}} loading={loading} dataSource={rows}
+        expandable={{expandedRowRender:r=>(<div style={{background:'var(--bg)',border:'1px solid var(--line)',borderRadius:8,padding:'10px 12px'}}>
+          <div style={{display:'flex',justifyContent:'flex-end',marginBottom:6}}>
+            <Button size="small" onClick={()=>{navigator.clipboard&&navigator.clipboard.writeText(r.msg||'');message.success({content:'已复制全文',duration:1.5});}}><i className="fa-solid fa-copy" style={{marginRight:5}}></i>复制全文</Button>
+          </div>
+          <div style={{fontFamily:'Consolas,monospace',fontSize:12,color:'#334155',whiteSpace:'pre-wrap',wordBreak:'break-all',maxHeight:320,overflow:'auto',lineHeight:1.6}}>{r.msg}</div>
+        </div>)}}
         columns={[
           {title:'接收时间',dataIndex:'received_at',width:150,render:v=><span style={{fontSize:11,color:'#475569'}}>{(v||'').replace('T',' ').slice(0,19)}</span>},
           {title:'类型',dataIndex:'log_type',width:80,render:v=><Tag color={v==='url'?'blue':'default'}>{v||'?'}</Tag>},
           {title:'用户',dataIndex:'user',width:100},
           {title:'应用',dataIndex:'app',width:110,render:v=><span style={{fontSize:11}}>{v||'-'}</span>},
-          {title:'报文原文',dataIndex:'msg',render:v=><span style={{fontFamily:'Consolas,monospace',fontSize:11,color:'#475569',wordBreak:'break-all',display:'block',maxHeight:60,overflow:'auto'}}>{v}</span>},
+          {title:'报文原文',dataIndex:'msg',render:v=><span title={v} style={{fontFamily:'Consolas,monospace',fontSize:11,color:'#475569',display:'block',maxWidth:640,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{v}</span>},
         ]}/>
     </Card>
   </div>);

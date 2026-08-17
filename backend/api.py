@@ -36,11 +36,20 @@ def _pwd_hash(pwd: str, salt: str) -> str:
 
 
 def _ensure_admin():
-    """首次启动:生成 salt 并写入初始密码哈希。"""
-    if not dicts.get_setting("admin_salt"):
-        dicts.set_setting("admin_salt", secrets.token_hex(8))
-    if not dicts.get_setting("admin_pwd"):
-        dicts.set_setting("admin_pwd", _pwd_hash(INITIAL_PWD, dicts.get_setting("admin_salt")))
+    """首次启动:生成 salt 并写入初始密码哈希。
+    用原生 sqlite INSERT OR IGNORE 保证只初始化、永不覆盖已有凭据
+    (旧版"查空则写"在 DB 忙/锁时 get_setting 返回空,会把已改密码误重置)。"""
+    import sqlite3 as _s
+    import db as _db
+    con = _s.connect(_db.DB_PATH, timeout=10)
+    try:
+        con.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
+        salt = secrets.token_hex(8)
+        con.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_salt', ?)", (salt,))
+        con.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_pwd', ?)", (_pwd_hash(INITIAL_PWD, salt),))
+        con.commit()
+    finally:
+        con.close()
         print(f"[auth] 已初始化管理员 {ADMIN_USER},初始密码: {INITIAL_PWD}(请尽快在系统设置中修改)")
 
 
