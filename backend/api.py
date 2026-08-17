@@ -46,8 +46,12 @@ def _ensure_admin():
         con.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
         salt = secrets.token_hex(8)
         con.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_salt', ?)", (salt,))
-        con.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_pwd', ?)", (_pwd_hash(INITIAL_PWD, salt),))
+        real_salt = con.execute("SELECT value FROM settings WHERE key='admin_salt'").fetchone()[0]
+        cur = con.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_pwd', ?)",
+                          (_pwd_hash(INITIAL_PWD, real_salt),))
         con.commit()
+        if cur.rowcount > 0:  # 仅真正首次初始化时提示,避免每次重启误报"已重置"
+            print("[auth] 首次启动:已初始化管理员 admin,初始密码见环境变量(请尽快修改)", flush=True)
     finally:
         con.close()
         print(f"[auth] 已初始化管理员 {ADMIN_USER},初始密码: {INITIAL_PWD}(请尽快在系统设置中修改)")
@@ -311,7 +315,8 @@ def employee(emp: str):
         for e in (s.query(EventRow).filter_by(employee_id=emp)
                   .filter(EventRow.category == "WEB", EventRow.occurred_at >= _since).all()):
             dom = (e.raw or {}).get("domain") or ""
-            sc = dicts.slack_category(dom)
+            lab = (e.raw or {}).get("category") or (e.raw or {}).get("app") or ""
+            sc = dicts.slack_category(dom, lab)
             if sc and e.occurred_at and _is_work_hours(e.occurred_at):
                 _se.append((e.occurred_at, dom, sc))
         _se.sort(key=lambda x: x[0])
@@ -823,11 +828,12 @@ def efficiency():
         # 域名分类按 distinct 域名缓存(数千个)。
         since = bj_now() - timedelta(days=7)
         dom_expr = json_field(EventRow.raw, 'domain')
-        rows = s.query(EventRow.employee_id, EventRow.occurred_at, EventRow.count, dom_expr).filter(
+        lab_expr = func.coalesce(json_field(EventRow.raw, 'category'), json_field(EventRow.raw, 'app'), '')
+        rows = s.query(EventRow.employee_id, EventRow.occurred_at, EventRow.count, dom_expr, lab_expr).filter(
             EventRow.category == "WEB", EventRow.occurred_at >= since).all()
         emp = {}
         dom_cache = {}
-        for emp_id, occ, cnt, dom in rows:
+        for emp_id, occ, cnt, dom, lab in rows:
             r = emp.setdefault(emp_id, {"wh": 0, "slack": 0, "work": 0, "cats": Counter(),
                                         "days": set(), "hours": set(), "stimes": []})
             if occ:
@@ -835,10 +841,11 @@ def efficiency():
                 if _is_work_hours(occ):          # 活跃天数只计工作时段在岗日,深夜/周末加班不稀释日均
                     r["days"].add(occ.date())
             d = dom or ""
-            if d not in dom_cache:
-                cat = dicts.slack_category(d)
-                dom_cache[d] = (cat, (not cat and not dicts.risk_class(d) and bool(dicts.work_category(d))))
-            cat, is_work = dom_cache[d]
+            key = (d, lab or "")
+            if key not in dom_cache:
+                cat = dicts.slack_category(d, lab or "")
+                dom_cache[key] = (cat, (not cat and not dicts.risk_class(d) and bool(dicts.work_category(d))))
+            cat, is_work = dom_cache[key]
             # 只统计工作时段(9-12,14-18,排除午休)的访问构成;非工时事件仅计入在岗天数/时段
             if occ and (9 <= occ.hour < 12 or 14 <= occ.hour < 18):
                 c = cnt or 1
@@ -887,13 +894,14 @@ def efficiency_summary():
     try:
         since = bj_now() - timedelta(days=7)
         dom_expr = json_field(EventRow.raw, 'domain')
-        rows = s.query(EventRow.employee_id, EventRow.occurred_at, EventRow.count, dom_expr).filter(
+        lab_expr = func.coalesce(json_field(EventRow.raw, 'category'), json_field(EventRow.raw, 'app'), '')
+        rows = s.query(EventRow.employee_id, EventRow.occurred_at, EventRow.count, dom_expr, lab_expr).filter(
             EventRow.category == "WEB", EventRow.occurred_at >= since).all()
         emp_slack = defaultdict(list)
-        for emp_id, occ, cnt, dom in rows:
+        for emp_id, occ, cnt, dom, lab in rows:
             if not occ or (emp_id or "").isdigit():  # 跳过无时间 + 访客(纯数字ID)
                 continue
-            cat = dicts.slack_category(dom or "")
+            cat = dicts.slack_category(dom or "", lab or "")
             if cat and (9 <= occ.hour < 12 or 14 <= occ.hour < 18):
                 emp_slack[emp_id].append((occ, cat, cnt or 1))
         # 预筛(≥3次)控成本;按天×类别压缩成文本喂 AI
@@ -1193,16 +1201,16 @@ def _ask_query(action, employee, category=""):
 
 
 # ---------------- AI 规则建议（建议 + 人工确认）----------------
-@app.post("/api/rules/suggest")
-def rules_suggest():
-    """AI 扫未分类高频域名,建议加到风险/摸鱼词库(只返回建议,不写库)。"""
+def _rules_scan_core() -> dict:
+    """AI 扫未分类高频域名,建议加到风险/摸鱼词库(只返回建议,不写库)。
+    手动扫描(端点)与每周自动扫描共用本核心。"""
     import llm_client, json as _json, re as _re
     from collections import Counter
     s = Session()
     try:
         # 优化:SQL 先按域名 group by + count(98万行→几千唯一域名),Python 只对
         # distinct 域名调一次分类函数。旧版逐行调3个分类函数,98万×3次字典遍历,极慢。
-        unclass = Counter(); kw_hits = set()
+        unclass = Counter(); lab_of = {}; kw_hits = set()
         # 含这些关键词的未分类域名即使低频也要扫,避免漏掉新风险/新应用
         RISK_KW = ("job", "zhaopin", "recruit", "resume", "hr", "hire", "cv", "mail",
                    "pan", "disk", "cloud", "drive", "upload", "video", "shop", "mall",
@@ -1216,19 +1224,21 @@ def rules_suggest():
                    "telegram", "whatsapp", "signal",  # 即时通讯(外发)
                    "weibo", "zhihu", "douban", "game", "novel", "comic")
         dom_expr = json_field(EventRow.raw, 'domain')
-        # SQLite: 直接 group by json 提取的 domain 字段
+        # SQLite: 直接 group by json 提取的 domain 字段(+深信服分类标签,喂AI提升判断质量)
         from sqlalchemy import func as _f
-        rows = s.query(dom_expr, _f.count(EventRow.id)).filter(
+        lab_expr = _f.coalesce(json_field(EventRow.raw, 'category'), json_field(EventRow.raw, 'app'), '')
+        rows = s.query(dom_expr, lab_expr, _f.count(EventRow.id)).filter(
             EventRow.category == "WEB", dom_expr.isnot(None)
-        ).group_by(dom_expr).all()
+        ).group_by(dom_expr, lab_expr).all()
         cls_cache = {}
-        for d, n in rows:
+        for d, lab, n in rows:
             d = (d or "").strip()
             if not d:
                 continue
+            lab_of.setdefault(d, lab or "")
             cls = cls_cache.get(d)
             if cls is None:
-                cls = "risk" if dicts.risk_class(d) else ("slack" if dicts.slack_category(d) else ("work" if dicts.work_category(d) else "unclass"))
+                cls = "risk" if dicts.risk_class(d) else ("slack" if dicts.slack_category(d, lab_of.get(d) or "") else ("work" if dicts.work_category(d) else "unclass"))
                 cls_cache[d] = cls
             if cls == "unclass":
                 unclass[d] += n
@@ -1256,7 +1266,7 @@ def rules_suggest():
                  "cat: 仅 target=slack_domains 时填 视频/社交/购物/资讯/音乐 之一,否则空字符串。\n"
                  "reason: 一句中文,说明判断依据。\n"
                  "原则:宁可多标 suspect_new 让人工复核,也不要漏掉可疑域名。只输出 JSON 数组。")
-        user = "域名列表(域名 出现次数):\n" + "\n".join(f"{d} {n}" for d, n in top)
+        user = "域名列表(域名 出现次数 深信服分类):\n" + "\n".join(f"{d} {n} {lab_of.get(d,'') or '-'}" for d, n in top)
         raw = llm_client.chat([{"role": "system", "content": sys_p}, {"role": "user", "content": user}],
                               max_tokens=1500, timeout=120)
         m = _re.search(r"\[.*\]", raw, _re.S)
@@ -1272,6 +1282,48 @@ def rules_suggest():
         return {"suggestions": suggestions}
     finally:
         s.close()
+
+
+@app.post("/api/rules/suggest")
+def rules_suggest():
+    """手动触发 AI 规则扫描(前端"开始扫描"按钮)。"""
+    return _rules_scan_core()
+
+
+def auto_rules_scan():
+    """每周自动开集扫描(由 syslog 维护循环触发):结果存 settings 供前端展示,
+    发现 suspect_new/风险类建议时推 webhook 提醒人工审核。永不自动写字典。"""
+    import json as _json
+    try:
+        r = _rules_scan_core()
+        sugs = r.get("suggestions") or []
+        dicts.set_setting("auto_rules_suggestions", _json.dumps(sugs, ensure_ascii=False)[:200000])
+        dicts.set_setting("auto_rules_last_run", bj_now().isoformat())
+        hot = [x for x in sugs if x.get("target") == "suspect_new"]
+        risk = [x for x in sugs if x.get("target") and x.get("target") != "ignore"
+                and x.get("target") != "slack_domains" and x.get("target") != "suspect_new"]
+        print(f"[auto-scan] 开集扫描完成: {len(sugs)}条建议, 疑似新风险{len(hot)}, 风险类{len(risk)}", flush=True)
+        if hot or risk:
+            import pipeline as _pl
+            names = ", ".join((x.get("domain") or "?") for x in (hot + risk)[:8])
+            _pl._notify_webhook("AI规则扫描", 0,
+                                f"本周自动扫描发现 {len(hot)} 条疑似新风险 / {len(risk)} 条风险类建议: {names} …"
+                                f"请到 系统设置→字典&AI规则 审核(仅人工采纳后生效)")
+    except Exception as e:
+        print(f"[auto-scan] 失败: {e}", flush=True)
+
+
+@app.get("/api/rules/auto")
+def rules_auto_status():
+    """自动扫描状态: 上次时间+待审建议(前端展示);也供维护循环判断是否到期。"""
+    import json as _json
+    last = dicts.get_setting("auto_rules_last_run") or ""
+    sugs = []
+    try:
+        sugs = _json.loads(dicts.get_setting("auto_rules_suggestions") or "[]")
+    except Exception:
+        pass
+    return {"last_run": last, "suggestions": sugs}
 
 
 @app.post("/api/rules/apply")

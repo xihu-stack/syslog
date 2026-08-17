@@ -39,6 +39,8 @@ DEFAULTS = {
         "网盘", "数据恢复", "匿名", "匿名邮箱", "临时邮箱", "绕过", "外发", "解密",
         "破解", "泄密", "u盘启动", "文件恢复", "截图", "窃取",
     ],
+    "slack_whitelist_domains": [],   # 摸鱼豁免白名单:公司业务需要访问的娱乐类站(命中不算摸鱼)
+    "risk_whitelist_domains": [],    # 风险豁免白名单:公司采购的正规网盘/企业邮箱等(命中不进风险识别)
     "slack_domains": {
         "视频": ["bilibili.com", "douyin.com", "iesdouyin.com", "snssdk.com", "kuaishou.com",
                 "youku.com", "iqiyi.com", "mgtv.cn", "youtube.com", "fun.tv"],
@@ -237,10 +239,14 @@ def _match_domain(domain: str, pat: str) -> bool:
 
 
 def risk_class(domain: str):
-    """域名 → 高风险类别中文标签（如"远程控制"/"网盘/云盘"）；非高风险返回 None。"""
+    """域名 → 高风险类别中文标签（如"远程控制"/"网盘/云盘"）；非高风险返回 None。
+    白名单 risk_whitelist_domains 命中直接豁免(公司采购的正规网盘/企业邮箱等)。"""
     d = (domain or "").lower()
     if not d:
         return None
+    for dom in get("risk_whitelist_domains") or []:
+        if d == dom or d.endswith("." + dom):
+            return None
     for label, pats in risk_patterns():
         for p in pats:
             if _match_domain(d, p):
@@ -287,13 +293,47 @@ _SLACK_SDK_HINT = ("api.", "sdk", "audid", "fourier", "nbsdk", "log.", "error.",
                    "mqtt.", "sugar.", "datahub.", "doubanio", "umdcv4", "cloudvideocdn", "rta",
                    "cloud.video", "stat.", "analytics.", "monitor.", "ping.", "collector")
 
+# 基础设施/CDN/连通性探测子域(任何分类标签下都不算摸鱼——是机器流量不是人在娱乐)
+_SLACK_INFRA_HINT = ("cdn", "cds", "cache", "static", "assets", "geo", "connectivity", "smtcdns",
+                     "xboxservices", "userconte", "cloudcache", "adobecces", "hypothes", "pendo",
+                     "schemaapp", "id5-sync", "tls", "ocsp", "crl", "ntp", "diag")
 
-def slack_category(domain: str):
-    """域名 → 摸鱼类别(视频/社交/购物/资讯/音乐);排除SDK埋点;非摸鱼返回 None。
-    摸鱼域名存 DB DictRow(slack_domains, object{cat:[domains]}),可后台/AI动态更新。"""
+# 深信服行业分类标签 → 摸鱼类别的映射规则(主识别通道):
+# 覆盖率100%的专业分类库替代逐域名枚举字典;字典降级为"未识别兜底+细分补充"。
+DEFAULT_SLACK_CLASS_RULES = {
+    "pos": ["娱乐", "视频", "游戏", "购物", "音乐", "直播", "小说", "漫画", "体育", "电影", "短视频"],
+    "neg": ["会议", "企业", "远程", "协助", "更新", "推送", "基础服务", "文件", "Outlook", "Teams",
+            "skype", "Skype", "微信PC版", "网盘", "邮件", "代理", "管家", "同步"],
+    "map": {"视频": "视频", "直播": "视频", "游戏": "游戏", "购物": "购物", "音乐": "音乐",
+            "娱乐": "资讯", "体育": "资讯", "小说": "资讯", "漫画": "资讯", "电影": "视频", "短视频": "视频"},
+}
+
+
+def slack_category(domain: str, label: str = None):
+    """域名+深信服分类标签 → 摸鱼类别;非摸鱼返回 None。
+
+    识别优先级(2026-08-17 架构调整:分类库为主,字典为辅):
+      1. 白名单 slack_whitelist_domains → 直接豁免(公司业务需要访问的娱乐站等)
+      2. 基础设施/SDK 子域 → 排除(机器流量)
+      3. 深信服行业分类标签命中规则(slack_class_rules) → 按标签归类【主通道】
+      4. slack_domains 域名字典 → 兜底(标签缺失/未识别应用时)
+    label = 报文里的网站分类(raw.category 或 raw.app),未知传 None 走字典兜底。"""
     d = (domain or "").lower()
     if not d or any(d.startswith(h) or h in d for h in _SLACK_SDK_HINT):
         return None
+    for dom in get("slack_whitelist_domains") or []:
+        if d == dom or d.endswith("." + dom):
+            return None
+    if d.split(".")[0] in _SLACK_INFRA_HINT or any(k in d for k in _SLACK_INFRA_HINT):
+        return None
+    lab = (label or "").strip()
+    if lab and lab != "-":
+        rules = get("slack_class_rules") or DEFAULT_SLACK_CLASS_RULES
+        if isinstance(rules, dict) and any(k in lab for k in rules.get("pos", [])) \
+                and not any(k in lab for k in rules.get("neg", [])):
+            for kw, cat in (rules.get("map") or {}).items():
+                if kw in lab:
+                    return cat
     cats = get("slack_domains")
     if not isinstance(cats, dict):
         return None

@@ -1124,11 +1124,12 @@ function Handbook(){
       ['招聘网站','单次低频=正常;反复访问(≥3次)或凌晨→求职意图'],
       ['风险分档','0-30 正常 / 31-60 关注(蓝) / 61-85 高危(橙) / 86+ 严重(红),AI 按锚点打分+代码兜底校准'],
     ]},
-    {id:'dict',icon:'fa-book-bookmark',title:'5. 字典维护与 AI 规则建议',body:<><p>所有风险/摸鱼/工作域名都是<b>数据库字典</b>,在 系统设置→字典&AI规则 直接增删保存,立即生效(无需重启)。新网盘、新招聘站在这里加。</p>
-      <p><b>AI 规则建议</b>:点"开始扫描"→系统扫未分类高频域名→AI 判断归类→<b>必须人工点"采纳"才写入</b>(不点永不生效)。红色 <b>⚠️疑似新风险</b> 是 AI 不确定归类的可疑域名(未知网盘/匿名传输/内网穿透等),采纳时需人工指定归入哪类。</p>
-      <p className="hb-tip">建议每周跑一次扫描,持续堵住新风险类型的遗漏。</p></>},
+    {id:'dict',icon:'fa-book-bookmark',title:'5. 识别架构与字典维护',body:<><p><b>识别架构(2026-08 起:分类库为主,字典为辅)</b>:深信服给每条访问自带行业分类标签(覆盖率100%),娱乐/视频/游戏/购物类标签直接判定摸鱼——字典枚举不再是唯一来源,新增冷门娱乐站自动被分类库兜住。风险域名字典继续负责精确判定;分类标签同时喂给 AI 开集扫描提升判断质量。</p>
+      <p><b>白名单</b>:slack_whitelist(公司业务需要访问的娱乐站,不算摸鱼)/ risk_whitelist(公司采购的正规网盘、企业邮箱等,不进风险识别)。误报多了往白名单加,比反复标误报更治本。</p>
+      <p><b>AI 规则建议(手动+自动)</b>:系统<b>每周自动扫描</b>一次未分类高频域名,AI 判断归类,发现疑似新风险时推送到告警 webhook;也可随时点"开始扫描"手动跑。<b>所有建议必须人工点"采纳"才写入</b>(不点永不生效)。红色 <b>⚠️疑似新风险</b> 是 AI 不确定归类的可疑域名,采纳时需人工指定归入哪类。</p>
+      <p className="hb-tip">自动扫描把"新风险类型的发现延迟"从"永远(没人点)"压缩到"最多一周"。</p></>},
     {id:'eff',icon:'fa-mug-hot',title:'6. 效率监控口径',items:[
-      ['统计范围','工作时段 9-12、14-18(排除午休),娱乐类域名访问'],
+      ['统计范围','工作时段 9-12、14-18(排除午休);娱乐判定=深信服行业分类标签(视频/游戏/购物等,覆盖率100%)为主+摸鱼字典兜底,白名单豁免,SDK/CDN机器流量排除'],
       ['日均摸鱼','按天聚合:同天 ≤30分钟间隔连段;段时长=桶数×10分钟封顶(防碎片虚高)、单次保底5分钟;合计÷活跃天数'],
       ['重度摸鱼','日均 ≥60 分钟才算(大屏口径与此一致),可按 全部/≥30/≥60/≥2h 分档'],
       ['估算说明','日志只有访问时刻无停留时长,以上为<b>估算值</b>,量级参考而非精确计时'],
@@ -1226,6 +1227,8 @@ function Config(){
     await PUTJ('/api/config',body); setSaving(false); message.success('已保存'); load(); };
   const saveDict=async(n,val)=>{ await PUTJ('/api/dicts/'+n,val); message.success('已保存'); };
   const loadSugs=async()=>{ setLoadingSug(true); const r=await POST('/api/rules/suggest'); setSugs(r.suggestions||[]); setLoadingSug(false); };
+  const [autoSug,setAutoSug]=useState(null);
+  useEffect(()=>{ GET('/api/rules/auto').then(setAutoSug).catch(()=>{}); },[]);
   const applySug=async(s,target)=>{
     // suspect_new 是"AI不确定归哪类",采纳时必须人工指定真实字典(防误归类)
     const tgt = target || (s.target==='suspect_new' ? null : s.target);
@@ -1238,7 +1241,7 @@ function Config(){
   const toggleSys=async(on)=>{ await POST('/api/syslog/'+(on?'start':'stop')); message.success(on?'已启动':'已停止'); load(); };
   const uploadLog=f=>{ const fd=new FormData(); fd.append('file',f); message.loading({content:'导入中…',key:'up',duration:0});
     fetch('/api/ingest',{method:'POST',headers:_authHdr(),body:fd}).then(r=>r.json()).then(r=>message.success({content:'已导入 '+r.imported+' 条',key:'up',duration:2})); return false; };
-  const DM={sensitive_keywords:'敏感文件名关键词',recruitment_sites:'招聘网站域名',netdisk_domains:'网盘域名',personal_email_domains:'个人邮箱域名',job_search_terms:'求职搜索词',risk_search_terms:'高危搜索词',work_domains:'工作网站白名单(算工作占比)',remote_control_domains:'远程控制工具(降权,凌晨才告警)',vpn_domains:'VPN/翻墙工具(已停用·翻墙非违规)',code_repo_domains:'代码仓库(降权,凌晨才告警)',wechat_file_domains:'微信文件助手(外发通道)',ai_assistant_domains:'AI助手(ChatGPT/DeepSeek等,高频才告警)'};
+  const DM={sensitive_keywords:'敏感文件名关键词',recruitment_sites:'招聘网站域名',netdisk_domains:'网盘域名',personal_email_domains:'个人邮箱域名',job_search_terms:'求职搜索词',risk_search_terms:'高危搜索词',work_domains:'工作网站白名单(算工作占比)',remote_control_domains:'远程控制工具(降权,凌晨才告警)',vpn_domains:'VPN/翻墙工具(已停用·翻墙非违规)',code_repo_domains:'代码仓库(降权,凌晨才告警)',wechat_file_domains:'微信文件助手(外发通道)',ai_assistant_domains:'AI助手(ChatGPT/DeepSeek等,高频才告警)',slack_whitelist_domains:'摸鱼豁免白名单(公司业务需要的娱乐站,不算摸鱼)',risk_whitelist_domains:'风险豁免白名单(公司采购的正规网盘/邮箱等,不进风险识别)'};
   return (
     <Tabs defaultActiveKey="model" items={[
       {key:'pwd', label:'修改密码', children:<PwdCard/>},
@@ -1290,9 +1293,11 @@ function Config(){
       {key:'dict', label:'字典&AI规则', children:<>
         <Card className="card" title="AI 规则建议（扫未分类高频域名→AI 分类）" size="small" style={{marginBottom:16}}
           extra={<Button size="small" type="primary" loading={loadingSug} onClick={loadSugs}>{sugs?'重新扫描':'开始扫描'}</Button>}>
-          {sugs===null ? <Typography.Text type="secondary" style={{fontSize:12}}>点击"开始扫描"，AI 分析高频未分类域名并建议归类，采纳后写入对应词库。</Typography.Text>:
-           sugs.length===0 ? <Typography.Text type="secondary" style={{fontSize:12}}>暂无建议。</Typography.Text>:
-           <Table size="small" rowKey="domain" pagination={{pageSize:8}} dataSource={sugs}
+          {sugs===null&&!(autoSug&&(autoSug.suggestions||[]).length) ? <Typography.Text type="secondary" style={{fontSize:12}}>点击"开始扫描"，AI 分析高频未分类域名并建议归类，采纳后写入对应词库。系统每周也会自动扫描一次，结果在此展示。</Typography.Text>:
+           (sugs!==null&&sugs.length===0)? <Typography.Text type="secondary" style={{fontSize:12}}>暂无建议。</Typography.Text>:
+           <div>
+           {sugs===null&&autoSug&&<Alert type="info" showIcon style={{marginBottom:8}} message={"⏰ 每周自动扫描结果("+((autoSug.last_run||'').slice(0,16).replace('T',' '))+")· "+((autoSug.suggestions||[]).length)+" 条待审 · 与手动扫描一样,人工点采纳才生效"}/>}
+           <Table size="small" rowKey="domain" pagination={{pageSize:8}} dataSource={sugs!==null?sugs:(autoSug.suggestions||[])}
              columns={[
                {title:'域名',dataIndex:'domain',render:v=><span className="num" style={{fontSize:12}}>{v}</span>},
                {title:'命中',dataIndex:'hits',width:60,render:v=><span style={{color:'#94a3b8'}}>{v}</span>},
@@ -1307,7 +1312,7 @@ function Config(){
                  if(r.target==='suspect_new') return <Button size="small" danger onClick={()=>applySug(r)}>采纳</Button>;
                  return <Button size="small" type="primary" onClick={()=>applySug(r)}>采纳</Button>;
                }},
-             ]}/>}
+             ]}/>}</div>}
           <Alert type="info" showIcon style={{marginTop:8}} message="AI 建议仅供参考，点'采纳'才写入词库生效（影响后续研判）。红色⚠️疑似新风险需人工指定归类。不放心可忽略。"/>
         </Card>
         <Modal open={!!sugModal} title={sugModal?('疑似新风险 — '+sugModal.domain):''} okText="采纳" cancelText="取消"

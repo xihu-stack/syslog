@@ -67,6 +67,30 @@ def _flush_events():
             _state["error"] = f"入库失败: {e}"
 
 
+def _maybe_auto_scan():
+    """每7天自动跑一次 AI 开集扫描(发现新的风险/摸鱼域名可能性)。
+    结果只存建议+webhook提醒,永不自动写字典——人工采纳才生效。"""
+    import dicts
+    from datetime import timedelta
+    from db import bj_now
+    last = dicts.get_setting("auto_rules_last_run") or ""
+    try:
+        from datetime import datetime
+        last_dt = datetime.fromisoformat(last)
+    except Exception:
+        last_dt = None
+    if last_dt and bj_now() - last_dt < timedelta(days=7):
+        return
+
+    def _run():
+        try:
+            from api import auto_rules_scan
+            auto_rules_scan()
+        except Exception as e:
+            print(f"[auto-scan] 触发失败: {e}", flush=True)
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def _flush_loop():
     """每30秒刷新一次事件缓冲（收到 syslog 后近实时入库+研判）。每小时清理一次过期事件。"""
     print("[flush-loop] 启动", flush=True)
@@ -79,6 +103,7 @@ def _flush_loop():
             pipeline.cleanup_old_events(int(dicts.get_setting("retention_days", "90")))
             pipeline.cleanup_old_raw_logs(int(dicts.get_setting("raw_logs_retention_days", "7")))
             pipeline.auto_close_alerts()
+            _maybe_auto_scan()  # 每周自动开集扫描(到期才真正跑)
         except Exception:
             pass
     if _state["enabled"]:
