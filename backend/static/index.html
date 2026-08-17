@@ -216,23 +216,21 @@
 <script>window.onerror=function(m,s,l,c,e){var d=document.getElementById('root');if(d)d.innerHTML='<div style="padding:30px;color:#c0392b;font-family:monospace;white-space:pre-wrap">前端出错：'+(e&&e.stack||m)+'\n\n请截图发我。</div>';return false;};</script>
 <script type="text/babel">
 const { Layout, Menu, Card, Row, Col, Table, Tag, Button, Input, Form, message, Select, Modal,
-        Space, Upload, Divider, Typography, Badge, Empty, Descriptions, Alert, Radio, ConfigProvider, Statistic, Segmented, Tooltip, Progress, Tabs, DatePicker } = antd;
+        Space, Upload, Divider, Typography, Badge, Empty, Descriptions, Alert, Radio, ConfigProvider, Statistic, Segmented, Tooltip, Progress, Tabs, DatePicker, InputNumber } = antd;
 const { Sider, Header, Content } = Layout;
 const { useState, useEffect, useRef, useSyncExternalStore } = React;
 
-/* AI问答会话: 模块级store(跨页/刷新保留,切页后台继续生成) */
-const ASK_KEY='bg_ask_history';
-let _askStore={msgs:[],sending:false,subs:new Set()};
-try{const sv=JSON.parse(localStorage.getItem(ASK_KEY)||'null');if(sv&&Array.isArray(sv.msgs))_askStore.msgs=sv.msgs.slice(-60);}catch(e){}
-function _askSet(patch){ _askStore={..._askStore,...patch};
-  if('msgs' in patch){ try{localStorage.setItem(ASK_KEY,JSON.stringify({msgs:_askStore.msgs.slice(-60)}));}catch(e){} }
-  _askStore.subs.forEach(f=>f()); }
+/* AI问答会话: 模块级store + 服务端历史(跨浏览器/设备保留,切页后台继续生成) */
+let _askStore={msgs:[],sending:false,subs:new Set(),loaded:false};
+function _askSet(patch){ _askStore={..._askStore,...patch}; _askStore.subs.forEach(f=>f()); }
 const _askSend=async(question)=>{
   if(!question||_askStore.sending)return;
   _askSet({msgs:[..._askStore.msgs,{role:'user',text:question}],sending:true});
   const r=await POST('/api/ask',{headers:{'Content-Type':'application/json'},body:JSON.stringify({question})});
   _askSet({msgs:[..._askStore.msgs,{role:'ai',text:(r&&r.answer)||'（无回答）'}],sending:false});
 };
+const _askLoad=async()=>{ const r=await GET('/api/ask/history'); if(r&&r.items) _askSet({msgs:r.items.flatMap(h=>[{role:'user',text:h.question},{role:'ai',text:h.answer}])}); };
+const _askClear=async()=>{ await fetch('/api/ask/history',{method:'DELETE',headers:_authHdr()}); _askSet({msgs:[]}); };
 
 const LVL = s => (s==null)?{c:'#94a3b8',l:'-'} : s>=76?{c:'#ef4444',l:'严重'} : s>=56?{c:'#f97316',l:'高危'} : s>=31?{c:'#3b82f6',l:'关注'} : {c:'#22c55e',l:'正常'};
 const INTENT = {data_exfiltration:'数据外发', job_seeking:'求职离职', baseline_deviation:'行为偏离', policy_violation:'违规', normal_work:'正常', unknown:'未知'};
@@ -602,12 +600,11 @@ function Dashboard({go, goProfile}){
   useEffect(()=>{
     const days=sys.alerts_by_day||[];
     if(days.length&&alertTrend.current){
-      if(alertTrendChart.current){alertTrendChart.current.dispose();alertTrendChart.current=null;}
-      const c=echarts.init(alertTrend.current); alertTrendChart.current=c;
-      c.setOption({tooltip:{trigger:'axis'},grid:{left:40,right:20,top:30,bottom:30},
+      if(!alertTrendChart.current){ alertTrendChart.current=echarts.init(alertTrend.current); }
+      alertTrendChart.current.setOption({tooltip:{trigger:'axis'},grid:{left:40,right:20,top:30,bottom:30},
         xAxis:{type:'category',data:days.map(d=>d[0].slice(5)),axisLabel:{color:'#94a3b8'}},
         yAxis:{type:'value',axisLabel:{color:'#94a3b8'},splitLine:{lineStyle:{color:'var(--bg)'}}},
-        series:[{type:'bar',data:days.map(d=>d[1]),itemStyle:{color:'#6366f1',borderRadius:[6,6,0,0]},label:{show:true,position:'top',color:'var(--ink2)'}}]});
+        series:[{type:'bar',data:days.map(d=>d[1]),itemStyle:{color:'#6366f1',borderRadius:[6,6,0,0]},label:{show:true,position:'top',color:'var(--ink2)'}}]},true);
     }
   },[sys]);
   const SRC={"sangfor":"深信服","ipguard":"IP-Guard","":"未知"};
@@ -826,13 +823,18 @@ function Alerts({goProfile,filter}){
   const [rows,setRows]=useState(null); const [q,setQ]=useState(''); const [lvl,setLvl]=useState((filter&&filter.lvl)||'all');
   const [scenario,setScenario]=useState((filter&&filter.scenario)||'all');
   const [lastUpd,setLastUpd]=useState(null); const [loading,setLoading]=useState(true);
+  const [cfModal,setCfModal]=useState({open:false,vid:0,note:''});
   const load=async()=>{const p=new URLSearchParams();p.set('limit','300');if(when!=='all')p.set('when',when);if(statusF!=='all')p.set('status',statusF);const r=await GETL('/api/alerts?'+p.toString());setRows(r);setLastUpd(new Date());setLoading(false);};
   useEffect(()=>{ load(); const t=setInterval(load,15000); return ()=>clearInterval(t); },[when,statusF]);
-  const doConfirm=(e,vid)=>{ e.stopPropagation(); POST('/api/verdicts/'+vid+'/confirm').then(()=>{ message.success('已确认'); load(); }); };
-  const [fpModal,setFpModal]=useState({open:false,vid:0,intent:'',emp:'',reason:'岗位需要',allScenarios:[]});
-  const doFP=(e,r)=>{ e.stopPropagation(); setFpModal({open:true,vid:r.verdict_id,intent:r.intent,emp:r.employee,reason:'岗位需要',allScenarios:r.scenarios||[{label:r.intent}]}); };
+  const doConfirm=(e,vid)=>{ e.stopPropagation(); setCfModal({open:true,vid,note:''}); };
+  const submitConfirm=()=>{
+    POST('/api/verdicts/'+cfModal.vid+'/confirm?reason='+encodeURIComponent(cfModal.note||'')).then(()=>{ message.success('已确认'); setCfModal({...cfModal,open:false}); load(); });
+  };
+  const [fpModal,setFpModal]=useState({open:false,vid:0,intent:'',emp:'',reason:'岗位需要',note:'',allScenarios:[]});
+  const doFP=(e,r)=>{ e.stopPropagation(); setFpModal({open:true,vid:r.verdict_id,intent:r.intent,emp:r.employee,reason:'岗位需要',note:'',allScenarios:r.scenarios||[{label:r.intent}]}); };
   const submitFP=()=>{
-    POST('/api/verdicts/'+fpModal.vid+'/false_positive?reason='+encodeURIComponent(fpModal.reason)+'&signal_type='+fpModal.intent+'&expires_days='+(fpModal.reason==='临时项目'?'30':'0')).then(()=>{ message.success('已标记误报，后续同类不再告警'); setFpModal({...fpModal,open:false}); load(); });
+    const fullReason=fpModal.reason+(fpModal.note.trim()?' | '+fpModal.note.trim():'');
+    POST('/api/verdicts/'+fpModal.vid+'/false_positive?reason='+encodeURIComponent(fullReason)+'&signal_type='+fpModal.intent+'&expires_days='+(fpModal.reason==='临时项目'?'30':'0')).then(()=>{ message.success('已标记误报，后续同类不再告警'); setFpModal({...fpModal,open:false}); load(); });
   };
   const scenSet=[...new Set((rows||[]).map(r=>r.scenario).filter(Boolean))];
   const agData=(()=>{const filtered=(rows||[]).filter(v=>{if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;if(lvl==='crit'&&v.risk_score<76)return false;if(lvl==='high'&&(v.risk_score<56||v.risk_score>75))return false;if(lvl==='mid'&&(v.risk_score<31||v.risk_score>55))return false;if(scenario!=='all'&&v.scenario!==scenario)return false;return true;});const ag={};filtered.forEach(v=>{if(!ag[v.employee])ag[v.employee]={key:v.employee,employee:v.employee,scenarios:[],maxRisk:0,count:0,latest:v.window_start,summary:'',verdict_id:v.verdict_id,intent:v.scenario};const g=ag[v.employee];const sc=INTENT[v.scenario]||v.scenario;if(!g.scenarios.find(s=>s.label===sc))g.scenarios.push({label:sc,risk:v.risk_score});if((v.risk_score||0)>g.maxRisk){g.maxRisk=v.risk_score;g.summary=v.summary;g.verdict_id=v.verdict_id;g.intent=v.scenario;}g.count++;if(v.window_start>g.latest)g.latest=v.window_start;});return Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);})();
@@ -900,8 +902,18 @@ function Alerts({goProfile,filter}){
         <Select.Option value="临时项目">临时项目（30天有效）</Select.Option>
         <Select.Option value="误报">一般误报（不创建豁免）</Select.Option>
       </Select>
+      <div style={{marginTop:10}}>
+        <Typography.Text type="secondary" style={{fontSize:12}}>备注（可选，留痕到反馈记录）：</Typography.Text>
+        <Input placeholder="如：已线下核实，属客户交付需要" value={fpModal.note} onChange={e=>setFpModal({...fpModal,note:e.target.value})} style={{marginTop:4}}/>
+      </div>
       <Alert type="info" showIcon style={{marginTop:12}}
         message={"将豁免「"+(INTENT[fpModal.intent]||fpModal.intent)+"」场景，其他场景仍正常监控。AI会记住此标签。"} />
+    </Modal>
+    <Modal open={cfModal.open} title="确认告警" okText="确认" cancelText="取消"
+      onCancel={()=>setCfModal({...cfModal,open:false})} onOk={submitConfirm}>
+      <div style={{marginBottom:8,color:'var(--ink2)',fontSize:13}}>确认此告警为真实风险？确认后状态变为「已确认」。</div>
+      <Typography.Text type="secondary" style={{fontSize:12}}>处理备注（可选，留痕到反馈记录）：</Typography.Text>
+      <Input placeholder="如：已通知部门负责人核实" value={cfModal.note} onChange={e=>setCfModal({...cfModal,note:e.target.value})} style={{marginTop:4}}/>
     </Modal>
   </div>);
 }
@@ -1055,12 +1067,13 @@ function Ask(){
   const store=useSyncExternalStore(cb=>{_askStore.subs.add(cb);return()=>_askStore.subs.delete(cb);},()=>_askStore);
   const [q,setQ]=useState('');
   const boxRef=useRef(null);
+  useEffect(()=>{ if(!_askStore.loaded){ _askStore.loaded=true; _askLoad(); } },[]);
   const msgs=store.msgs; const sending=store.sending;
   const send=()=>{ if(!q.trim()||sending)return; const question=q.trim(); setQ(''); _askSend(question); };
   useEffect(()=>{ if(boxRef.current) boxRef.current.scrollTop=boxRef.current.scrollHeight; },[msgs.length,sending]);
   return (<div style={{display:'flex',flexDirection:'column',maxWidth:920,margin:'0 auto',width:'100%'}}>
     <div className="sec-title">AI 问答 · 基于行为数据回答 · <span style={{fontSize:11,color:'#94a3b8'}}>可问:某员工风险行为 / 告警榜 / 摸鱼榜 / 在岗情况 / 规则说明 · 对话跨页保留</span>
-      {msgs.length>0&&<a style={{marginLeft:12,fontSize:11,color:'var(--ink3)',cursor:'pointer'}} onClick={()=>_askSet({msgs:[]})}><i className="fa-solid fa-eraser" style={{marginRight:4}}></i>清空对话</a>}
+      {msgs.length>0&&<a style={{marginLeft:12,fontSize:11,color:'var(--ink3)',cursor:'pointer'}} onClick={_askClear}><i className="fa-solid fa-eraser" style={{marginRight:4}}></i>清空对话</a>}
     </div>
     <div ref={boxRef} style={{minHeight:200,maxHeight:'calc(100vh - 280px)',overflow:'auto',background:'#fff',border:'1px solid var(--line)',borderRadius:12,padding:12,boxShadow:'0 1px 3px rgba(15,23,42,.04)'}}>
       {msgs.length===0?<Empty description="提问开始对话（如：今天谁摸鱼最多？张三有什么风险行为？今天有哪些告警？）" style={{paddingTop:60}}/>:
@@ -1137,7 +1150,13 @@ function Handbook(){
 git pull                                  # 拉最新代码
 docker compose up -d --build              # 标准方式(重建镜像)
 # 注意:容器代码是 COPY 进镜像的,docker restart 不会更新代码;
-# 临时热修可 docker cp 到 /app/ 后 restart,但下次 build 前记得先 git 提交</pre><p className="hb-tip">前端更新后浏览器要强刷:URL 加 <code>?cb=任意新值</code>(如 index.html?cb=2026),否则走缓存看不到新版。</p></>},
+# 临时热修可 docker cp 到 /app/ 后 restart,但下次 build 前记得先 git 提交
+
+# 自动备份(已配置,每天 02:00 执行,保留最近 7 份)
+/root/syslog/backup.sh                    # 手动触发一次备份
+ls -lh /root/syslog/backups/              # 查看备份文件(约200M/份)
+# 恢复: 停容器 → 解压覆盖 → 起容器
+gunzip ipguard_XXXX.db.gz && docker cp ipguard_XXXX.db ipguard-ai:/app/data/ipguard.db && docker restart ipguard-ai</pre><p className="hb-tip">前端更新后浏览器要强刷:URL 加 <code>?cb=任意新值</code>(如 index.html?cb=2026),否则走缓存看不到新版。</p></>},
     {id:'faq',icon:'fa-circle-question',title:'10. 常见问题 FAQ',items:[
       ['页面数字没更新/样式旧','浏览器缓存。URL 加 ?cb=新值 强刷(见 §9)'],
       ['AI 问答转圈/超时','问答含两次大模型调用,4-10 秒正常;超过1分钟查 LLM 服务是否可用(系统设置→模型配置)'],
@@ -1240,6 +1259,16 @@ function Config(){
         <div style={{marginBottom:8}}>
           <Typography.Text style={{fontSize:12}}>告警推送地址（留空不推）</Typography.Text>
           <Input placeholder="https://oapi.dingtalk.com/robot/send?access_token=..." defaultValue={cfg.notify_webhook||''} onChange={debounce(e=>PUTJ('/api/config',{notify_webhook:e.target.value}), 800)} />
+        </div>
+        <div style={{marginBottom:8,padding:'10px 12px',background:'var(--bg)',borderRadius:8}}>
+          <Typography.Text style={{fontSize:12}}>数据保留（自动滚动清理，改动即时生效）：</Typography.Text>
+          <div style={{display:'flex',gap:16,marginTop:6,alignItems:'center'}}>
+            <span style={{fontSize:12,color:'var(--ink2)'}}>分析事件保留</span>
+            <InputNumber size="small" min={30} max={365} defaultValue={parseInt(cfg.retention_days)||90} onChange={debounce(v=>v&&PUTJ('/api/config',{retention_days:String(v)}),800)} style={{width:70}} addonAfter="天"/>
+            <span style={{fontSize:12,color:'var(--ink2)'}}>原始报文保留</span>
+            <InputNumber size="small" min={1} max={90} defaultValue={parseInt(cfg.raw_logs_retention_days)||7} onChange={debounce(v=>v&&PUTJ('/api/config',{raw_logs_retention_days:String(v)}),800)} style={{width:70}} addonAfter="天"/>
+          </div>
+          <Typography.Text type="secondary" style={{fontSize:11,display:'block',marginTop:4}}>事件用于画像基线与统计，建议 ≥90 天；原始报文仅排查用，7 天足够。</Typography.Text>
         </div>
         <div style={{marginBottom:8}}><Badge status={syslog.enabled?'success':'default'} text={syslog.enabled?'监听中（已收 '+syslog.count+' 条，入库 '+syslog.ingested+' 条）':'未启用'}/>
           <Button size="small" type="primary" ghost={syslog.enabled} danger={syslog.enabled} onClick={()=>toggleSys(!syslog.enabled)} style={{marginLeft:8}}>{syslog.enabled?'停止':'启动'}</Button></div>

@@ -122,6 +122,14 @@ class FeedbackRow(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class AskHistoryRow(Base):
+    __tablename__ = "ask_history"
+    id = Column(Integer, primary_key=True)
+    question = Column(Text)
+    answer = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class DictRow(Base):
     __tablename__ = "dicts"
     id = Column(Integer, primary_key=True)

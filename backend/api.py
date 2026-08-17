@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import desc, func
 
-from db import (AlertRow, EventRow, ExceptionRow, FeedbackRow, ProfileRow, RawLogRow, Session, VerdictRow, bj_now, init_db, json_field)
+from db import (AlertRow, AskHistoryRow, EventRow, ExceptionRow, FeedbackRow, ProfileRow, RawLogRow, Session, VerdictRow, bj_now, init_db, json_field)
 import pipeline
 import profiles
 import dicts
@@ -77,14 +77,31 @@ async def _auth_guard(request: Request, call_next):
     return await call_next(request)
 
 
+_LOGIN_FAILS: dict = {}      # 用户名 -> {"n":连续失败数, "until":锁定截止epoch};防暴力破解
+
+
+def _login_locked(u: str) -> bool:
+    f = _LOGIN_FAILS.get(u)
+    return bool(f and f.get("until", 0) > _time.time())
+
+
 @app.post("/api/login")
 def login(body: dict = Body(...)):
     u = (body.get("username") or "").strip()
     p = (body.get("password") or "").strip()
+    if _login_locked(u):
+        wait = int((_LOGIN_FAILS[u]["until"] - _time.time()) / 60) + 1
+        raise HTTPException(429, f"失败次数过多，已锁定，请约 {wait} 分钟后再试")
     if u == ADMIN_USER and _pwd_hash(p, dicts.get_setting("admin_salt")) == dicts.get_setting("admin_pwd"):
+        _LOGIN_FAILS.pop(u, None)
         token = secrets.token_hex(16)
         _TOKENS[token] = _time.time() + _TOKEN_TTL
         return {"ok": True, "token": token, "username": u}
+    f = _LOGIN_FAILS.setdefault(u, {"n": 0, "until": 0})
+    f["n"] += 1
+    if f["n"] >= 5:
+        f["until"] = _time.time() + 600
+        f["n"] = 0
     raise HTTPException(401, "用户名或密码错误")
 
 
@@ -497,14 +514,15 @@ def update_alert_status(alert_id: int, status: str = "TRIAGING"):
 
 
 @app.post("/api/verdicts/{vid}/confirm")
-def verdict_confirm(vid: int):
-    """通过研判ID确认告警（自动找到对应alert）。"""
+def verdict_confirm(vid: int, reason: str = ""):
+    """通过研判ID确认告警（自动找到对应alert）;reason=处理备注(可空),留痕到feedback。"""
     s = Session()
     try:
         a = s.query(AlertRow).filter_by(verdict_id=vid).first()
         if not a:
             return {"ok": False, "error": "未找到对应告警"}
         a.status = "CONFIRMED"
+        s.add(FeedbackRow(alert_id=a.id, label="TP", reason=reason or "确认"))
         s.commit()
         return {"ok": True}
     finally:
@@ -568,13 +586,16 @@ def get_config():
         "syslog_host": dicts.get_setting("syslog_host", "0.0.0.0"),
         "syslog_port": dicts.get_setting("syslog_port", "8514"),
         "notify_webhook": dicts.get_setting("notify_webhook", ""),
+        "retention_days": dicts.get_setting("retention_days", "90"),
+        "raw_logs_retention_days": dicts.get_setting("raw_logs_retention_days", "7"),
     }
 
 
 @app.put("/api/config")
 def set_config(body: dict = Body(...)):
     for k in ("llm_base_url", "llm_active", "llm_qwen_model", "llm_deepseek_model",
-              "llm_deepseek_base_url", "syslog_enabled", "syslog_host", "syslog_port", "notify_webhook"):
+              "llm_deepseek_base_url", "syslog_enabled", "syslog_host", "syslog_port", "notify_webhook",
+              "retention_days", "raw_logs_retention_days"):
         if body.get(k) is not None:
             dicts.set_setting(k, str(body[k]))
     if body.get("qwen_key"):
@@ -1018,7 +1039,40 @@ def ask(body: dict = Body(...)):
                               max_tokens=800, timeout=120)
     except Exception as e:
         ans = f"AI 回答失败: {e}"
+    # 历史落库(失败不影响回答)
+    try:
+        s2 = Session()
+        try:
+            s2.add(AskHistoryRow(question=question, answer=ans))
+            s2.commit()
+        finally:
+            s2.close()
+    except Exception:
+        pass
     return {"answer": ans, "action": action}
+
+
+@app.get("/api/ask/history")
+def ask_history(limit: int = 60):
+    """AI问答历史(最近N条,服务端保存,换浏览器不丢)。"""
+    s = Session()
+    try:
+        rows = s.query(AskHistoryRow).order_by(desc(AskHistoryRow.id)).limit(min(limit, 200)).all()
+        return {"items": [{"id": r.id, "question": r.question, "answer": r.answer,
+                           "ts": r.created_at.isoformat() if r.created_at else None} for r in reversed(rows)]}
+    finally:
+        s.close()
+
+
+@app.delete("/api/ask/history")
+def ask_history_clear():
+    s = Session()
+    try:
+        n = s.query(AskHistoryRow).delete()
+        s.commit()
+        return {"ok": True, "deleted": n}
+    finally:
+        s.close()
 
 
 def _ask_query(action, employee, category=""):
