@@ -94,20 +94,14 @@
   @keyframes lgTwinkle{from{opacity:.25}to{opacity:1}}
   @keyframes lgStarDrift{to{background-position:340px 170px}}
   @keyframes lgStarDrift2{to{background-position:-560px 280px}}
-  .lg-grid{position:absolute;left:-30%;right:-30%;bottom:-12%;height:62%;pointer-events:none;
-    background-image:linear-gradient(rgba(148,163,255,.28) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,255,.28) 1px,transparent 1px);
-    background-size:46px 46px;transform:perspective(520px) rotateX(58deg);
-    -webkit-mask-image:linear-gradient(to top,rgba(0,0,0,.95),transparent 88%);mask-image:linear-gradient(to top,rgba(0,0,0,.95),transparent 88%);
-    animation:lgGridMove 1.5s linear infinite;}
-  @keyframes lgGridMove{to{background-position:0 46px}}
   .lg-blob{position:absolute;border-radius:50%;pointer-events:none;z-index:1;}
-  .lg-blob.b1{width:560px;height:560px;background:radial-gradient(circle,#818cf8,transparent 65%);opacity:.6;top:-140px;left:-110px;filter:blur(85px);animation:lgD1 13s ease-in-out infinite,lgHue 9s linear infinite;}
-  .lg-blob.b2{width:680px;height:680px;background:radial-gradient(circle,#a78bfa,transparent 65%);opacity:.55;bottom:-240px;right:-150px;filter:blur(95px);animation:lgD2 16s ease-in-out infinite,lgHue 12s linear infinite reverse;}
-  .lg-blob.b3{width:440px;height:440px;background:radial-gradient(circle,#22d3ee,transparent 65%);opacity:.42;top:38%;left:56%;filter:blur(85px);animation:lgD3 11s ease-in-out infinite,lgHue 8s linear infinite;}
-  @keyframes lgD1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(160px,110px) scale(1.25)}}
-  @keyframes lgD2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-180px,-120px) scale(1.18)}}
-  @keyframes lgD3{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(-140px,90px) scale(1.2)}66%{transform:translate(110px,-100px) scale(.85)}}
-  @keyframes lgHue{to{filter:blur(85px) hue-rotate(120deg)}}
+  .lg-blob.b1{width:360px;height:360px;background:radial-gradient(circle,#818cf8,transparent 65%);opacity:.55;top:-60px;left:-40px;filter:blur(70px);animation:lgD1 13s ease-in-out infinite,lgHue 9s linear infinite;}
+  .lg-blob.b2{width:430px;height:430px;background:radial-gradient(circle,#a78bfa,transparent 65%);opacity:.5;bottom:-100px;right:-60px;filter:blur(80px);animation:lgD2 16s ease-in-out infinite,lgHue 12s linear infinite reverse;}
+  .lg-blob.b3{width:280px;height:280px;background:radial-gradient(circle,#22d3ee,transparent 65%);opacity:.4;top:34%;left:58%;filter:blur(70px);animation:lgD3 11s ease-in-out infinite,lgHue 8s linear infinite;}
+  @keyframes lgD1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(140px,90px) scale(1.25)}}
+  @keyframes lgD2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-150px,-100px) scale(1.18)}}
+  @keyframes lgD3{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(-120px,80px) scale(1.2)}66%{transform:translate(100px,-90px) scale(.85)}}
+  @keyframes lgHue{to{filter:blur(70px) hue-rotate(120deg)}}
   .lg-card{width:380px;max-width:100%;padding:34px 36px 26px;background:rgba(22,28,60,.58);backdrop-filter:blur(22px);border-radius:20px;border:1px solid rgba(255,255,255,.1);box-shadow:0 24px 60px rgba(0,0,0,.45),0 0 46px rgba(99,102,241,.14);position:relative;animation:lgGlow 4.5s ease-in-out infinite alternate;}
   .lg-card::before{content:"";position:absolute;inset:-1px;border-radius:21px;padding:1.2px;background:conic-gradient(from var(--lgA),transparent 0deg,transparent 250deg,rgba(129,140,248,.9) 310deg,transparent 360deg);
     -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;pointer-events:none;animation:lgBeam 5.5s linear infinite;}
@@ -491,7 +485,6 @@ function LoginPage({onOk}){
   return (<div className="lg-page">
     <div className="lg-stars"/><div className="lg-stars2"/>
     <div className="lg-blob b1"/><div className="lg-blob b2"/><div className="lg-blob b3"/>
-    <div className="lg-grid"/>
     <div className="lg-card">
       <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,marginBottom:2}}>
         <img src="/logo.png" alt="HELIXON 华深智药" style={{height:40,display:'block',filter:'drop-shadow(0 0 16px rgba(99,102,241,.45))'}}/>
