@@ -163,6 +163,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         gctx = profiles.global_summary(rs)  # 全局参照：每轮算一次，喂给所有窗口的 AI
         dedup_hours = int(dicts.get_setting("dedup_window_hours", "6") or "6")
         to_judge = []
+        _run_seen = set()  # 轮内去重:(员工,高危域名) 已排队送AI的,同轮不再重复判
         for emp, wins in detector.build_windows(new_events).items():
             for w in wins:
                 baseline = profiles.baseline_for(rs, emp, w[0].occurred_at)
@@ -176,6 +177,12 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 trig = _window_trigger_domains(w)
                 if trig and _recently_judged(rs, emp, trig, dedup_hours):
                     continue
+                # 轮内抑制:筛选阶段同轮窗口互相看不到已落库的verdicts,
+                # 不拦的话同域名多窗口会全部重复送LLM(浪费调用+研判刷屏)
+                if trig and any((emp, d) in _run_seen for d in trig):
+                    continue
+                if trig:
+                    _run_seen.update((emp, d) for d in trig)
                 to_judge.append((emp, w, baseline, dev))
     finally:
         rs.close()

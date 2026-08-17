@@ -21,14 +21,17 @@ _flush_count = 0
 def _flush_events():
     """把缓冲的事件聚合入库 + 建画像 + 触发增量研判。原始报文也持久化。"""
     global _event_buffer
-    events = _event_buffer[:]
-    _event_buffer = []
+    # 取走缓冲与清空必须同一临界区,否则此间 _listen 新 append 的事件会被清空丢失
+    with _buf_lock:
+        events = _event_buffer[:]
+        del _event_buffer[:]
     # 原始报文持久化 — 直接从_state["recent"]取(recvfrom后第一件事就存,100%有数据)
     import re as _re_mod
     try:
         from db import Session, RawLogRow, write_lock
-        recents = list(_state.get("recent", []))
-        _state["recent"] = []  # 取走清空(避免重复insert)
+        with _lock:
+            recents = list(_state.get("recent", []))
+            _state["recent"] = []  # 取走清空(避免重复insert),与_listen的append同锁互斥
         if recents:
             with write_lock:  # 与研判 _flush 串行写，避免写锁互等
                 s = Session()
@@ -106,18 +109,20 @@ def _listen(host, port):
             data, addr = s.recvfrom(65535)
             text = data.decode("utf-8", "replace")
             _state["count"] += 1
-            _state["recent"].append({
-                "t": datetime.datetime.now().strftime("%H:%M:%S"),
-                "from": addr[0],
-                "msg": text[:500],
-            })
-            _state["recent"] = _state["recent"][-500:]
+            with _lock:
+                _state["recent"].append({
+                    "t": datetime.datetime.now().strftime("%H:%M:%S"),
+                    "from": addr[0],
+                    "msg": text[:500],
+                })
+                _state["recent"] = _state["recent"][-500:]
             # 实时解析为标准事件
             try:
                 from parser_sangfor import parse_sangfor_syslog
                 ev = parse_sangfor_syslog(text)
                 if ev:
-                    _event_buffer.append(ev)
+                    with _buf_lock:
+                        _event_buffer.append(ev)
             except Exception:
                 pass
         except socket.timeout:
