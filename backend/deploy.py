@@ -102,12 +102,20 @@ def main():
     sftp.put(dist_file, REMOTE + "/static/index.html")
     os.unlink(dist_file)
     print("uploaded index.html(预编译版)")
+    for extra in ("favicon.png", "logo.png"):  # 静态资源(存在才传)
+        p = os.path.join(HERE, "static", extra)
+        if os.path.exists(p):
+            sftp.put(p, REMOTE + "/static/" + extra)
+            print("uploaded", extra)
     for f in files:
         sftp.put(os.path.join(HERE, f), REMOTE + "/" + f)
         print("uploaded", f)
     sftp.close()
 
     run(f"docker cp {REMOTE}/static/index.html {CONTAINER}:/app/static/index.html")
+    for extra in ("favicon.png", "logo.png"):
+        if os.path.exists(os.path.join(HERE, "static", extra)):
+            run(f"docker cp {REMOTE}/static/{extra} {CONTAINER}:/app/static/{extra}")
     for f in files:
         run(f"docker cp {REMOTE}/{f} {CONTAINER}:/app/{f}")
     if files:
