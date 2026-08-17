@@ -94,6 +94,11 @@
   @keyframes lgTwinkle{from{opacity:.25}to{opacity:1}}
   @keyframes lgStarDrift{to{background-position:340px 170px}}
   @keyframes lgStarDrift2{to{background-position:-560px 280px}}
+  .lg-const{position:absolute;inset:-60px;width:calc(100% + 120px);height:calc(100% + 120px);z-index:2;pointer-events:none;}
+  .lg-const polyline{fill:none;stroke:rgba(165,180,252,.38);stroke-width:1;stroke-dasharray:5 7;animation:lgDash 26s linear infinite;}
+  .lg-const circle{animation:lgTwinkle 4.2s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:center;}
+  @keyframes lgDash{to{stroke-dashoffset:-312}}
+
   .lg-blob{position:absolute;border-radius:50%;pointer-events:none;z-index:1;}
   .lg-blob.b1{width:360px;height:360px;background:radial-gradient(circle,#818cf8,transparent 65%);opacity:.55;top:-60px;left:-40px;filter:blur(70px);animation:lgD1 13s ease-in-out infinite,lgHue 9s linear infinite;}
   .lg-blob.b2{width:430px;height:430px;background:radial-gradient(circle,#a78bfa,transparent 65%);opacity:.5;bottom:-100px;right:-60px;filter:blur(80px);animation:lgD2 16s ease-in-out infinite,lgHue 12s linear infinite reverse;}
@@ -478,9 +483,10 @@ function LoginPage({onOk}){
     let tx=0,ty=0,cx=0,cy=0,raf;
     const onMove=e=>{ tx=(e.clientX/el.clientWidth-0.5)*2; ty=(e.clientY/el.clientHeight-0.5)*2; };
     const tick=()=>{ cx+=(tx-cx)*0.055; cy+=(ty-cy)*0.055;
-      const s1=el.querySelector('.lg-stars'),s2=el.querySelector('.lg-stars2');
+      const s1=el.querySelector('.lg-stars'),s2=el.querySelector('.lg-stars2'),c=el.querySelector('.lg-const');
       if(s1) s1.style.transform=`translate(${cx*22}px,${cy*15}px)`;
       if(s2) s2.style.transform=`translate(${cx*-12}px,${cy*-9}px)`;
+      if(c) c.style.transform=`translate(${cx*30}px,${cy*20}px)`;
       raf=requestAnimationFrame(tick); };
     el.addEventListener('mousemove',onMove); raf=requestAnimationFrame(tick);
     return ()=>{ el.removeEventListener('mousemove',onMove); cancelAnimationFrame(raf); };
@@ -497,6 +503,29 @@ function LoginPage({onOk}){
   };
   return (<div className="lg-page" ref={pgRef}>
     <div className="lg-stars"/><div className="lg-stars2"/>
+    <svg className="lg-const" viewBox="0 0 1000 700" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <defs>
+        <filter id="lgGlow" x="-120%" y="-120%" width="340%" height="340%">
+          <feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <g id="lg-umd" filter="url(#lgGlow)">
+        <polyline points="90,150 160,110 230,135 225,205 300,255 365,265 430,300 225,205 230,135"/>
+        <circle cx="90" cy="150" r="3"/><circle cx="160" cy="110" r="2.6"/><circle cx="230" cy="135" r="2.8"/>
+        <circle cx="225" cy="205" r="3.4"/><circle cx="300" cy="255" r="2.6"/><circle cx="365" cy="265" r="2.7"/><circle cx="430" cy="300" r="3"/>
+      </g>
+      <g filter="url(#lgGlow)">
+        <polyline points="600,120 660,170 720,130 790,185 860,140"/>
+        <circle cx="600" cy="120" r="3"/><circle cx="660" cy="170" r="2.6"/><circle cx="720" cy="130" r="3.2"/>
+        <circle cx="790" cy="185" r="2.6"/><circle cx="860" cy="140" r="3"/>
+      </g>
+      <g filter="url(#lgGlow)">
+        <polyline points="430,420 470,490 495,505 520,520 560,400 470,490 420,590 520,520 580,565"/>
+        <circle cx="430" cy="420" r="2.8"/><circle cx="560" cy="400" r="2.9"/>
+        <circle cx="470" cy="490" r="2.4"/><circle cx="495" cy="505" r="2.4"/><circle cx="520" cy="520" r="2.4"/>
+        <circle cx="420" cy="590" r="3.1"/><circle cx="580" cy="565" r="3.3"/>
+      </g>
+    </svg>
     <div className="lg-blob b1"/><div className="lg-blob b2"/><div className="lg-blob b3"/>
     <div className="lg-card">
       <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,marginBottom:2}}>
