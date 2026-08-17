@@ -79,8 +79,15 @@
   /* 登录页:深空蓝底 + 星空/网格/光斑多层动态 + 流光卡片 */
   @property --lgA{syntax:'<angle>';initial-value:0deg;inherits:false;}
   .lg-page{min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;background:linear-gradient(160deg,#141a3e 0%,#1a2154 55%,#1f2762 100%);padding:24px 16px;}
-  .lg-stars,.lg-stars2{position:absolute;inset:0;pointer-events:none;
-    background-image:radial-gradient(2.2px 2.2px at 18% 22%,rgba(255,255,255,.95),transparent 60%),radial-gradient(1.6px 1.6px at 62% 12%,rgba(199,210,254,.95),transparent 60%),radial-gradient(2px 2px at 82% 58%,rgba(255,255,255,.85),transparent 60%),radial-gradient(1.4px 1.4px at 38% 74%,rgba(165,180,252,.9),transparent 60%),radial-gradient(2px 2px at 12% 62%,rgba(255,255,255,.75),transparent 60%),radial-gradient(1.5px 1.5px at 92% 34%,rgba(224,231,255,.9),transparent 60%),radial-gradient(1.8px 1.8px at 50% 44%,rgba(255,255,255,.7),transparent 60%);
+  .lg-stars,.lg-stars2{position:absolute;inset:0;pointer-events:none;z-index:2;
+    background-image:
+      radial-gradient(3.2px 3.2px at 18% 22%,#ffffff 0%,rgba(255,255,255,.75) 45%,transparent 80%),
+      radial-gradient(2.6px 2.6px at 62% 12%,#dbe4ff 0%,rgba(219,228,255,.7) 45%,transparent 80%),
+      radial-gradient(3px 3px at 82% 58%,#ffffff 0%,rgba(255,255,255,.65) 45%,transparent 80%),
+      radial-gradient(2.4px 2.4px at 38% 74%,#c7d2fe 0%,rgba(199,210,254,.7) 45%,transparent 80%),
+      radial-gradient(2.8px 2.8px at 12% 62%,#ffffff 0%,rgba(255,255,255,.7) 45%,transparent 80%),
+      radial-gradient(2.4px 2.4px at 92% 34%,#eef2ff 0%,rgba(238,242,255,.7) 45%,transparent 80%),
+      radial-gradient(2.6px 2.6px at 50% 44%,#ffffff 0%,rgba(255,255,255,.6) 45%,transparent 80%);
     background-size:340px 340px;}
   .lg-stars{animation:lgTwinkle 3.2s ease-in-out infinite alternate,lgStarDrift 70s linear infinite;}
   .lg-stars2{background-size:560px 560px;opacity:.75;animation:lgTwinkle 4.6s ease-in-out 1.2s infinite alternate,lgStarDrift2 110s linear infinite;}
@@ -93,7 +100,7 @@
     -webkit-mask-image:linear-gradient(to top,rgba(0,0,0,.95),transparent 88%);mask-image:linear-gradient(to top,rgba(0,0,0,.95),transparent 88%);
     animation:lgGridMove 1.5s linear infinite;}
   @keyframes lgGridMove{to{background-position:0 46px}}
-  .lg-blob{position:absolute;border-radius:50%;pointer-events:none;}
+  .lg-blob{position:absolute;border-radius:50%;pointer-events:none;z-index:1;}
   .lg-blob.b1{width:560px;height:560px;background:radial-gradient(circle,#818cf8,transparent 65%);opacity:.6;top:-140px;left:-110px;filter:blur(85px);animation:lgD1 13s ease-in-out infinite,lgHue 9s linear infinite;}
   .lg-blob.b2{width:680px;height:680px;background:radial-gradient(circle,#a78bfa,transparent 65%);opacity:.55;bottom:-240px;right:-150px;filter:blur(95px);animation:lgD2 16s ease-in-out infinite,lgHue 12s linear infinite reverse;}
   .lg-blob.b3{width:440px;height:440px;background:radial-gradient(circle,#22d3ee,transparent 65%);opacity:.42;top:38%;left:56%;filter:blur(85px);animation:lgD3 11s ease-in-out infinite,lgHue 8s linear infinite;}
