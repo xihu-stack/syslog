@@ -1132,9 +1132,10 @@ def ask(body: dict = Body(...)):
     msgs.append({"role": "user", "content": f"当前问题: {question}"})
     ans = ""
     used = []
+    _ask_model = dicts.get_setting("llm_ask_model") or None  # 问答专用模型(如 glm-5);空=用活动模型
     try:
         for _step in range(6):
-            out = llm_client.chat(msgs, max_tokens=900, timeout=90, temperature=0.3)
+            out = llm_client.chat(msgs, max_tokens=1500, timeout=120, temperature=0.3, model=_ask_model)
             objs = _ask_parse_objs(out)
             final = next((o.get("final") for o in objs if o.get("final")), None)
             if final:
