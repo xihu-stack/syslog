@@ -1017,67 +1017,161 @@ def export_alerts():
 
 
 # ---------------- AI 问答（LLM 路由 → 查真数据 → LLM 总结）----------------
+_ASK_TOOLS = {
+    "employee_risk": "查某个员工的风险行为/研判记录/画像。args: {employee: 员工姓名}",
+    "alerts": "告警榜(全时段top10+今日清单)。args: {}",
+    "slack": "摸鱼榜top10(近7天日均摸鱼时长)。args: {}",
+    "attendance": "在岗情况(今日活跃/无活动名单/异常时段)。args: {}",
+    "who_risk": "近30天谁访问了某类风险网站。args: {category: 远程控制|网盘|邮箱|招聘|文件助手}",
+    "trend": "近14天每日告警数与研判数(趋势/环比对比类问题用)。args: {}",
+    "sys_stats": "今日系统概览(研判数/告警数/活跃人数/事件量)。args: {}",
+    "help": "系统的规则/风险分口径/摸鱼口径说明。args: {}",
+}
+
+
+def _ask_parse_objs(text: str) -> list:
+    """从 LLM 输出提取 JSON 对象列表(支持嵌套 args、多个连续 JSON、<think>块)。
+    正则 \{[^{}]*\} 不支持嵌套,必须用括号配平扫描。"""
+    import re as _re
+    import json as _json  # api.py 顶部无全局 import json,必须局部导入(此前 NameError 被 except 吞掉导致解析恒为空)
+    clean = _re.sub(r"<think>.*?</think>", "", text or "", flags=_re.S)
+    clean = _re.sub(r"```(?:json)?|```", "", clean)
+    objs, i, n = [], 0, len(clean)
+    while i < n:
+        if clean[i] == "{":
+            depth, j = 0, i
+            while j < n:
+                if clean[j] == "{":
+                    depth += 1
+                elif clean[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            if j < n:
+                try:
+                    objs.append(_json.loads(clean[i:j + 1]))
+                except Exception:
+                    pass
+                i = j + 1
+                continue
+        i += 1
+    return objs
+
+
+def _ask_tool_run(name: str, args: dict) -> str:
+    """执行一个查询工具,返回文本数据(复用 _ask_query 各分支 + 新增 trend/sys_stats)。"""
+    args = args or {}
+    if name not in ("trend", "sys_stats"):
+        emp = args.get("employee") or args.get("name") or args.get("emp") or ""
+        cat = args.get("category") or args.get("cat") or args.get("type") or ""
+        return _ask_query(name, str(emp), str(cat))
+    if name == "trend":
+        from sqlalchemy import func as _f
+        s = Session()
+        try:
+            _t0 = bj_now() - __import__("datetime").timedelta(days=14)
+            al = {str(d): n for d, n in s.query(_f.date(AlertRow.window_start), _f.count(AlertRow.id))
+                  .filter(AlertRow.window_start >= _t0).group_by(_f.date(AlertRow.window_start)).all()}
+            vd = {str(d): n for d, n in s.query(_f.date(VerdictRow.window_start), _f.count(VerdictRow.id))
+                  .filter(VerdictRow.window_start >= _t0).group_by(_f.date(VerdictRow.window_start)).all()}
+            days = sorted(set(al) | set(vd))
+            if not days:
+                return "近14天无告警/研判数据。"
+            return "近14天每日(告警数/研判数):\n" + "\n".join(f"{d} 告警{al.get(d,0)} 研判{vd.get(d,0)}" for d in days)
+        finally:
+            s.close()
+    if name == "sys_stats":
+        from sqlalchemy import func as _f
+        s = Session()
+        try:
+            _t0 = bj_now().replace(hour=0, minute=0, second=0, microsecond=0)
+            al = s.query(_f.count(AlertRow.id)).filter(AlertRow.window_start >= _t0).scalar() or 0
+            vd = s.query(_f.count(VerdictRow.id)).filter(VerdictRow.window_start >= _t0).scalar() or 0
+            ev = s.query(_f.count(EventRow.id)).filter(EventRow.occurred_at >= _t0).scalar() or 0
+            em = s.query(_f.count(_f.distinct(EventRow.employee_id))).filter(EventRow.occurred_at >= _t0).scalar() or 0
+            return (f"今日概览(北京时间0点起): 活跃员工{em}人, 事件{ev}条(降噪后), "
+                    f"AI研判{vd}次, 告警{al}条(风险≥50)。模型 {_lc_model()}")
+        finally:
+            s.close()
+    return _ask_query(name, (args or {}).get("employee", ""), (args or {}).get("category", ""))
+
+
+def _lc_model():
+    import llm_client
+    return getattr(llm_client, "LAST_MODEL", "") or "qwen"
+
+
 @app.post("/api/ask")
 def ask(body: dict = Body(...)):
-    """自然语言查数据: 路由 LLM 选 action → 后端查真数据 → 总结 LLM 回答。
-    支持多轮: 前端传最近几轮 {q,a} 历史,路由与回答均带上文(可解析'他呢/昨天呢'等指代)。"""
+    """自然语言问答(工具循环版): AI 自主决定调用哪些查询工具、可连续多次,
+    全部结果到齐后再综合回答——支持复合/对比/多条件问题与多轮追问。"""
     import llm_client
     question = (body.get("question") or "").strip()
     if not question:
         return {"answer": "请输入问题。", "action": "empty"}
     history = [h for h in (body.get("history") or []) if isinstance(h, dict) and (h.get("q") or h.get("a"))][-3:]
-    hist_txt = "\n".join(f"用户: {(h.get('q') or '')[:120]}\n助手: {(h.get('a') or '')[:200]}" for h in history)
-    hist_block = f"\n【最近对话(用于解析『他/它/再详细/昨天』等指代,当前问题可能延续上轮的员工或时间范围)】\n{hist_txt}\n" if hist_txt else ""
-    route_sys = ("你是行为分析助手。把用户当前问题路由到查询动作,只输出 JSON {action, employee, category}。\n"
-                 "action: employee_risk(查某员工风险行为) / alerts(告警榜) / slack(摸鱼榜) / attendance(在岗情况) / who_risk(谁访问了某类风险网站) / help(规则/用法说明) / chat(其他闲聊)。\n"
-                 "【关键优先级】问题里提到具体员工姓名(或用『他/她』指代上轮员工)→ 一律 employee_risk + employee=该姓名,无论问的是招聘/网盘/外发/摸鱼(查这个人的具体行为)。\n"
-                 "只有问'谁/哪些人/有没有人'(无具体姓名)访问某类网站 → 才用 who_risk + category。\n"
-                 "employee: 仅 employee_risk 时填员工姓名(从问题或上轮对话提取)。\n"
-                 "category: 仅 who_risk 时填, 取值 远程控制/网盘/邮箱/招聘/文件助手 之一。\n"
-                 "只输出 JSON。")
+    tools_txt = "\n".join(f"- {k}: {v}" for k, v in _ASK_TOOLS.items())
+    sys_p = ("你是『员工行为分析系统』的智能助手,服务对象是系统管理员(安全运营人员)。你可以调用查询工具获取真实数据。\n\n"
+             "每次回复【只输出一个 JSON】,两种格式选一(不要输出其他文字,不要一次输出多个JSON):\n"
+             "{\"tool\": \"工具名\", \"args\": {参数}}  —— 调用一个工具继续查(要查多个就等结果回来再调下一个)\n"
+             "{\"final\": \"给用户的最终回答\"}        —— 结束查询,直接回答\n\n"
+             f"可用工具:\n{tools_txt}\n\n"
+             "规则:\n"
+             "1. 涉及数据的问题【必须】先调工具再回答,不得编造数字;对比/多条件/多人问题自行拆成多次工具调用(最多4次)。\n"
+             "2. 结合最近对话理解追问(『他/它/昨天/再详细』),延续上轮员工与话题;路由到 employee_risk 时从对话中解析姓名。\n"
+             "3. 不需要数据的问题(闲聊/概念解释)直接 final;查不到数据就在 final 里说明并建议问法。\n"
+             "4. final 回答要求:结论先行,枚举用短列表,口径如实(告警=风险≥50研判;摸鱼=10分钟桶估算上限),"
+             "结尾可给一句下一步建议,中文,像资深安全运营同事的口吻。")
+    msgs = [{"role": "system", "content": sys_p}]
+    for h in history:
+        if h.get("q"):
+            msgs.append({"role": "user", "content": str(h["q"])[:150]})
+        if h.get("a"):
+            msgs.append({"role": "assistant", "content": str(h["a"])[:200]})
+    msgs.append({"role": "user", "content": f"当前问题: {question}"})
+    ans = ""
+    used = []
     try:
-        raw = llm_client.chat([{"role": "system", "content": route_sys},
-                               {"role": "user", "content": f"{hist_block}当前问题: {question}"}],
-                              max_tokens=120, timeout=60)
-        v = llm_client.extract_json(raw) or {}
-    except Exception:
-        v = {}
-    action = v.get("action") if v.get("action") in ("employee_risk", "alerts", "slack", "attendance", "who_risk", "help", "chat") else "chat"
-    employee = (v.get("employee") or "").strip()
-    category = (v.get("category") or "").strip()
-    if action == "who_risk" and not category:  # LLM 漏填 category 时从问题关键词兜底
-        ql = question.lower()
-        if "netdisk" in ql or "网盘" in question or "云盘" in question: category = "网盘"
-        elif "email" in ql or "邮箱" in question or "mail" in ql: category = "邮箱"
-        elif "remote" in ql or "远程" in question or "todesk" in ql: category = "远程控制"
-        elif "recruit" in ql or "招聘" in question or "求职" in question: category = "招聘"
-        elif "filehelper" in ql or "文件助手" in question or "传输助手" in question: category = "文件助手"
-    # 兜底: 路由成 who_risk 但问题里其实含具体员工名 → 转 employee_risk(查这个人具体行为)。
-    # 避免"王帆访问了哪些招聘网站"被误判成 who_risk(只统计人数,不列具体网站)。
-    if action == "who_risk":
-        _s2 = Session()
-        try:
-            _emps = [r[0] for r in _s2.query(EventRow.employee_id).distinct().limit(5000).all()]
-        finally:
-            _s2.close()
-        _hit = next((e for e in _emps if e and e in question), None)
-        if _hit:
-            action = "employee_risk"; employee = _hit
-    data_ctx = _ask_query(action, employee, category)
-    sum_sys = ("你是『员工行为分析系统』的智能助手,服务对象是该系统的管理员(安全运营人员)。\n"
-               "回答原则:\n"
-               "1. 只基于给定真实数据回答,不编造数字;数据不足就直说,并建议换个问法能查到什么。\n"
-               "2. 结论先行,枚举用短列表;口径保留数据原义(告警=风险分≥50的研判;摸鱼时长=10分钟访问桶估算,是上限而非精确观看)。\n"
-               "3. 结合最近对话理解追问('他呢'/'昨天呢'/'再详细点'),延续上轮的员工/话题/时间范围。\n"
-               "4. 语气专业友好,像资深安全运营同事;结尾可给一句有价值的下一步(如'要看明细可点开某人的画像')。\n"
-               "5. 与行为数据无关的闲聊可以轻松应对,保持简短,并适时引导回工作话题。")
-    user_msg = (f"{hist_block}当前问题: {question}\n\n查询数据:\n{data_ctx}"
-                + ("\n\n请基于上述数据回答当前问题(注意结合最近对话)。" if data_ctx else "\n\n(本轮无查询数据:闲聊就正常聊;若用户在追问数据,说明需要什么信息才能查)"))
-    try:
-        ans = llm_client.chat([{"role": "system", "content": sum_sys}, {"role": "user", "content": user_msg}],
-                              max_tokens=800, timeout=120, temperature=0.4)
+        for _step in range(6):
+            out = llm_client.chat(msgs, max_tokens=900, timeout=90, temperature=0.3)
+            objs = _ask_parse_objs(out)
+            final = next((o.get("final") for o in objs if o.get("final")), None)
+            if final:
+                ans = str(final)
+                break
+            tools = [o for o in objs if o.get("tool") in _ASK_TOOLS]
+            if tools and len(used) < 4:
+                results = []
+                for o in tools[:3]:
+                    if len(used) >= 4:
+                        break
+                    used.append(o["tool"])
+                    try:
+                        results.append(f"[{o['tool']}]\n{_ask_tool_run(o['tool'], o.get('args') or {})}")
+                    except Exception as ee:
+                        results.append(f"[{o['tool']}] 执行失败: {ee}")
+                msgs.append({"role": "assistant", "content": "已调用: " + ", ".join(used[-len(results):])})
+                msgs.append({"role": "user", "content": "工具结果:\n" + "\n\n".join(r[:2400] for r in results) +
+                             "\n\n(数据已到齐则输出 {\"final\": ...} 回答;还缺数据可再调工具;每次只输出一个JSON)"})
+                continue
+            ans = out  # 解析不出结构:把原文当回答兜底
+            break
+        if not ans:
+            ans = "查询轮次已达上限,请换个更具体的问题。"
     except Exception as e:
         ans = f"AI 回答失败: {e}"
+    # 历史落库(失败不影响回答)
+    try:
+        s2 = Session()
+        try:
+            s2.add(AskHistoryRow(question=question, answer=ans))
+            s2.commit()
+        finally:
+            s2.close()
+    except Exception:
+        pass
+    return {"answer": ans, "action": "+".join(used) or "chat"}
     # 历史落库(失败不影响回答)
     try:
         s2 = Session()
