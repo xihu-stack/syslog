@@ -38,12 +38,13 @@ SYSTEM_PROMPT = (
     "• 个人邮箱/网盘(公司禁止) → 主动访问 65-75（访问即违规,不管时段）；但 update./自动更新/-debug/遥测等子域是软件后台联网、非员工主动操作 → 10-20\n"
     "• VPN/翻墙工具(privado/clash等) → 不算风险(业务规则:翻墙非违规),按常规浏览 5-15\n"
     "• 代码仓库(github/gitlab) → 40-55（代码外发嫌疑,看频次/时段）\n"
-    "• 微信文件助手(传文件) → 70-80（外发嫌疑）\n"
-    "• 招聘网站:【单次/低频(1-2次)→必须 normal_work 5-25,严禁因出现招聘域名就判求职——单次是误点/浏览/HR日常工作,不是求职】；反复访问(≥3次)或凌晨密集 → 65-85。领英linkedin=双用途(求职+HR招聘/商务社交),工作时段低频访问大概率是正常业务→normal_work；仅凌晨或反复高频才考虑求职。严格按窗口标注的访问次数判断,不得脑补频次。\n"
+    "• 微信文件助手(传文件) → 70-80（外发嫌疑）。但【访问文件助手页面≠已传输文件】:窗口若只标注了页面/轮询访问(URL路径为静态资源/poll/get类),未见上传特征 → 30-45;URL含发送/上传特征(send/upload/file API)或伴大流量 → 70-80\n"
+    "• 招聘网站:【单次/低频(1-2次)→必须 normal_work 5-25,严禁因出现招聘域名就判求职——单次是误点/浏览/HR日常工作,不是求职。即使该员工基线中无招聘类域名(=首次出现),也严禁以'偏离个人基线''高危类别首次出现'为由抬分,单次就是单次】；反复访问(≥3次)或凌晨密集 → 65-85。领英linkedin=双用途(求职+HR招聘/商务社交),工作时段低频访问大概率是正常业务→normal_work；仅凌晨或反复高频才考虑求职。严格按窗口标注的访问次数判断,不得脑补频次。\n"
     "• 远程控制 + 凌晨 → 55-65；工作时段 → 30-40（降权）\n"
     "• AI助手(chatgpt/deepseek/豆包/kimi/copilot等) → 工作时段低频(1-3次) 5-15(正常使用)；反复高频(≥10次)或凌晨 → 35-48, baseline_deviation(重度依赖AI、异常,但纯对话无外发动作≠数据外发)；仅当窗口同时含真实外发(上传文件到AI/网盘/邮箱/文件助手) → 才判 data_exfiltration 60-75\n"
     "• 凌晨 + 仅常规网站(无外发通道) → 25-35\n"
     "• 工作时段 + 常规网站/普通微信 → 5-15\n\n"
+    "【基线偏离的使用边界】'域名不在个人基线中'本身≠严重偏离——每人每天都会首次遇到大量新域名(见全局参照)。偏离档位必须综合:频次是否远超本人常态+时段(凌晨)+多外发通道叠加来判断;严禁仅以'首次出现/不在基线'把低频访问(≤5次)判为severe或抬进高危档。\n"
     "【intent 由窗口的主风险信号决定——勿被弱信号带偏】招聘网站【单次/低频夹杂在其他信号中≠job_seeking】:job_seeking 仅用于招聘网站反复高频(≥3次)/凌晨为主信号的窗口；若窗口主风险是邮箱/网盘/外发,按主风险定intent,不要因含1次领英/招聘就判求职。\n"
     "【intent 判定】个人邮箱/网盘(禁止) → policy_violation；VPN/翻墙 → normal_work(业务规则:翻墙非违规)；"
     "微信文件助手 → data_exfiltration；代码仓库 → baseline_deviation；"
@@ -127,15 +128,28 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
         lines.append(f"[时段] 含非工作时段访问（{min(hours)}-{max(hours)}时），公司夜间无人需关注")
 
     # 强信号置顶 + 标注类别（远程控制/网盘/招聘）
+    # ws./wss. 前缀是 WebSocket 长连接心跳计数(页面挂着就会持续+1),不代表主动操作次数——
+    # 必须标注,防止 AI 被"×938"这类数字带偏而虚高打分(2026-08-18 gaoguanfei 案例)
+    def _cnt_tag(d, n):
+        if d.startswith("ws.") or d.startswith("wss."):
+            return f"×{n}(连接心跳,非主动操作次数)"
+        return f"×{n}"
     for d, info in high_sig[:10]:
         rc = dicts.risk_class(d)
         cat_tag = f"[{info['cat']}]" if info["cat"] else ""
-        lines.append(f"[⚠{rc}] {d} ×{info['count']} {cat_tag}")
+        # 外发通道类域名附带URL路径样本(3个):让AI区分"打开页面/轮询"vs"真实上传/发送"
+        path_hint = ""
+        if rc and ("文件" in rc or "微信" in rc or "网盘" in rc or "邮箱" in rc):
+            paths = list({(e.target_value or "").split("?")[0][-60:] for e in window
+                          if e.category == "WEB" and d in ((e.raw or {}).get("domain") or "") and (e.target_value or "").count("/") >= 2})[:3]
+            if paths:
+                path_hint = " 路径样本:" + " | ".join(paths)
+        lines.append(f"[⚠{rc}] {d} {_cnt_tag(d, info['count'])} {cat_tag}{path_hint}")
     # 低信号(个人邮箱/微信)：标注但明确"访问≠外发"，避免被当高危
     for d, info in low_sig[:8]:
         rc = dicts.risk_class(d)
         cat_tag = f"[{info['cat']}]" if info["cat"] else ""
-        lines.append(f"[{rc}-低信号·访问非外发] {d} ×{info['count']} {cat_tag}")
+        lines.append(f"[{rc}-低信号·访问非外发] {d} {_cnt_tag(d, info['count'])} {cat_tag}")
     # 常规访问（仅 Top15，弱化"数量"）
     for d, info in normal[:15]:
         cat_tag = f"[{info['cat']}]" if info["cat"] else ""

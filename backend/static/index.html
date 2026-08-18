@@ -251,8 +251,11 @@ let _askStore={msgs:[],sending:false,subs:new Set(),loaded:false};
 function _askSet(patch){ _askStore={..._askStore,...patch}; _askStore.subs.forEach(f=>f()); }
 const _askSend=async(question)=>{
   if(!question||_askStore.sending)return;
+  const ms=_askStore.msgs.slice(-6);
+  const hist=[];
+  ms.forEach((m,i)=>{ if(m.role==='user'){ const nxt=ms[i+1]; hist.push({q:m.text,a:(nxt&&nxt.role==='ai')?String(nxt.text).slice(0,300):''}); } });
   _askSet({msgs:[..._askStore.msgs,{role:'user',text:question}],sending:true});
-  const r=await POST('/api/ask',{headers:{'Content-Type':'application/json'},body:JSON.stringify({question})});
+  const r=await POST('/api/ask',{headers:{'Content-Type':'application/json'},body:JSON.stringify({question,history:hist.slice(-3)})});
   _askSet({msgs:[..._askStore.msgs,{role:'ai',text:(r&&r.answer)||'（无回答）'}],sending:false});
 };
 const _askLoad=async()=>{ const r=await GET('/api/ask/history'); if(r&&r.items) _askSet({msgs:r.items.flatMap(h=>[{role:'user',text:h.question},{role:'ai',text:h.answer}])}); };

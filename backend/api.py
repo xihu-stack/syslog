@@ -1019,20 +1019,25 @@ def export_alerts():
 # ---------------- AI 问答（LLM 路由 → 查真数据 → LLM 总结）----------------
 @app.post("/api/ask")
 def ask(body: dict = Body(...)):
-    """自然语言查数据: 路由 LLM 选 action → 后端查真数据 → 总结 LLM 回答。"""
+    """自然语言查数据: 路由 LLM 选 action → 后端查真数据 → 总结 LLM 回答。
+    支持多轮: 前端传最近几轮 {q,a} 历史,路由与回答均带上文(可解析'他呢/昨天呢'等指代)。"""
     import llm_client
     question = (body.get("question") or "").strip()
     if not question:
         return {"answer": "请输入问题。", "action": "empty"}
-    route_sys = ("你是行为分析助手。把用户问题路由到查询动作,只输出 JSON {action, employee, category}。\n"
+    history = [h for h in (body.get("history") or []) if isinstance(h, dict) and (h.get("q") or h.get("a"))][-3:]
+    hist_txt = "\n".join(f"用户: {(h.get('q') or '')[:120]}\n助手: {(h.get('a') or '')[:200]}" for h in history)
+    hist_block = f"\n【最近对话(用于解析『他/它/再详细/昨天』等指代,当前问题可能延续上轮的员工或时间范围)】\n{hist_txt}\n" if hist_txt else ""
+    route_sys = ("你是行为分析助手。把用户当前问题路由到查询动作,只输出 JSON {action, employee, category}。\n"
                  "action: employee_risk(查某员工风险行为) / alerts(告警榜) / slack(摸鱼榜) / attendance(在岗情况) / who_risk(谁访问了某类风险网站) / help(规则/用法说明) / chat(其他闲聊)。\n"
-                 "【关键优先级】问题里提到具体员工姓名(如'王帆''朱亮')→ 一律 employee_risk + employee=该姓名,无论问的是招聘/网盘/外发/摸鱼(查这个人的具体行为)。\n"
+                 "【关键优先级】问题里提到具体员工姓名(或用『他/她』指代上轮员工)→ 一律 employee_risk + employee=该姓名,无论问的是招聘/网盘/外发/摸鱼(查这个人的具体行为)。\n"
                  "只有问'谁/哪些人/有没有人'(无具体姓名)访问某类网站 → 才用 who_risk + category。\n"
-                 "employee: 仅 employee_risk 时填员工姓名(从问题提取)。\n"
+                 "employee: 仅 employee_risk 时填员工姓名(从问题或上轮对话提取)。\n"
                  "category: 仅 who_risk 时填, 取值 远程控制/网盘/邮箱/招聘/文件助手 之一。\n"
                  "只输出 JSON。")
     try:
-        raw = llm_client.chat([{"role": "system", "content": route_sys}, {"role": "user", "content": question}],
+        raw = llm_client.chat([{"role": "system", "content": route_sys},
+                               {"role": "user", "content": f"{hist_block}当前问题: {question}"}],
                               max_tokens=120, timeout=60)
         v = llm_client.extract_json(raw) or {}
     except Exception:
@@ -1059,12 +1064,18 @@ def ask(body: dict = Body(...)):
         if _hit:
             action = "employee_risk"; employee = _hit
     data_ctx = _ask_query(action, employee, category)
-    sum_sys = ("你是企业员工行为分析助手,基于给定真实数据简洁回答用户问题。"
-               "只基于数据、不编造;数据不足就直说。中文,要点清晰。")
-    user_msg = f"用户问题: {question}\n\n查询数据:\n{data_ctx}" + ("\n\n请基于上述数据回答。" if data_ctx else "\n\n(无相关数据,可自由作答)")
+    sum_sys = ("你是『员工行为分析系统』的智能助手,服务对象是该系统的管理员(安全运营人员)。\n"
+               "回答原则:\n"
+               "1. 只基于给定真实数据回答,不编造数字;数据不足就直说,并建议换个问法能查到什么。\n"
+               "2. 结论先行,枚举用短列表;口径保留数据原义(告警=风险分≥50的研判;摸鱼时长=10分钟访问桶估算,是上限而非精确观看)。\n"
+               "3. 结合最近对话理解追问('他呢'/'昨天呢'/'再详细点'),延续上轮的员工/话题/时间范围。\n"
+               "4. 语气专业友好,像资深安全运营同事;结尾可给一句有价值的下一步(如'要看明细可点开某人的画像')。\n"
+               "5. 与行为数据无关的闲聊可以轻松应对,保持简短,并适时引导回工作话题。")
+    user_msg = (f"{hist_block}当前问题: {question}\n\n查询数据:\n{data_ctx}"
+                + ("\n\n请基于上述数据回答当前问题(注意结合最近对话)。" if data_ctx else "\n\n(本轮无查询数据:闲聊就正常聊;若用户在追问数据,说明需要什么信息才能查)"))
     try:
         ans = llm_client.chat([{"role": "system", "content": sum_sys}, {"role": "user", "content": user_msg}],
-                              max_tokens=800, timeout=120)
+                              max_tokens=800, timeout=120, temperature=0.4)
     except Exception as e:
         ans = f"AI 回答失败: {e}"
     # 历史落库(失败不影响回答)
