@@ -235,6 +235,11 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                                 # 已有告警:当天再犯即刷新最近活动时间(window_start),让"今日告警"/趋势图
                                 # 如实反映当日复犯;分数只升不降(取峰值),summary/verdict 仅在创新高时更新。
                                 existing.window_start = wstart
+                                # 再犯重新待处理:已确认/误报的告警再次触发时重置为NEW——
+                                # 否则确认一次=对该意图永久静默,复犯永远不再提醒(2026-08-18用户发现)。
+                                # 处置历史不丢:确认/误报时都写了feedback表留痕。
+                                if existing.status and existing.status != "NEW":
+                                    existing.status = "NEW"
                                 if v.get("risk_score", 0) > (existing.risk_score or 0):
                                     existing.risk_score = v.get("risk_score", 0)
                                     existing.severity = severity_of(v.get("risk_score", 0))

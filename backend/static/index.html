@@ -928,7 +928,7 @@ function Alerts({goProfile,filter}){
     POST('/api/verdicts/'+fpModal.vid+'/false_positive?reason='+encodeURIComponent(fullReason)+'&signal_type='+fpModal.intent+'&expires_days='+(fpModal.reason==='临时项目'?'30':'0')).then(()=>{ message.success('已标记误报，后续同类不再告警'); setFpModal({...fpModal,open:false}); load(); });
   };
   const scenSet=[...new Set((rows||[]).map(r=>r.scenario).filter(Boolean))];
-  const agData=(()=>{const filtered=(rows||[]).filter(v=>{if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;if(lvl==='crit'&&v.risk_score<76)return false;if(lvl==='high'&&(v.risk_score<56||v.risk_score>75))return false;if(lvl==='mid'&&(v.risk_score<31||v.risk_score>55))return false;if(scenario!=='all'&&v.scenario!==scenario)return false;return true;});const ag={};filtered.forEach(v=>{if(!ag[v.employee])ag[v.employee]={key:v.employee,employee:v.employee,scenarios:[],maxRisk:0,count:0,latest:v.window_start,summary:'',verdict_id:v.verdict_id,intent:v.scenario};const g=ag[v.employee];const sc=INTENT[v.scenario]||v.scenario;if(!g.scenarios.find(s=>s.label===sc))g.scenarios.push({label:sc,risk:v.risk_score});if((v.risk_score||0)>g.maxRisk){g.maxRisk=v.risk_score;g.summary=v.summary;g.verdict_id=v.verdict_id;g.intent=v.scenario;}g.count++;if(v.window_start>g.latest)g.latest=v.window_start;});return Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);})();
+  const agData=(()=>{const filtered=(rows||[]).filter(v=>{if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;if(lvl==='crit'&&v.risk_score<76)return false;if(lvl==='high'&&(v.risk_score<56||v.risk_score>75))return false;if(lvl==='mid'&&(v.risk_score<31||v.risk_score>55))return false;if(scenario!=='all'&&v.scenario!==scenario)return false;return true;});const ag={};filtered.forEach(v=>{if(!ag[v.employee])ag[v.employee]={key:v.employee,employee:v.employee,scenarios:[],maxRisk:0,count:0,latest:v.window_start,summary:'',verdict_id:v.verdict_id,intent:v.scenario};const g=ag[v.employee];const sc=INTENT[v.scenario]||v.scenario;if(!g.scenarios.find(s=>s.label===sc))g.scenarios.push({label:sc,risk:v.risk_score});if((v.risk_score||0)>g.maxRisk){g.maxRisk=v.risk_score;g.summary=v.summary;g.verdict_id=v.verdict_id;g.intent=v.scenario;g.status=v.status;}g.count++;if(v.window_start>g.latest)g.latest=v.window_start;});return Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);})();
   const alertN=agData.reduce((s,g)=>s+(g.count||0),0);
   return (<div>
     <div className="sec-title" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -960,10 +960,10 @@ function Alerts({goProfile,filter}){
           {title:<TH t="最近告警" tip="该员工最近一次告警的行为发生时间。" />,dataIndex:'latest',width:135,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
           {title:<TH t="风险" tip="该员工告警中的最高风险分(0-100)。76+严重/56+高危/31+关注。" />,dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
           {title:<TH t="说明" tip="该员工当前最高分告警的AI判定说明。文字默认两行截断,悬浮可预览全文,点击展开/收起。" />,dataIndex:'summary',render:v=><SummaryTxt text={v}/>},
-          {title:'操作',width:120,render:(_,r)=>(<Space size={4}>
+          {title:'操作',width:120,render:(_,r)=>r.status==='NEW'?(<Space size={4}>
             <Button size="small" type="primary" onClick={(e)=>doConfirm(e,r.verdict_id)}>确认</Button>
             <Button size="small" onClick={(e)=>doFP(e,r)} style={{color:'var(--danger)',border:'1px solid var(--danger)'+'55',background:'var(--danger-soft)'}}>误报</Button>
-          </Space>)}]}/>
+          </Space>):(<Tag color={r.status==='CONFIRMED'?'green':r.status==='FP'?'default':'blue'}>{({CONFIRMED:'已确认',FP:'误报',CLOSED:'已关闭',TRIAGING:'处理中'}[r.status])||r.status}</Tag>)}]}/>
     </Card>
     <Modal open={fpModal.open} title={'确认误报 — '+fpModal.emp} okText="确认误报" cancelText="取消" okType="danger"
       onCancel={()=>setFpModal({...fpModal,open:false})} onOk={submitFP}>
