@@ -133,6 +133,8 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
     def _cnt_tag(d, n):
         if d.startswith("ws.") or d.startswith("wss."):
             return f"×{n}(连接心跳,非主动操作次数)"
+        if d.startswith(("update.", "update-", "auto.")) or ".update." in d or d.startswith("dl."):
+            return f"×{n}(软件自动更新/后台子域,非员工主动操作→按锚点应10-20分)"
         return f"×{n}"
     for d, info in high_sig[:10]:
         rc = dicts.risk_class(d)
