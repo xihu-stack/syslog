@@ -767,9 +767,11 @@ def system_stats():
             _day[_dk] = 0
         # 过滤下界与上方 _day 的 key 对齐：key 是"今天自然日往前 6 天"，
         # 下界也用 today_start-6d（最老一天 00:00），否则最老一柱只有[此刻,23:59]的数据，系统性偏低。
-        for _r in s.query(AlertRow).filter(AlertRow.window_start >= today_start - timedelta(days=6)).all():
-            if _r.window_start:
-                _k = _r.window_start.date().isoformat()
+        # 按 created_at(告警首次产生,不变)统计——window_start 会被再犯刷新到当天,
+        # 用它分组等于把历史告警搬到今天,昨天柱子会掉数(2026-08-18发现,同告警状态沿用问题同源)。
+        for _r in s.query(AlertRow).filter(AlertRow.created_at >= today_start - timedelta(days=6)).all():
+            if _r.created_at:
+                _k = _r.created_at.date().isoformat()
                 if _k in _day:
                     _day[_k] += 1
         alerts_by_day = list(_day.items())
@@ -1116,8 +1118,9 @@ def _ask_tool_run(name: str, args: dict) -> str:
         s = Session()
         try:
             _t0 = bj_now() - __import__("datetime").timedelta(days=14)
-            al = {str(d): n for d, n in s.query(_f.date(AlertRow.window_start), _f.count(AlertRow.id))
-                  .filter(AlertRow.window_start >= _t0).group_by(_f.date(AlertRow.window_start)).all()}
+            # 按created_at(首次产生)统计,与页面趋势图同口径——window_start会被再犯刷新,不能用于历史趋势
+            al = {str(d): n for d, n in s.query(_f.date(AlertRow.created_at), _f.count(AlertRow.id))
+                  .filter(AlertRow.created_at >= _t0).group_by(_f.date(AlertRow.created_at)).all()}
             vd = {str(d): n for d, n in s.query(_f.date(VerdictRow.window_start), _f.count(VerdictRow.id))
                   .filter(VerdictRow.window_start >= _t0).group_by(_f.date(VerdictRow.window_start)).all()}
             days = sorted(set(al) | set(vd))

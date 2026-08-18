@@ -238,8 +238,12 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                                 # 再犯重新待处理:已确认/误报的告警再次触发时重置为NEW——
                                 # 否则确认一次=对该意图永久静默,复犯永远不再提醒(2026-08-18用户发现)。
                                 # 处置历史不丢:确认/误报时都写了feedback表留痕。
-                                if existing.status and existing.status != "NEW":
+                                _was = existing.status
+                                if _was and _was != "NEW":
                                     existing.status = "NEW"
+                                    if v.get("risk_score", 0) >= 75:
+                                        _notify_webhook(f"{emp}(复犯,原状态{_was})", v.get("risk_score", 0),
+                                                        v.get("explanation", ""))
                                 if v.get("risk_score", 0) > (existing.risk_score or 0):
                                     existing.risk_score = v.get("risk_score", 0)
                                     existing.severity = severity_of(v.get("risk_score", 0))
