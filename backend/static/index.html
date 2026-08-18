@@ -760,6 +760,29 @@ function Dashboard({go, goProfile}){
       <Col span={8}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title="AI成功" value={vd.ai||0} valueStyle={{fontSize:18}}/><div style={{fontSize:11,color:'#94a3b8',marginTop:2}}>兜底 {vd.fallback||0}</div></Card></Col>
       <Col span={8}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title="今日人均事件" value={perUser} valueStyle={{fontSize:18}}/><div style={{fontSize:11,color:'#94a3b8',marginTop:2}}>今日 {ev.today||0} / 累计 {ev.total||0}</div></Card></Col>
     </Row>
+    {(sys.health&&(sys.health.disk||sys.health.ai))&&<Row gutter={16} style={{marginBottom:16}}>
+      <Col span={12}><Card className="card" title="资源与空间" size="small" extra={<span style={{fontSize:11,color:'var(--ink3)'}}>每日02:00自动备份</span>}>
+        {sys.health.disk&&<div style={{marginBottom:8}} title="数据所在磁盘的用量(容器视角=宿主挂载盘)">
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}><span>磁盘用量</span><span className="num">{sys.health.disk.used_pct}% · 剩余 {sys.health.disk.free_gb}G / {sys.health.disk.total_gb}G</span></div>
+          <div className="pbar" style={{height:8}}><i style={{width:Math.min(sys.health.disk.used_pct,100)+'%',background:sys.health.disk.used_pct>=85?'#ef4444':sys.health.disk.used_pct>=70?'#f59e0b':'#22c55e'}}></i></div>
+        </div>}
+        <div style={{fontSize:12,color:'var(--ink2)',lineHeight:1.9}}>
+          <div>数据库 <b className="num">{sys.health.db_total_mb||sys.db_size_mb||0} MB</b> · 事件保留{sys.retention_days||90}天自动清理</div>
+          {sys.health.mem_total_gb?<div>内存可用 <b className="num">{sys.health.mem_avail_gb}G</b> / {sys.health.mem_total_gb}G · 负载 <b className="num">{sys.health.load1}</b></div>:null}
+        </div>
+      </Card></Col>
+      <Col span={12}><Card className="card" title="AI 模型性能" size="small" extra={<span style={{fontSize:11,color:'var(--ink3)'}}>服务启动起累计</span>}>
+        {(()=>{const ai=sys.health.ai||{};const rows=Object.entries(ai.by_model||{});return (<div>
+          <div style={{fontSize:12,color:'var(--ink2)',marginBottom:6}}>调用 <b className="num">{ai.total}</b> · 失败 <b className="num" style={{color:(ai.fail||0)>0?'var(--danger)':'inherit'}}>{ai.fail}</b> · 平均 <b className="num">{(ai.avg_ms||0)>=1000?((ai.avg_ms||0)/1000).toFixed(1)+'s':(ai.avg_ms||0)+'ms'}</b> · 最近 <b className="num">{(ai.last_ms||0)>=1000?((ai.last_ms||0)/1000).toFixed(1)+'s':(ai.last_ms||0)+'ms'}</b></div>
+          {rows.length?<Table size="small" pagination={false} dataSource={rows.map(([m,v])=>({key:m,model:m,...v}))} columns={[
+            {title:'模型',dataIndex:'model',render:v=><span className="num" style={{fontSize:12}}>{v}</span>},
+            {title:'调用',dataIndex:'calls',width:64,render:v=><span className="num">{v}</span>},
+            {title:'平均耗时',dataIndex:'avg_ms',width:84,render:v=><span className="num">{v>=1000?(v/1000).toFixed(1)+'s':v+'ms'}</span>},
+            {title:'失败',dataIndex:'fails',width:56,render:v=><span className="num" style={{color:v>0?'var(--danger)':'var(--ink3)'}}>{v}</span>},
+          ]}/> : <div style={{fontSize:12,color:'var(--ink3)',padding:8}}>暂无调用记录(服务启动后产生)</div>}
+        </div>);})()}
+      </Card></Col>
+    </Row>}
     <Row gutter={16} style={{marginBottom:16}}>
       <Col span={12}><Card className="card" title="Syslog 接收" size="small">
         <Row gutter={8}>

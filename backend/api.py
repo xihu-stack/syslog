@@ -649,7 +649,34 @@ def syslog_status():
 
 @app.get("/api/system/stats")
 def system_stats():
-    """系统运行状态：日志量/研判量/数据来源/告警状态/管线健康。"""
+    """系统运行状态：日志量/研判量/数据来源/告警状态/管线健康 + 空间/AI性能。"""
+    from datetime import datetime, timedelta, timezone
+    import shutil as _sh
+    import db as _db
+    # ---- 资源/AI 性能采集(系统健康页) ----
+    health = {}
+    try:
+        _du = _sh.disk_usage(os.path.dirname(_db.DB_PATH) or "/")
+        health["disk"] = {"total_gb": round(_du.total / 2**30, 1), "free_gb": round(_du.free / 2**30, 1),
+                          "used_pct": round((_du.total - _du.free) / _du.total * 100, 1)}
+    except Exception:
+        pass
+    try:
+        with open("/proc/meminfo") as _f:
+            _mi = {l.split(":")[0]: int(l.split()[1]) for l in _f if ":" in l}
+        health["mem_avail_gb"] = round(_mi.get("MemAvailable", 0) / 1048576, 1)
+        health["mem_total_gb"] = round(_mi.get("MemTotal", 0) / 1048576, 1)
+        with open("/proc/loadavg") as _f:
+            health["load1"] = float(_f.read().split()[0])
+    except Exception:
+        pass
+    try:
+        _wal = _db.DB_PATH + "-wal"
+        health["db_total_mb"] = round((os.path.getsize(_db.DB_PATH) +
+                                       (os.path.getsize(_wal) if os.path.exists(_wal) else 0)) / 1048576, 1)
+    except Exception:
+        pass
+    health["ai"] = llm_client.stats()
     from datetime import datetime, timedelta, timezone
     from sqlalchemy import func as _f
     s = Session()
@@ -773,6 +800,7 @@ def system_stats():
             },
             "exceptions": ex_count,
             "db_size_mb": round(db_size / 1024 / 1024, 1),
+            "health": health,
             "employees": s.query(EventRow.employee_id).filter(EventRow.occurred_at >= today_start).distinct().count(),
             "employees_total": s.query(EventRow.employee_id).distinct().count(),
             "retention_days": retention_days,

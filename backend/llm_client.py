@@ -58,6 +58,16 @@ def _candidates():
 
 LAST_MODEL = ""  # 最近一次成功调用实际使用的模型(研判落库时读,替代硬编码)
 
+# LLM 调用统计(进程内存级,重启清零): 供系统健康页展示 AI 性能
+_STATS = {"total": 0, "fail": 0, "ms": 0, "last_ms": 0, "by_model": {}}
+
+
+def stats() -> dict:
+    n = _STATS["total"] - _STATS["fail"]
+    return {**_STATS, "avg_ms": round(_STATS["ms"] / n) if n > 0 else 0,
+            "by_model": {k: {**v, "avg_ms": round(v["ms"] / v["calls"]) if v["calls"] else 0}
+                         for k, v in _STATS["by_model"].items()}}
+
 
 def smart_model():
     """理解型任务的深度模型(总结/规则扫描/告警复核),空=用活动模型。
@@ -91,6 +101,7 @@ def chat(messages, model=None, temperature=0.1, max_tokens=1000, timeout=120):
     last_err = None
     for base, key, mdl in attempts:
         _retry_429 = 2  # 上游限流(glm-5"访问量过大")通常几秒即恢复:退避重试再回退
+        _t0 = time.time()
         while True:
             try:
                 body = json.dumps({**base_body, "model": mdl}).encode("utf-8")
@@ -107,6 +118,10 @@ def chat(messages, model=None, temperature=0.1, max_tokens=1000, timeout=120):
                     last_err = RuntimeError(f"{mdl} 返回空内容(疑似思考token耗尽或网关拥塞)")
                     break
                 LAST_MODEL = mdl  # 记录实际命中模型(可能是兜底切换后的)
+                _dt = round((time.time() - _t0) * 1000)
+                _STATS["total"] += 1; _STATS["ms"] += _dt; _STATS["last_ms"] = _dt
+                _m = _STATS["by_model"].setdefault(mdl, {"calls": 0, "ms": 0, "fails": 0})
+                _m["calls"] += 1; _m["ms"] += _dt
                 return content
             except urllib.error.HTTPError as e:
                 if e.code == 429 and _retry_429 > 0:
@@ -114,9 +129,13 @@ def chat(messages, model=None, temperature=0.1, max_tokens=1000, timeout=120):
                     time.sleep(3)
                     continue
                 last_err = e
+                _STATS["fail"] += 1
+                _STATS["by_model"].setdefault(mdl, {"calls": 0, "ms": 0, "fails": 0})["fails"] += 1
                 break
             except Exception as e:
                 last_err = e
+                _STATS["fail"] += 1
+                _STATS["by_model"].setdefault(mdl, {"calls": 0, "ms": 0, "fails": 0})["fails"] += 1
                 break
     raise RuntimeError(f"所有模型均调用失败: {last_err}")
 
