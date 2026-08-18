@@ -606,6 +606,7 @@ def get_config():
         "notify_webhook": dicts.get_setting("notify_webhook", ""),
         "retention_days": dicts.get_setting("retention_days", "90"),
         "raw_logs_retention_days": dicts.get_setting("raw_logs_retention_days", "7"),
+        "llm_ask_model": dicts.get_setting("llm_ask_model", ""),
     }
 
 
@@ -613,7 +614,7 @@ def get_config():
 def set_config(body: dict = Body(...)):
     for k in ("llm_base_url", "llm_active", "llm_qwen_model", "llm_deepseek_model",
               "llm_deepseek_base_url", "syslog_enabled", "syslog_host", "syslog_port", "notify_webhook",
-              "retention_days", "raw_logs_retention_days"):
+              "retention_days", "raw_logs_retention_days", "llm_ask_model"):
         if body.get(k) is not None:
             dicts.set_setting(k, str(body[k]))
     if body.get("qwen_key"):
