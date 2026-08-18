@@ -5,6 +5,8 @@
 import json
 import os
 import re
+import time
+import urllib.error
 import urllib.request
 
 import dicts
@@ -77,25 +79,34 @@ def chat(messages, model=None, temperature=0.1, max_tokens=1000, timeout=120):
         attempts += [(base, key, mdl) for base, key, mdl in cands]  # 回退:不指定模型再试一轮
     last_err = None
     for base, key, mdl in attempts:
-        try:
-            body = json.dumps({**base_body, "model": mdl}).encode("utf-8")
-            req = urllib.request.Request(
-                f"{base}/chat/completions", data=body,
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                method="POST")
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-            content = data["choices"][0]["message"].get("content") or ""
-            if not content.strip():
-                # 深度模型偶发空输出(思考耗尽token/网关并发拥塞截断)——视为失败走回退,
-                # 否则上层拿到空串会把调用当成功(2026-08-18 摸鱼总结空结果排查结论)
-                last_err = RuntimeError(f"{mdl} 返回空内容(疑似思考token耗尽或网关拥塞)")
-                continue
-            LAST_MODEL = mdl  # 记录实际命中模型(可能是兜底切换后的)
-            return content
-        except Exception as e:
-            last_err = e
-            continue
+        _retry_429 = 2  # 上游限流(glm-5"访问量过大")通常几秒即恢复:退避重试再回退
+        while True:
+            try:
+                body = json.dumps({**base_body, "model": mdl}).encode("utf-8")
+                req = urllib.request.Request(
+                    f"{base}/chat/completions", data=body,
+                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                    method="POST")
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                content = data["choices"][0]["message"].get("content") or ""
+                if not content.strip():
+                    # 深度模型偶发空输出(思考耗尽token/网关并发拥塞截断)——视为失败走回退,
+                    # 否则上层拿到空串会把调用当成功(2026-08-18 摸鱼总结空结果排查结论)
+                    last_err = RuntimeError(f"{mdl} 返回空内容(疑似思考token耗尽或网关拥塞)")
+                    break
+                LAST_MODEL = mdl  # 记录实际命中模型(可能是兜底切换后的)
+                return content
+            except urllib.error.HTTPError as e:
+                if e.code == 429 and _retry_429 > 0:
+                    _retry_429 -= 1
+                    time.sleep(3)
+                    continue
+                last_err = e
+                break
+            except Exception as e:
+                last_err = e
+                break
     raise RuntimeError(f"所有模型均调用失败: {last_err}")
 
 
