@@ -268,6 +268,64 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         buf.clear()
 
     # ---- 2) LLM 并发研判（4线程并发，vLLM内部batch → 3-4倍提速）----
+    # 员工近7天行为史缓存(跨天模式关联: 连续多日重复/频率爬坡/敏感文档+招聘组合)
+    _hist_cache = {}
+
+    def _emp_history(emp: str) -> str:
+        if emp in _hist_cache:
+            return _hist_cache[emp]
+        txt = ""
+        try:
+            from datetime import timedelta as _td4
+            from collections import defaultdict as _dd3
+            import dicts as _dc
+            hs = Session()
+            try:
+                since7 = bj_now() - _td4(days=7)
+                vs = hs.query(VerdictRow).filter(
+                    VerdictRow.employee_id == emp, VerdictRow.window_start >= since7
+                ).order_by(VerdictRow.window_start).all()
+                from db import json_field as _jf
+                dom_e = _jf(EventRow.raw, 'domain')
+                evs = hs.query(EventRow.occurred_at, dom_e, EventRow.category, EventRow.target_value).filter(
+                    EventRow.employee_id == emp, EventRow.occurred_at >= since7).all()
+                parts = []
+                if vs:
+                    from collections import Counter as _ct
+                    ic = _ct(v.intent for v in vs)
+                    parts.append("研判史: " + "; ".join(f"{INTENT_MAP.get(k, k)}×{n}次(最高{max((x.risk_score or 0) for x in vs if x.intent == k)}分)" for k, n in ic.items()))
+                by_day_label = _dd3(lambda: _dd3(int))
+                docs = []
+                for occ, dom, cat, tv in evs:
+                    if not occ:
+                        continue
+                    d = (dom or "").lower()
+                    if cat == "WEB" and d:
+                        rc = _dc.risk_class(d)
+                        if rc:
+                            by_day_label[rc][occ.strftime("%m-%d")] += 1
+                    elif cat == "DOC" and tv:
+                        for kw in (_dc.get("sensitive_keywords") or []):
+                            if kw in tv:
+                                docs.append(f"{occ.strftime('%m-%d')} {tv[:40]}")
+                                break
+                if by_day_label:
+                    lines = []
+                    for lab, days in by_day_label.items():
+                        seq = ", ".join(f"{d}×{n}" for d, n in sorted(days.items()))
+                        consec = len(days)
+                        lines.append(f"{lab}: {seq} (共{consec}天)")
+                    parts.append("风险类访问按天: " + "; ".join(lines))
+                if docs:
+                    parts.append("敏感文档操作: " + "; ".join(docs[:5]))
+                txt = "\n【近7天行为史】(跨天模式关联用,判断是否'进行中行为')\n" + "\n".join("  " + p for p in parts) if parts else ""
+            finally:
+                hs.close()
+        except Exception as _he:
+            print(f"[hist] {emp} 行为史查询失败: {_he}", flush=True)
+        _hist_cache[emp] = txt
+        return txt
+
     def _judge(item):
         emp, w, baseline, dev = item
         summary = profiles.summarize_for_llm(baseline)  # 冷启动返回 None（由 analyze_window 喂全局参照）
@@ -288,7 +346,8 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 exempt = "; ".join(f"{INTENT_MAP.get(e.signal_type, e.signal_type)}({e.reason})" for e in exs)
         except Exception:
             pass
-        v = detector.analyze_window(w, summary, dev, exempt, gctx)
+        _hist = _emp_history(emp)
+        v = detector.analyze_window(w, summary, dev, exempt, gctx, history=_hist)
         # ---- 双模型复核: Qwen判定达到告警级(≥阈值)时,用深度模型独立重判一遍。
         # 两模型一致才维持告警;复核明显更低则降级(说明证据撑不起告警,典型如
         # 单次招聘/页面级访问被判外发)。复核失败保守保留原判(可用性优先)。
@@ -296,7 +355,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
             _smart = _lc_smart()
             if _smart and isinstance(v, dict) and (v.get("risk_score") or 0) >= 50 \
                     and dicts.get_setting("llm_review", "1") == "1":
-                rv = detector.analyze_window(w, summary, dev, exempt, gctx, model=_smart)
+                rv = detector.analyze_window(w, summary, dev, exempt, gctx, model=_smart, history=_hist)
                 rs = (rv or {}).get("risk_score") or 0
                 q = v.get("risk_score") or 0
                 if rs >= 50:  # 一致 → 维持,取深模型的说明(通常更准)并标注双确认
