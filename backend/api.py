@@ -1415,13 +1415,53 @@ def _rules_scan_core() -> dict:
         for d in kw_hits:  # 补充含风险关键词的域名(低频但疑似风险/摸鱼),确保被AI扫到
             if d not in dict(top):
                 top.append((d, unclass[d]))
+        # ---- 维度2: 传输动作域名(URL含upload/send/file/attach)——外发通道的真实信号。
+        # 不限频次(italent上传7次/yeasen6次这类低频传输,高频榜根本扫不到,2026-08-18漏判审查结论),
+        # 人数≤10(排除92人都在用的基础设施),SQL端LIKE预筛控成本。
+        # 独立保底名额(追加在top尾部会被[:N]截断,2026-08-18实测italent被砍)。 ----
+        _act_top = []
+        try:
+            from datetime import timedelta as _td3
+            _tv = EventRow.target_value
+            _act_rows = s.query(EventRow.employee_id, dom_expr).filter(
+                EventRow.category == "WEB", EventRow.occurred_at >= bj_now() - _td3(days=30),
+                _tv.like("%upload%") | _tv.like("%send%") | _tv.like("%/file%") | _tv.like("%attach%")
+            ).all()
+            _act_cnt = Counter()
+            from collections import defaultdict as _dd2
+            _au = _dd2(set)
+            for emp2, d2 in _act_rows:
+                d2 = (d2 or "").strip().lower()
+                if d2:
+                    _act_cnt[d2] += 1
+                    _au[d2].add(emp2)
+        except Exception as _e2:
+            print(f"[scan] 传输动作维度失败: {_e2}", flush=True)
+
         # 预过滤明显的云服务/CDN/SDK 噪音子域(微软云/CDN/统计/证书等长串子域),
-        # 这些喂给AI无价值且占名额。保留短域名(更像真实站点)。
-        NOISE_HINT = ("office.net", "office.com", "sharepoint", "microsoft", "cdn", "akamai",
+        # 这些喂给AI无价值且占名额。长度限90(阿里云日志等长业务域名曾被48误杀;微软长串噪音由NOISE_HINT具体词兜住)。
+        NOISE_HINT = ("office.net", "office.com", "sharepoint", "microsoft", "akamai",
                       "cloudfront", "ic3-edf", "trouter", "svc.ms", "1cdn", "office365",
-                      "skype", "trouter", "aria.microsoft", "events.data", "telemetry",
-                      "in.applicationinsights", "blob.core", "trouser")
-        top = [(d, n) for d, n in top if len(d) < 48 and not any(x in d.lower() for x in NOISE_HINT)][:30]
+                      "skype", "aria.microsoft", "events.data", "telemetry",
+                      "in.applicationinsights", "blob.core", "trouser", "msn.cn", "bing.net",
+                      "volces.com")
+
+        def _ok(d):
+            return len(d) < 90 and not any(x in d.lower() for x in NOISE_HINT)
+
+        _main = [(d, n) for d, n in top if _ok(d)][:20]
+        # _seen 只含"确定进主榜"的域名——若以原始top计算,kw补充段的低频传输域名会被
+        # _seen误挡(又进不了被截断的主榜,两头落空,2026-08-18 zhihu-upload案例)
+        _seen = {d for d, _ in _main}
+        # 排序:人数少者优先(个人向外部传内容最可疑),同人数按次数降序;多人共用(>10人)的接口不算
+        for d2 in sorted((d for d in _act_cnt if _act_cnt[d] >= 3 and len(_au[d]) <= 10),
+                         key=lambda d: (len(_au[d]), -_act_cnt[d])):
+            if len(_act_top) >= 10:
+                break
+            if d2 not in _seen:
+                _act_top.append((d2, _act_cnt[d2]))
+                lab_of.setdefault(d2, f"含传输动作(upload/send),{_act_cnt[d2]}次/{len(_au[d2])}人")
+        top = _main + _act_top
         if not top:
             return {"suggestions": [], "msg": "无未分类高频域名"}
         sys_p = ("你是企业数据安全助手。分析这些【未分类】的域名,判断是否需要纳入风险监控。\n"
@@ -1429,13 +1469,14 @@ def _rules_scan_core() -> dict:
                  "target 取值:\n"
                  "- 已知风险类(纳入对应字典): netdisk_domains(网盘云盘) / personal_email_domains(个人邮箱) / recruitment_sites(招聘求职) / remote_control_domains(远程控制) / code_repo_domains(代码仓库) / wechat_file_domains(微信文件助手) / ai_assistant_domains(AI助手chatgpt/deepseek等,往AI塞数据) / slack_domains(摸鱼娱乐)  (注: 翻墙VPN经业务确认不算风险,勿建议)\n"
                  "- **suspect_new(疑似新风险)**: 不属于上述任何类,但像数据外发/泄露/规避监控的可疑行为(如未知网盘、匿名传输、临时邮箱、屏幕共享、代码粘贴pastebin、内网穿透ngrok/frp、加密货币、敏感数据爬取等)。这类即使无法精确归类也要标出,供人工审核。\n"
+                 "【传输动作特别规则】标注了'含传输动作(upload/send)'的域名=有员工在向上传内容:个人向社交平台/图床/外部云/招聘平台传文件属外发嫌疑,默认 suspect_new 或归入对应风险类,不要因'知名网站的子域'就判 ignore(如知乎图片上传、招聘系统传简历)。\n"
                  "- ignore: 明确的正常办公/厂商后台/CDN/SDK/系统更新/认证服务\n"
                  "cat: 仅 target=slack_domains 时填 视频/社交/购物/资讯/音乐 之一,否则空字符串。\n"
                  "reason: 一句中文,说明判断依据。\n"
                  "原则:宁可多标 suspect_new 让人工复核,也不要漏掉可疑域名。只输出 JSON 数组。")
         user = "域名列表(域名 出现次数 深信服分类):\n" + "\n".join(f"{d} {n} {lab_of.get(d,'') or '-'}" for d, n in top)
         raw = llm_client.chat([{"role": "system", "content": sys_p}, {"role": "user", "content": user}],
-                              max_tokens=4500, timeout=300, model=llm_client.smart_model())  # 扫描质量决定开集发现效果,深度模型think预算给足
+                              max_tokens=7000, timeout=400, model=llm_client.smart_model())  # 扫描质量决定开集发现效果,深度模型think预算给足
         _rc = llm_client.strip_think(raw)  # 剥离深度模型思考块
         _rc = _re.sub(r"```(?:json)?|```", "", _rc)
         m = _re.search(r"\[.*\]", _rc, _re.S)

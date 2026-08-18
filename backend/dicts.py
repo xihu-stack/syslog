@@ -86,7 +86,7 @@ DEFAULTS = {
         "deepseek.com", "chat.deepseek.com",
         "doubao.com", "kimi.com", "moonshot.cn",
         "qianwen.com", "tongyi.com", "aliyundashscope",
-        "zhipu.ai", "chatglm.cn", "bigmodel.cn",
+        "zhipu.ai", "z.ai", "chatglm.cn", "bigmodel.cn",
         "yiyan.baidu.com", "baichuan-ai",
         "yuanbao.tencent.com", "hunyuan",
         "metaso.cn", "perplexity.ai", "poe.com",
