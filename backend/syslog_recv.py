@@ -172,6 +172,11 @@ def _flush_loop():
             pipeline.auto_close_alerts()
             _maybe_auto_scan()  # 每周自动开集扫描(到期才真正跑)
             _health_watchdog()  # 数据流静默/兜底率/磁盘 主动告警(每项每天最多1次)
+            try:
+                from api import _alias_discover
+                _alias_discover()  # 用户名映射自动发现(拼音级自动,推测级进候选)
+            except Exception:
+                pass
         except Exception:
             pass
     if _state["enabled"]:

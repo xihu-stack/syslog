@@ -1311,6 +1311,50 @@ function PwdCard(){
     <Button type="primary" loading={busy} onClick={submit}><i className="fa-solid fa-key" style={{marginRight:6}}></i>修改密码</Button>
   </Card>);
 }
+function AliasCard(){
+  const [data,setData]=useState(null); const [na,setNa]=useState(''); const [nn,setNn]=useState('');
+  const load=async()=>{ setData(await GET('/api/alias')); };
+  useEffect(()=>{load();},[]);
+  const confirm=async(account,name)=>{
+    const r=await POST('/api/alias/confirm',{headers:{'Content-Type':'application/json'},body:JSON.stringify({account,name})});
+    message.success('已统一: '+account+' → '+name+(r&&r.updated_rows?(' (历史数据更新'+r.updated_rows+'行)'):''));
+    load();
+  };
+  const del=async(a)=>{ await DEL('/api/alias/'+encodeURIComponent(a)); message.success('已删除'); load(); };
+  const conf=(data&&data.confirmed)||{}; const pend=(data&&data.pending)||{};
+  return (<div>
+    <Alert type='info' showIcon style={{marginBottom:12}} message='把域账号/IP型标识统一为中文名: 确认后立即生效——新数据入库时自动转换,历史数据同步清洗。候选来自拼音精确匹配与同IP关联推测,推测的请人工核实后再确认。'/>
+    <Card className='card' size='small' title={'待确认候选 ('+Object.keys(pend).length+')'} style={{marginBottom:16}}>
+      {Object.keys(pend).length===0?<Typography.Text type='secondary' style={{fontSize:12}}>暂无候选(每周自动扫描发现新账号)</Typography.Text>:
+      <Table size='small' rowKey='account' pagination={{pageSize:10}} dataSource={Object.entries(pend).map(([a,n])=>({account:a,guess:n}))}
+        columns={[
+          {title:'账号/IP标识',dataIndex:'account',render:v=><span className='num' style={{fontSize:12}}>{v}</span>},
+          {title:'推测中文名',dataIndex:'guess'},
+          {title:'实际应为(可改)',render:(_,r)=><Input size='small' style={{width:120}} defaultValue={r.guess} onChange={e=>r._fix=e.target.value} onPressEnter={()=>confirm(r.account, r._fix||r.guess)}/>},
+          {title:'',width:150,render:(_,r)=><Space size={4}>
+            <Button size='small' type='primary' onClick={()=>confirm(r.account, r._fix||r.guess)}>确认并统一</Button>
+          </Space>},
+        ]}/>}
+    </Card>
+    <Card className='card' size='small' title={'已生效映射 ('+Object.keys(conf).length+')'} style={{marginBottom:16}}>
+      {Object.keys(conf).length===0?<Typography.Text type='secondary' style={{fontSize:12}}>暂无</Typography.Text>:
+      <Table size='small' rowKey='account' pagination={{pageSize:10}} dataSource={Object.entries(conf).map(([a,n])=>({account:a,name:n}))}
+        columns={[
+          {title:'账号/IP标识',dataIndex:'account',render:v=><span className='num' style={{fontSize:12}}>{v}</span>},
+          {title:'中文名',dataIndex:'name',render:v=><b>{v}</b>},
+          {title:'',width:60,render:(_,r)=><Button size='small' danger ghost onClick={()=>del(r.account)}>删除</Button>},
+        ]}/>}
+    </Card>
+    <Card className='card' size='small' title='手动添加映射'>
+      <Space>
+        <Input placeholder='账号(如 zhangsan 或 10.4.x.x)' style={{width:200}} value={na} onChange={e=>setNa(e.target.value)}/>
+        <Input placeholder='中文名' style={{width:120}} value={nn} onChange={e=>setNn(e.target.value)}/>
+        <Button type='primary' onClick={()=>{ if(na&&nn){confirm(na.trim(),nn.trim()); setNa(''); setNn('');} }}>添加</Button>
+      </Space>
+    </Card>
+  </div>);
+}
+
 function Config(){
   const [cfg,setCfg]=useState({}); const [dicts,setDicts]=useState({}); const [syslog,setSyslog]=useState({}); const [saving,setSaving]=useState(false); const [excs,setExcs]=useState([]);
   const [sugs,setSugs]=useState(null); const [loadingSug,setLoadingSug]=useState(false);
@@ -1341,6 +1385,7 @@ function Config(){
   return (
     <Tabs defaultActiveKey="model" items={[
       {key:'pwd', label:'修改密码', children:<PwdCard/>},
+      {key:'alias', label:'用户映射', children:<AliasCard/>},
       {key:'model', label:'模型配置', children:<Card className="card" title="模型配置（活动优先·失败自动切换）" size="small">
         <Form form={form} layout="vertical" onFinish={saveLlm}>
           <Form.Item label="接口地址" name="base_url"><Input placeholder="http://10.4.128.18:4000/v1"/></Form.Item>

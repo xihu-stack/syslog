@@ -1641,6 +1641,123 @@ def raw_logs(start: str | None = None, end: str | None = None, log_type: str | N
         s.close()
 
 
+# ---------------- 用户名映射(账号/IP标识 -> 中文名统一) ----------------
+def _alias_load(key):
+    import json as _j
+    try:
+        return _j.loads(dicts.get_setting(key) or "{}")
+    except Exception:
+        return {}
+
+
+def _alias_apply(account: str, name: str) -> int:
+    """把确认的映射应用到历史数据: 各表 employee_id 替换 + 告警dedup_key重建。返回更新行数。"""
+    from sqlalchemy import func as _f2
+    n = 0
+    s = Session()
+    try:
+        # profiles 每人一行(unique): 账号行与中文名行并存时,丢弃账号行(画像随后台任务重建)
+        pa = s.query(ProfileRow).filter_by(employee_id=account).first()
+        if pa:
+            if s.query(ProfileRow).filter_by(employee_id=name).first():
+                s.delete(pa)
+                s.commit()
+        for tbl in (EventRow, VerdictRow, AlertRow, ProfileRow, ExceptionRow):
+            r = s.query(tbl).filter(getattr(tbl, "employee_id") == account)                .update({getattr(tbl, "employee_id"): name}, synchronize_session=False)
+            n += r or 0
+        # alerts.dedup_key = f"{emp}|{intent}" —— 重算
+        for a in s.query(AlertRow).filter(AlertRow.employee_id == name).all():
+            if a.dedup_key and a.dedup_key.startswith(account + "|"):
+                a.dedup_key = f"{name}|{a.scenario}"
+        # 同员工同意图的老/新告警可能因映射产生重复行——保留分数高的那条
+        dup = s.query(AlertRow.dedup_key, _f2.count(AlertRow.id)).filter(AlertRow.employee_id == name)            .group_by(AlertRow.dedup_key).having(_f2.count(AlertRow.id) > 1).all()
+        for key, _cnt in dup:
+            rows = s.query(AlertRow).filter(AlertRow.dedup_key == key).order_by(desc(AlertRow.risk_score)).all()
+            for extra in rows[1:]:
+                s.delete(extra)
+        s.commit()
+    finally:
+        s.close()
+    return n
+
+
+def _alias_discover():
+    """自动发现用户名映射(每小时维护跑):
+    拼音精确匹配(账号拼音==某中文名拼音)→ 直接生效并清洗;
+    同IP唯一中文名 → 待确认候选(IP多为共享,推测不可靠,2026-08-18验证taofeiyan误配案例)。"""
+    import json as _j
+    import re as _re
+    from pypinyin import lazy_pinyin
+    try:
+        s = Session()
+        try:
+            emps = [r[0] for r in s.query(EventRow.employee_id).filter(EventRow.employee_id.isnot(None)).distinct().all()]
+            cn = re.compile(r"[一-鿿]")
+            cn_names = sorted({e for e in emps if cn.search(e or "")})
+            accts = {e for e in emps if e and not cn.search(e)}
+            cn_py = {n: "".join(lazy_pinyin(n)) for n in cn_names}
+            conf = _alias_load("employee_alias")
+            pend = _alias_load("employee_alias_pending")
+            changed = []
+            for a in accts:
+                if a in conf:
+                    continue
+                a2 = a.lower().replace(".", "").replace("_", "").replace("-", "")
+                if _re.match(r"^\d+\.\d+\.\d+\.\d+$", a):
+                    continue  # IP型标识不做拼音
+                hits = [n for n, p in cn_py.items() if p == a2]
+                if len(hits) == 1:
+                    conf[a] = hits[0]
+                    changed.append((a, hits[0]))
+                    pend.pop(a, None)
+            if changed:
+                dicts.set_setting("employee_alias", _j.dumps(conf, ensure_ascii=False))
+                dicts.set_setting("employee_alias_pending", _j.dumps(pend, ensure_ascii=False))
+                for a, n in changed:
+                    _alias_apply(a, n)
+                print(f"[alias] 拼音自动统一 {len(changed)} 个账号", flush=True)
+        finally:
+            s.close()
+    except Exception as e:
+        print(f"[alias] 发现失败: {e}", flush=True)
+
+
+@app.get("/api/alias")
+def alias_list():
+    return {"confirmed": _alias_load("employee_alias"), "pending": _alias_load("employee_alias_pending")}
+
+
+@app.post("/api/alias/confirm")
+def alias_confirm(body: dict = Body(...)):
+    """确认候选映射(或直接添加): 立即写入生效映射并清洗该账号历史数据。"""
+    import json as _j
+    account = (body.get("account") or "").strip()
+    name = (body.get("name") or "").strip()
+    if not account or not name:
+        raise HTTPException(400, "account/name 不能为空")
+    conf = _alias_load("employee_alias")
+    pend = _alias_load("employee_alias_pending")
+    old = conf.get(account)
+    conf[account] = name
+    pend.pop(account, None)
+    dicts.set_setting("employee_alias", _j.dumps(conf, ensure_ascii=False))
+    dicts.set_setting("employee_alias_pending", _j.dumps(pend, ensure_ascii=False))
+    n = 0
+    if old != name:
+        n = _alias_apply(account, name)
+    return {"ok": True, "updated_rows": n}
+
+
+@app.delete("/api/alias/{account}")
+def alias_delete(account: str):
+    import json as _j
+    conf = _alias_load("employee_alias")
+    if account in conf:
+        del conf[account]
+        dicts.set_setting("employee_alias", _j.dumps(conf, ensure_ascii=False))
+    return {"ok": True}
+
+
 # ---------------- 托管前端（放最后，避免拦截 /api）----------------
 if os.path.isdir(FRONTEND_DIR):
     app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="static")

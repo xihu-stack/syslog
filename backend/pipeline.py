@@ -105,11 +105,19 @@ def ingest_file(path: str) -> int:
 
 
 def ingest_events(events) -> int:
-    """直接入库一批标准事件（syslog 实时用）：降噪聚合 → 批量幂等写入。返回新增条数。"""
+    """直接入库一批标准事件（syslog 实时用）：降噪聚合 → 用户名统一 → 批量幂等写入。返回新增条数。"""
     init_db()
     events = aggregate(events)
     if not events:
         return 0
+    try:  # 用户标识统一: 确认过的映射(账号/IP标识->中文名)入库前转换,新数据天然统一
+        import json as _js
+        _alias = _js.loads(dicts.get_setting("employee_alias") or "{}")
+        if _alias:
+            for e in events:
+                e.employee_id = _alias.get(e.employee_id or "", e.employee_id)
+    except Exception:
+        pass
     with write_lock:  # 与研判 _flush 串行写，避免写锁互等报 database is locked
         s = Session()
         try:
