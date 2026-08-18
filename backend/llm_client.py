@@ -60,12 +60,23 @@ LAST_MODEL = ""  # 最近一次成功调用实际使用的模型(研判落库时
 
 
 def smart_model():
-    """理解型任务的深度模型(问答/总结/规则扫描/告警复核共用),空=用活动模型。
-    三模型分工(2026-08-18实测): Qwen=高频研判(快/格式稳) / glm-5=理解型(深) / R1=离线。"""
+    """理解型任务的深度模型(总结/规则扫描/告警复核),空=用活动模型。
+    三模型分工(2026-08-18实测): Qwen=高频研判+问答(快/格式稳) / DeepSeek-R1(本地)=深度理解(思考长)。
+    glm-5为外部转发,数据出境红线禁用。"""
     try:
-        return dicts.get_setting("llm_ask_model") or None
+        return dicts.get_setting("llm_smart_model") or None
     except Exception:
         return None
+
+
+def strip_think(text: str) -> str:
+    """剥离推理模型的思考块。兼容三种形态:
+    1) 标准 <think>...</think>;2) 本地R1部署的parser半残:content缺开标签只有</think>
+    (闭合标签前全是思考,之后是正文);3) 无思考块原样返回。"""
+    t = re.sub(r"<think>.*?</think>", "", text or "", flags=re.S)
+    if "</think>" in t and "<think>" not in t:
+        t = t.split("</think>", 1)[1]
+    return t
 
 
 def chat(messages, model=None, temperature=0.1, max_tokens=1000, timeout=120):
@@ -111,10 +122,10 @@ def chat(messages, model=None, temperature=0.1, max_tokens=1000, timeout=120):
 
 
 def extract_json(text: str) -> dict:
-    """鲁棒地从模型输出提取 JSON：去 <think> 块、去 ```fences、截取大括号段；失败则正则兜底。"""
+    """鲁棒地从模型输出提取 JSON：去思考块、去 ```fences、截取大括号段；失败则正则兜底。"""
     if not text:
         return {}
-    t = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)   # 去 Qwen3 思考块
+    t = strip_think(text)
     t = re.sub(r"```(?:json)?\s*", "", t).replace("```", "")
     s, e = t.find("{"), t.rfind("}")
     if s != -1 and e != -1 and e > s:

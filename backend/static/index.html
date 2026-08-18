@@ -1289,9 +1289,9 @@ function Config(){
   const [sugs,setSugs]=useState(null); const [loadingSug,setLoadingSug]=useState(false);
   const [sugModal,setSugModal]=useState(null);  // 采纳疑似风险时,选归入哪个字典
   const [form]=Form.useForm();
-  const load=async()=>{ const c=await GET('/api/config'); setCfg(c); form.setFieldsValue({base_url:c.llm_base_url,active:c.llm_active||'qwen',qwen_model:(c.qwen||{}).model,deepseek_model:(c.deepseek||{}).model,deepseek_base_url:(c.deepseek||{}).base_url,ask_model:c.llm_ask_model||''}); setDicts(await GET('/api/dicts')); setSyslog(await GET('/api/syslog/status')); setExcs(await GETL('/api/exceptions')); };
+  const load=async()=>{ const c=await GET('/api/config'); setCfg(c); form.setFieldsValue({base_url:c.llm_base_url,active:c.llm_active||'qwen',qwen_model:(c.qwen||{}).model,deepseek_model:(c.deepseek||{}).model,deepseek_base_url:(c.deepseek||{}).base_url,ask_model:c.llm_ask_model||'',smart_model:c.llm_smart_model||''}); setDicts(await GET('/api/dicts')); setSyslog(await GET('/api/syslog/status')); setExcs(await GETL('/api/exceptions')); };
   useEffect(()=>{ load(); const t=setInterval(()=>GET('/api/syslog/status').then(setSyslog),5000); return ()=>clearInterval(t); },[]);
-  const saveLlm=async(v)=>{ setSaving(true); const body={llm_base_url:v.base_url,llm_active:v.active,llm_qwen_model:v.qwen_model,llm_deepseek_model:v.deepseek_model,llm_deepseek_base_url:v.deepseek_base_url||'',llm_ask_model:(v.ask_model||'').trim()};
+  const saveLlm=async(v)=>{ setSaving(true); const body={llm_base_url:v.base_url,llm_active:v.active,llm_qwen_model:v.qwen_model,llm_deepseek_model:v.deepseek_model,llm_deepseek_base_url:v.deepseek_base_url||'',llm_ask_model:(v.ask_model||'').trim(),llm_smart_model:(v.smart_model||'').trim()};
     if(v.qwen_key) body.qwen_key=v.qwen_key; if(v.deepseek_key) body.deepseek_key=v.deepseek_key;
     await PUTJ('/api/config',body); setSaving(false); message.success('已保存'); load(); };
   const saveDict=async(n,val)=>{ await PUTJ('/api/dicts/'+n,val); message.success('已保存'); };
@@ -1323,7 +1323,8 @@ function Config(){
           <Form.Item label={'DeepSeek 模型（Key: '+((cfg.deepseek||{}).key_masked||'无')+'）'} name="deepseek_model"><Input placeholder="deepseek"/></Form.Item>
           <Form.Item label="DeepSeek 接口地址" name="deepseek_base_url"><Input placeholder="http://10.0.20.249:4000/v1"/></Form.Item>
           <Form.Item label="DeepSeek 密钥（留空不改）" name="deepseek_key"><Input.Password placeholder="sk-..."/></Form.Item>
-          <Form.Item label="智能任务模型" name="ask_model" extra="AI问答/摸鱼总结/规则扫描/告警复核共用的深度模型(需网关已部署且key有权限),如 glm-5 / DeepSeek-R1;留空=全部用活动模型(Qwen)"><Input placeholder="留空=Qwen"/></Form.Item>
+          <Form.Item label="问答专用模型" name="ask_model" extra="AI问答用的模型(要快,建议留空=Qwen)"><Input placeholder="留空=Qwen"/></Form.Item>
+          <Form.Item label="深度任务模型" name="smart_model" extra="摸鱼总结/规则扫描/告警复核用的深度模型(本地部署的思考型,如 DeepSeek-R1);留空=Qwen。外部模型勿填(数据不出内网)"><Input placeholder="DeepSeek-R1"/></Form.Item>
           <Button type="primary" htmlType="submit" loading={saving}>保存</Button>
         </Form>
       </Card>},

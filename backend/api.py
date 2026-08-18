@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import desc, func
 
 from db import (AlertRow, AskHistoryRow, EventRow, ExceptionRow, FeedbackRow, ProfileRow, RawLogRow, Session, VerdictRow, bj_now, init_db, json_field)
+import llm_client
 import pipeline
 import profiles
 import dicts
@@ -607,6 +608,7 @@ def get_config():
         "retention_days": dicts.get_setting("retention_days", "90"),
         "raw_logs_retention_days": dicts.get_setting("raw_logs_retention_days", "7"),
         "llm_ask_model": dicts.get_setting("llm_ask_model", ""),
+        "llm_smart_model": dicts.get_setting("llm_smart_model", ""),
     }
 
 
@@ -614,7 +616,7 @@ def get_config():
 def set_config(body: dict = Body(...)):
     for k in ("llm_base_url", "llm_active", "llm_qwen_model", "llm_deepseek_model",
               "llm_deepseek_base_url", "syslog_enabled", "syslog_host", "syslog_port", "notify_webhook",
-              "retention_days", "raw_logs_retention_days", "llm_ask_model"):
+              "retention_days", "raw_logs_retention_days", "llm_ask_model", "llm_smart_model"):
         if body.get(k) is not None:
             dicts.set_setting(k, str(body[k]))
     if body.get("qwen_key"):
@@ -950,8 +952,8 @@ def efficiency_summary():
                                   max_tokens=4000, timeout=240, model=llm_client.smart_model())  # 深度模型think耗token,预算必须给足
         except Exception as e:
             return {"items": [], "msg": "AI 总结失败: %s" % e}
-        # 深度模型(glm-5/R1)输出含<think>思考块,必须先剥离再提取数组
-        clean = _re.sub(r"<think>.*?</think>", "", raw, flags=_re.S)
+        # 深度模型输出含思考块(strip_think兼容本地R1的半残标签),剥离后再提取数组
+        clean = llm_client.strip_think(raw)
         clean = _re.sub(r"```(?:json)?|```", "", clean)
         m = _re.search(r"\[.*\]", clean, _re.S)
         items = []
@@ -1039,7 +1041,7 @@ def _ask_parse_objs(text: str) -> list:
     正则 \{[^{}]*\} 不支持嵌套,必须用括号配平扫描。"""
     import re as _re
     import json as _json  # api.py 顶部无全局 import json,必须局部导入(此前 NameError 被 except 吞掉导致解析恒为空)
-    clean = _re.sub(r"<think>.*?</think>", "", text or "", flags=_re.S)
+    clean = llm_client.strip_think(text)
     clean = _re.sub(r"```(?:json)?|```", "", clean)
     objs, i, n = [], 0, len(clean)
     while i < n:
@@ -1400,7 +1402,7 @@ def _rules_scan_core() -> dict:
         user = "域名列表(域名 出现次数 深信服分类):\n" + "\n".join(f"{d} {n} {lab_of.get(d,'') or '-'}" for d, n in top)
         raw = llm_client.chat([{"role": "system", "content": sys_p}, {"role": "user", "content": user}],
                               max_tokens=4500, timeout=300, model=llm_client.smart_model())  # 扫描质量决定开集发现效果,深度模型think预算给足
-        _rc = _re.sub(r"<think>.*?</think>", "", raw, flags=_re.S)  # 剥离深度模型思考块
+        _rc = llm_client.strip_think(raw)  # 剥离深度模型思考块
         _rc = _re.sub(r"```(?:json)?|```", "", _rc)
         m = _re.search(r"\[.*\]", _rc, _re.S)
         suggestions = []
