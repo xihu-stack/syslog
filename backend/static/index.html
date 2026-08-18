@@ -1065,9 +1065,9 @@ function Efficiency({items,loading,gen,msg,goProfile}){
           {title:<TH t="员工" />,dataIndex:'employee',width:110,render:v=><span className="uname" style={{cursor:'inherit'}}>{v}</span>},
           {title:<TH t="日均摸鱼" tip="日均摸鱼时长(分钟)。算法:工作时段娱乐访问按10分钟访问桶估算(连续看=跨度,碎片闪现=桶数×10min封顶,单次保底5min),÷工作日在岗天数。基于访问记录估算,非精确观看。≥60分钟(1小时)才算重度。" />,dataIndex:'slack_avg',width:110,sorter:(a,b)=>(b.slack_avg||0)-(a.slack_avg||0),defaultSortOrder:'ascend',
             render:(v,r)=>{const n=v||0;const c=n>=120?'#ef4444':n>=60?'#f97316':n>=30?'#f59e0b':'#94a3b8';return <span>{r.sparse&&n>0&&<Tooltip title="稀疏上报模式:多数会话为单次访问(碎片闪现/挂后台心跳),时长为保底估算上限,可能虚高。点员工名进画像看会话明细,或到系统设置→AI规则扫描排除心跳域名。"><i className="fa-solid fa-triangle-exclamation" style={{color:'#f59e0b',fontSize:11,marginRight:5}}></i></Tooltip>}<span className="num" style={{color:c,fontWeight:700,fontSize:15}}>{n>=60?Math.floor(n/60)+'h'+(n%60?' '+(n%60)+'m':''):n+(n<60?'min':'')}</span></span>}},
-          {title:<TH t="摸鱼占比" tip="工作时段娱乐访问 ÷ 工作时段全部上网访问(含未分类网站)。反映娱乐占上班上网总量的比例。" />,dataIndex:'pct',width:120,render:v=>{const p=v||0;return <div style={{display:'flex',alignItems:'center',gap:8}}><div className="pbar"><i style={{width:Math.min(p,100)+'%',background:p>=30?'#ef4444':p>=10?'#f59e0b':'var(--brand)'}}></i></div><span className="num" style={{color:'var(--ink2)',fontWeight:600,fontSize:12}}>{p}%</span></div>}},
-          {title:<TH t="摸鱼网站" tip="工作时段访问过的娱乐网站类别及占比(占本人摸鱼总量的百分比)。点员工名进画像可看具体域名。" />,dataIndex:'cats',render:(v,r)=>{const e=v||{};const tot=r.slack||Object.values(e).reduce((a,b)=>a+b,0)||1;return <Space wrap size={[4,4]}>{Object.entries(e).sort((a,b)=>b[1]-a[1]).map(([k,n])=>{const pct=Math.round(n/tot*100);return <Tag key={k} style={{background:'var(--bg)',color:'var(--ink2)',border:'1px solid var(--ink4)'}}>{k} <b className="num">{pct}%</b></Tag>})}</Space>}},
-          {title:<TH t="在岗" tip="观察期内的活跃天数 · 每日最常见活动时段。" />,width:96,render:(_,r)=><span style={{color:'var(--ink3)',fontSize:11}}>{r.active_days||0}天 · {r.hour_min===null?'-':r.hour_min+'-'+r.hour_max+'点'}</span>},
+          {title:<TH t="摸鱼占比" tip="摸鱼总时长 ÷ (工作日在岗天数×7小时工时),时长口径。反映上班时间被娱乐占用的比例;开一页挂几小时的视频类也能如实体现。" />,dataIndex:'pct',width:120,render:v=>{const p=v||0;return <div style={{display:'flex',alignItems:'center',gap:8}}><div className="pbar"><i style={{width:Math.min(p,100)+'%',background:p>=30?'#ef4444':p>=10?'#f59e0b':'var(--brand)'}}></i></div><span className="num" style={{color:'var(--ink2)',fontWeight:600,fontSize:12}}>{p}%</span></div>}},
+          {title:<TH t="摸鱼网站" tip="工作时段各娱乐类别的摸鱼时长(分钟)及占本人摸鱼总时长的比例(时长口径)。点员工名进画像可看具体域名。" />,dataIndex:'cats',render:(v,r)=>{const e=v||{};const tot=Object.values(e).reduce((a,b)=>a+b,0)||1;return <Space wrap size={[4,4]}>{Object.entries(e).sort((a,b)=>b[1]-a[1]).map(([k,n])=>{const pct=Math.round(n/tot*100);return <Tag key={k} style={{background:'var(--bg)',color:'var(--ink2)',border:'1px solid var(--ink4)'}}>{k} <b className="num">{Math.round(n)}分 {pct}%</b></Tag>})}</Space>}},
+          {title:<TH t="在岗" tip="观察期(近7个自然日,含今天)的工作时段在岗天数 · 活跃小时范围(观察期内首次-末次活跃的小时,非工作时段也计入)。" />,width:96,render:(_,r)=><span style={{color:'var(--ink3)',fontSize:11}}>{r.active_days||0}天 · {r.hour_min===null?'-':r.hour_min+'-'+r.hour_max+'点'}</span>},
         ]}/>
     </Card>
     <Card className="card" size="small" style={{marginTop:16}} title={<span><span className="brand-bar"></span>AI 摸鱼总结（近7天 · 按人）</span>} extra={<Button type="primary" size="small" loading={loading} onClick={gen}><i className="fa-solid fa-robot" style={{marginRight:6}}></i>{items&&items.length?'重新生成':'生成总结'}</Button>}>
@@ -1216,11 +1216,14 @@ function Handbook(){
       ['豁免管理','查看/删除豁免;删除后该员工该场景恢复告警'],
       ['管理员密码','初始 admin/admin123,首次登录后请立即在 系统设置→修改密码 更改;改密后所有会话失效需重登'],
     ]},
-    {id:'deploy',icon:'fa-rocket',title:'9. 部署与更新',body:<><pre className="hb-pre"># 服务器(10.0.20.249) /root/syslog
-git pull                                  # 拉最新代码
-docker compose up -d --build              # 标准方式(重建镜像)
-# 注意:容器代码是 COPY 进镜像的,docker restart 不会更新代码;
-# 临时热修可 docker cp 到 /app/ 后 restart,但下次 build 前记得先 git 提交
+    {id:'deploy',icon:'fa-rocket',title:'9. 部署与更新',body:<><pre className="hb-pre"># 一键热部署(推荐,在本地开发机仓库根目录执行)
+/d/PythonProject/python.exe backend/deploy.py          # 全量(后端+前端,自动语法校验+Babel预编译+上传+容器+健康检查)
+/d/PythonProject/python.exe backend/deploy.py --front  # 仅前端(不重启服务,不掉登录)
+# 线上页面是预编译版,浏览器不再现场编译;HTML已加no-cache,部署后普通刷新即生效
+
+# 服务器(10.0.20.249) /root/syslog(全量重建镜像时用)
+git pull && docker compose up -d --build
+# 注意:容器代码是 COPY 进镜像的;deploy.py 是热更新(docker cp+restart),两者最终以 git 仓库为准
 
 # 自动备份(已配置,每天 02:00 执行,保留最近 7 份)
 /root/syslog/backup.sh                    # 手动触发一次备份

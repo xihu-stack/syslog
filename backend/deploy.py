@@ -26,8 +26,20 @@ CONTAINER = "ipguard-ai"
 PY_FILES = ["api.py", "db.py", "dicts.py", "detector.py", "llm_client.py", "pipeline.py", "profiles.py", "syslog_recv.py"]
 
 
+def _node() -> str:
+    """node 绝对路径(不依赖 PATH——宿主环境变量异常时 which 失效,2026-08-18 实测)。"""
+    import shutil
+    for p in (shutil.which("node"), r"C:\Program Files\nodejs\node.exe",
+              r"C:\Program Files (x86)\nodejs\node.exe",
+              os.path.expandvars(r"%LOCALAPPDATA%\Programs\nodejs\node.exe")):
+        if p and os.path.exists(p):
+            return p
+    raise SystemExit("找不到 node.exe")
+
+
 def sh(cmd):
-    r = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=HERE)
+    r = subprocess.run(cmd, shell=True, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", cwd=HERE)
     if r.returncode != 0:
         print(r.stdout, r.stderr)
         raise SystemExit(f"命令失败: {cmd}")
@@ -39,7 +51,8 @@ def ensure_babel() -> str:
     p = os.path.join(HERE, "libs", "babel.js")
     if not os.path.exists(p):
         os.makedirs(os.path.dirname(p), exist_ok=True)
-        sh(f'curl -s -o "{p}" http://{HOST}:18000/libs/babel.js')
+        import urllib.request
+        urllib.request.urlretrieve(f"http://{HOST}:18000/libs/babel.js", p)  # 不依赖PATH里的curl
         if not os.path.exists(p) or os.path.getsize(p) < 100000:
             raise SystemExit("下载 babel.js 失败")
     return p
@@ -66,7 +79,7 @@ def precompile_index() -> str:
         f.write(runner)
         runner_js = f.name
     out_js = jsx + ".js"
-    sh(f'node "{runner_js}" "{jsx}" "{out_js}"')
+    sh(f'"{_node()}" "{runner_js}" "{jsx}" "{out_js}"')
     compiled = open(out_js, encoding="utf-8").read().replace("</script", "<\\/script")
     for p in (jsx, out_js, runner_js):
         os.unlink(p)

@@ -844,7 +844,9 @@ def efficiency():
         # 只扫近 7 天(效率分析看近期,不必全量历史)。原全量 98 万行→约 30 万行,
         # 冷启动从 30s 降到数秒。性能:SQL 直接抽 domain(免 ORM 水合逐行 JSON 解析),
         # 域名分类按 distinct 域名缓存(数千个)。
-        since = bj_now() - timedelta(days=7)
+        # 窗口=自然日口径(今天0点往前7个日历日,含今天),避免168h跨出8个日历日
+        _n = bj_now()
+        since = (_n - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
         dom_expr = json_field(EventRow.raw, 'domain')
         lab_expr = func.coalesce(json_field(EventRow.raw, 'category'), json_field(EventRow.raw, 'app'), '')
         rows = s.query(EventRow.employee_id, EventRow.occurred_at, EventRow.count, dom_expr, lab_expr).filter(
@@ -853,7 +855,7 @@ def efficiency():
         dom_cache = {}
         for emp_id, occ, cnt, dom, lab in rows:
             r = emp.setdefault(emp_id, {"wh": 0, "slack": 0, "work": 0, "cats": Counter(),
-                                        "days": set(), "hours": set(), "stimes": []})
+                                        "days": set(), "hours": set(), "stimes": [], "cat_times": {}})
             if occ:
                 r["hours"].add(occ.hour)
                 if _is_work_hours(occ):          # 活跃天数只计工作时段在岗日,深夜/周末加班不稀释日均
@@ -870,6 +872,7 @@ def efficiency():
                 r["wh"] += c
                 if cat:
                     r["slack"] += c; r["cats"][cat] += c; r["stimes"].append(occ)
+                    r["cat_times"].setdefault(cat, []).append(occ)
                 elif is_work:
                     r["work"] += c
         out = []
@@ -878,6 +881,9 @@ def efficiency():
             # 统一摸鱼时长口径(见 _slack_segments):桶数封顶防碎片虚高,保底5min防单次=0
             segs = _slack_segments(r["stimes"])
             total_min = sum(x[2] for x in segs) / 60.0
+            # 各娱乐类别也按时长口径(分钟)——次数口径会系统性低估视频类(开一页挂几小时,请求少)
+            cat_mins = {cat: round(sum(x[2] for x in _slack_segments(ts)) / 60.0)
+                        for cat, ts in r["cat_times"].items()}
             # 碎片度: 单事件段占比高(≥70%且段数≥8)=稀疏上报模式(碎片闪现/挂机心跳),
             # 时长是保底值堆出来的估算上限,前端标记提示复核(防线:心跳污染自动预警)
             single = sum(1 for x in segs if len(x[3]) == 1)
@@ -889,9 +895,12 @@ def efficiency():
             active_days = len(r["days"]) or 1
             slack_avg = round(total_min / active_days)  # 日均摸鱼分钟(total_min已是分钟)
             wh = r["wh"]
+            # 摸鱼占比=时长口径: 摸鱼总时长 ÷ (工作日在岗天数×7小时工时)。
+            # 旧次数口径(slack/wh)对视频类严重失真(看一天视频占比1-2%,与日均时长自相矛盾)
+            pct = round(min(total_min / (active_days * 420) * 100, 100), 1)
             out.append({"employee": k, "total": wh, "slack": r["slack"],
-                        "pct": round(r["slack"] / wh * 100, 1) if wh else 0,
-                        "cats": dict(r["cats"]), "active_days": len(r["days"]),
+                        "pct": pct,
+                        "cats": cat_mins, "active_days": len(r["days"]),
                         "hour_min": hours[0] if hours else None, "hour_max": hours[-1] if hours else None,
                         "slack_avg": slack_avg, "max_span": round(mx / 60), "work": r["work"],
                         "sparse": sparse,
@@ -915,7 +924,8 @@ def efficiency_summary():
     from datetime import timedelta
     s = Session()
     try:
-        since = bj_now() - timedelta(days=7)
+        _n2 = bj_now()
+        since = (_n2 - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)  # 自然日口径(7个日历日含今天)
         dom_expr = json_field(EventRow.raw, 'domain')
         lab_expr = func.coalesce(json_field(EventRow.raw, 'category'), json_field(EventRow.raw, 'app'), '')
         rows = s.query(EventRow.employee_id, EventRow.occurred_at, EventRow.count, dom_expr, lab_expr).filter(
