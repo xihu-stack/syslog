@@ -539,6 +539,11 @@ def verdict_confirm(vid: int, reason: str = ""):
     try:
         a = s.query(AlertRow).filter_by(verdict_id=vid).first()
         if not a:
+            # verdict_id会随再犯指向最新研判,老研判找不到时按员工+意图兜底(2026-08-18自查)
+            v0 = s.query(VerdictRow).get(vid)
+            if v0:
+                a = s.query(AlertRow).filter_by(employee_id=v0.employee_id, scenario=v0.intent).first()
+        if not a:
             return {"ok": False, "error": "未找到对应告警"}
         a.status = "CONFIRMED"
         s.add(FeedbackRow(alert_id=a.id, label="TP", reason=reason or "确认"))
@@ -556,6 +561,10 @@ def verdict_false_positive(vid: int, reason: str = "误报", signal_type: str = 
     s = Session()
     try:
         a = s.query(AlertRow).filter_by(verdict_id=vid).first()
+        if not a:
+            v0 = s.query(VerdictRow).get(vid)
+            if v0:
+                a = s.query(AlertRow).filter_by(employee_id=v0.employee_id, scenario=v0.intent).first()
         if not a:
             return {"ok": False, "error": "未找到对应告警"}
         a.status = "FP"
