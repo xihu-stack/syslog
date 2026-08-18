@@ -1169,27 +1169,23 @@ def ask(body: dict = Body(...)):
             ans = "查询轮次已达上限,请换个更具体的问题。"
     except Exception as e:
         ans = f"AI 回答失败: {e}"
-    # 历史落库(失败不影响回答)
+    # 历史落库(失败不影响回答)+ 自动裁剪:只保留最近500条
+    # (问答历史价值随时间衰减,无限增长无意义;500条够前端展示与回溯)
     try:
         s2 = Session()
         try:
             s2.add(AskHistoryRow(question=question, answer=ans))
             s2.commit()
+            _maxid = s2.query(func.max(AskHistoryRow.id)).scalar() or 0
+            if _maxid > 500:
+                s2.query(AskHistoryRow).filter(AskHistoryRow.id <= _maxid - 500)\
+                    .delete(synchronize_session=False)
+                s2.commit()
         finally:
             s2.close()
     except Exception:
         pass
     return {"answer": ans, "action": "+".join(used) or "chat"}
-    # 历史落库(失败不影响回答)
-    try:
-        s2 = Session()
-        try:
-            s2.add(AskHistoryRow(question=question, answer=ans))
-            s2.commit()
-        finally:
-            s2.close()
-    except Exception:
-        pass
     return {"answer": ans, "action": action}
 
 
