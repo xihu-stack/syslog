@@ -275,7 +275,29 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         except Exception:
             pass
         v = detector.analyze_window(w, summary, dev, exempt, gctx)
+        # ---- 双模型复核: Qwen判定达到告警级(≥阈值)时,用深度模型独立重判一遍。
+        # 两模型一致才维持告警;复核明显更低则降级(说明证据撑不起告警,典型如
+        # 单次招聘/页面级访问被判外发)。复核失败保守保留原判(可用性优先)。
+        try:
+            _smart = _lc_smart()
+            if _smart and isinstance(v, dict) and (v.get("risk_score") or 0) >= 50 \
+                    and dicts.get_setting("llm_review", "1") == "1":
+                rv = detector.analyze_window(w, summary, dev, exempt, gctx, model=_smart)
+                rs = (rv or {}).get("risk_score") or 0
+                q = v.get("risk_score") or 0
+                if rs >= 50:  # 一致 → 维持,取深模型的说明(通常更准)并标注双确认
+                    v = {**rv, "risk_score": max(q, rs),
+                         "explanation": f"[双模型一致·{_smart}复核{rs}分] " + (rv.get("explanation") or v.get("explanation") or "")}
+                else:  # 分歧 → 降级到复核分,保留两模型意见供人工复核
+                    v = {**v, "risk_score": max(rs, 30),
+                         "explanation": f"[复核降级·{_smart}判{rs}分:证据不足告警级] " + (v.get("explanation") or "")}
+        except Exception:
+            pass  # 复核异常不影响主判
         return (emp, w[0].device_id, w[0].occurred_at, w[-1].occurred_at, [e.event_hash() for e in w], v)
+
+    def _lc_smart():
+        import llm_client
+        return llm_client.smart_model()
 
     done_count = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:

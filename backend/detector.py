@@ -272,7 +272,8 @@ def _work_hours_cap(window, dev=None) -> int | None:
     return cap or None
 
 
-def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exemptions=None, global_ctx=None) -> dict:
+def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exemptions=None, global_ctx=None,
+                   model=None) -> dict:
     if profile:
         profile_txt = f"\n{profile}"
     else:
@@ -288,7 +289,7 @@ def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exempti
         raw = llm_client.chat(
             [{"role": "system", "content": SYSTEM_PROMPT},
              {"role": "user", "content": user}],
-            max_tokens=800, timeout=120,
+            max_tokens=800, timeout=120, model=model,
         )
         v = llm_client.extract_json(raw)
         v.setdefault("explanation", raw[:120])

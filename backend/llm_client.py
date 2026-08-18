@@ -57,22 +57,42 @@ def _candidates():
 LAST_MODEL = ""  # 最近一次成功调用实际使用的模型(研判落库时读,替代硬编码)
 
 
+def smart_model():
+    """理解型任务的深度模型(问答/总结/规则扫描/告警复核共用),空=用活动模型。
+    三模型分工(2026-08-18实测): Qwen=高频研判(快/格式稳) / glm-5=理解型(深) / R1=离线。"""
+    try:
+        return dicts.get_setting("llm_ask_model") or None
+    except Exception:
+        return None
+
+
 def chat(messages, model=None, temperature=0.1, max_tokens=1000, timeout=120):
-    """调用 /chat/completions。活动模型优先，失败自动切换另一个兜底；都失败才抛异常。"""
+    """调用 /chat/completions。活动模型优先，失败自动切换另一个兜底；都失败才抛异常。
+    model=指定深度模型(如 glm-5)时:指定模型优先,全失败(如限流429)自动回退活动模型,保可用性。"""
     global LAST_MODEL
     base_body = {"messages": messages, "temperature": temperature, "max_tokens": max_tokens}
+    cands = _candidates()
+    attempts = [(base, key, (model or mdl)) for base, key, mdl in cands]
+    if model:
+        attempts += [(base, key, mdl) for base, key, mdl in cands]  # 回退:不指定模型再试一轮
     last_err = None
-    for base, key, mdl in _candidates():
+    for base, key, mdl in attempts:
         try:
-            body = json.dumps({**base_body, "model": model or mdl}).encode("utf-8")
+            body = json.dumps({**base_body, "model": mdl}).encode("utf-8")
             req = urllib.request.Request(
                 f"{base}/chat/completions", data=body,
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                 method="POST")
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-            LAST_MODEL = model or mdl  # 记录实际命中模型(可能是兜底切换后的)
-            return data["choices"][0]["message"]["content"]
+            content = data["choices"][0]["message"].get("content") or ""
+            if not content.strip():
+                # 深度模型偶发空输出(思考耗尽token/网关并发拥塞截断)——视为失败走回退,
+                # 否则上层拿到空串会把调用当成功(2026-08-18 摸鱼总结空结果排查结论)
+                last_err = RuntimeError(f"{mdl} 返回空内容(疑似思考token耗尽或网关拥塞)")
+                continue
+            LAST_MODEL = mdl  # 记录实际命中模型(可能是兜底切换后的)
+            return content
         except Exception as e:
             last_err = e
             continue

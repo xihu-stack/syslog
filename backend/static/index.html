@@ -1191,6 +1191,7 @@ function Handbook(){
       ['远程控制 / 代码仓库 / AI助手','降权(mid 档):工作时段正常使用不告警,凌晨或高频才研判'],
       ['招聘网站','单次低频=正常;反复访问(≥3次)或凌晨→求职意图'],
       ['风险分档','0-30 正常 / 31-60 关注(蓝) / 61-85 高危(橙) / 86+ 严重(红),AI 按锚点打分+代码兜底校准'],
+      ['双模型复核','告警级(≥50分)判定由智能任务模型(如 glm-5)独立重判:两模型一致才维持告警并标注"双模型一致";分歧则自动降级并保留双方意见——告警更经得起质疑。系统设置 llm_review 置 0 可关闭'],
     ]},
     {id:'dict',icon:'fa-book-bookmark',title:'5. 识别架构与字典维护',body:<><p><b>识别架构(2026-08 起:分类库为主,字典为辅)</b>:深信服给每条访问自带行业分类标签(覆盖率100%),娱乐/视频/游戏/购物类标签直接判定摸鱼——字典枚举不再是唯一来源,新增冷门娱乐站自动被分类库兜住。风险域名字典继续负责精确判定;分类标签同时喂给 AI 开集扫描提升判断质量。</p>
       <p><b>白名单</b>:slack_whitelist(公司业务需要访问的娱乐站,不算摸鱼)/ risk_whitelist(公司采购的正规网盘、企业邮箱等,不进风险识别)。误报多了往白名单加,比反复标误报更治本。</p>
@@ -1322,7 +1323,7 @@ function Config(){
           <Form.Item label={'DeepSeek 模型（Key: '+((cfg.deepseek||{}).key_masked||'无')+'）'} name="deepseek_model"><Input placeholder="deepseek"/></Form.Item>
           <Form.Item label="DeepSeek 接口地址" name="deepseek_base_url"><Input placeholder="http://10.0.20.249:4000/v1"/></Form.Item>
           <Form.Item label="DeepSeek 密钥（留空不改）" name="deepseek_key"><Input.Password placeholder="sk-..."/></Form.Item>
-          <Form.Item label="问答专用模型" name="ask_model" extra="AI问答使用的模型名(需网关已部署且key有权限),如 glm-5 / DeepSeek-R1;留空=用活动模型(Qwen)"><Input placeholder="留空=Qwen"/></Form.Item>
+          <Form.Item label="智能任务模型" name="ask_model" extra="AI问答/摸鱼总结/规则扫描/告警复核共用的深度模型(需网关已部署且key有权限),如 glm-5 / DeepSeek-R1;留空=全部用活动模型(Qwen)"><Input placeholder="留空=Qwen"/></Form.Item>
           <Button type="primary" htmlType="submit" loading={saving}>保存</Button>
         </Form>
       </Card>},

@@ -947,10 +947,13 @@ def efficiency_summary():
                   "只输出 JSON 数组 [{\"employee\",\"summary\"}],summary 是一句中文。\n\n数据:\n" + ctx)
         try:
             raw = llm_client.chat([{"role": "system", "content": prompt}, {"role": "user", "content": "请输出 JSON。"}],
-                                  max_tokens=2000, timeout=120)
+                                  max_tokens=4000, timeout=240, model=llm_client.smart_model())  # 深度模型think耗token,预算必须给足
         except Exception as e:
             return {"items": [], "msg": "AI 总结失败: %s" % e}
-        m = _re.search(r"\[.*\]", raw, _re.S)
+        # 深度模型(glm-5/R1)输出含<think>思考块,必须先剥离再提取数组
+        clean = _re.sub(r"<think>.*?</think>", "", raw, flags=_re.S)
+        clean = _re.sub(r"```(?:json)?|```", "", clean)
+        m = _re.search(r"\[.*\]", clean, _re.S)
         items = []
         if m:
             try:
@@ -959,7 +962,8 @@ def efficiency_summary():
                 items = []
         items = [{"employee": str(it.get("employee", "")).strip(), "summary": str(it.get("summary", "")).strip()}
                  for it in items if it.get("employee") and it.get("summary")]
-        _eff_summary_cache["data"] = items; _eff_summary_cache["ts"] = _time.time()
+        if items:  # 空结果不缓存(可能因限流/解析失败,下次重试;真空也无妨重查)
+            _eff_summary_cache["data"] = items; _eff_summary_cache["ts"] = _time.time()
         return {"items": items}
     finally:
         s.close()
@@ -1395,8 +1399,10 @@ def _rules_scan_core() -> dict:
                  "原则:宁可多标 suspect_new 让人工复核,也不要漏掉可疑域名。只输出 JSON 数组。")
         user = "域名列表(域名 出现次数 深信服分类):\n" + "\n".join(f"{d} {n} {lab_of.get(d,'') or '-'}" for d, n in top)
         raw = llm_client.chat([{"role": "system", "content": sys_p}, {"role": "user", "content": user}],
-                              max_tokens=1500, timeout=120)
-        m = _re.search(r"\[.*\]", raw, _re.S)
+                              max_tokens=4500, timeout=300, model=llm_client.smart_model())  # 扫描质量决定开集发现效果,深度模型think预算给足
+        _rc = _re.sub(r"<think>.*?</think>", "", raw, flags=_re.S)  # 剥离深度模型思考块
+        _rc = _re.sub(r"```(?:json)?|```", "", _rc)
+        m = _re.search(r"\[.*\]", _rc, _re.S)
         suggestions = []
         if m:
             try:
