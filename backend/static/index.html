@@ -790,6 +790,7 @@ function Dashboard({go, goProfile}){
           <Col span={8}><Statistic title="已接收" value={sl.count||0}/></Col>
           <Col span={8}><Statistic title="已入库" value={sl.ingested||0}/></Col>
         </Row>
+        {sl.last_recv&&<div style={{fontSize:11,color:'var(--ink3)',marginTop:6}} title='数据流心跳:最近一次收到深信服报文的时间(工作时间超过2小时无报文会自动推送告警)'>最近报文 <b className='num'>{sl.last_recv}</b>{sl.error?' · ':''}</div>}
         {sl.error&&<div style={{color:'var(--danger)',fontSize:12,marginTop:4}}>{sl.error}</div>}
         {sl.recent&&sl.recent.length>0&&<div style={{marginTop:8,fontSize:11,maxHeight:64,overflow:'auto',borderTop:'1px solid var(--line)',paddingTop:6}}>
           {sl.recent.slice(0,5).map((m,i)=><div key={i} style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><b>{m.t}</b> {m.msg.slice(20,70)}</div>)}

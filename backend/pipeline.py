@@ -233,7 +233,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                                     _notify_webhook(emp, v.get("risk_score", 0), v.get("explanation", ""))
                             else:
                                 # 已有告警:当天再犯即刷新最近活动时间(window_start),让"今日告警"/趋势图
-                                # 如实反映当日复犯;分数只升不降(取峰值),summary/verdict 仅在创新高时更新。
+                                # 如实反映当日复犯;分数只升不降(取峰值)。
                                 existing.window_start = wstart
                                 # 再犯重新待处理:已确认/误报的告警再次触发时重置为NEW——
                                 # 否则确认一次=对该意图永久静默,复犯永远不再提醒(2026-08-18用户发现)。
@@ -244,6 +244,11 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                                     if v.get("risk_score", 0) >= 75:
                                         _notify_webhook(f"{emp}(复犯,原状态{_was})", v.get("risk_score", 0),
                                                         v.get("explanation", ""))
+                                # 内容与时间同步: verdict_id/summary 指向本次(最新)窗口的研判——
+                                # 否则window_start刷到今天、说明还是老窗口的行为,今日告警展示昨天的内容(2026-08-18审计发现)
+                                existing.verdict_id = vr.id
+                                if _was and _was != "NEW":
+                                    existing.summary = v.get("explanation") or existing.summary
                                 if v.get("risk_score", 0) > (existing.risk_score or 0):
                                     existing.risk_score = v.get("risk_score", 0)
                                     existing.severity = severity_of(v.get("risk_score", 0))
