@@ -937,10 +937,10 @@ def system_stats():
         _day[_today_key] = s.query(AlertRow).filter(AlertRow.window_start >= today_start).count()  # 今日活跃=KPI口径
         alerts_by_day = list(_day.items())
 
-        # TOP活跃风险(近7天·告警级·未处理): 分数=近7天内最高研判分(非历史峰值),
-        # 已确认/误报/已关闭的场景不参与——只反映还需要关注的活动风险(2026-08-19用户口径)
-        # 豁免意图同样剔除: 豁免的研判不建告警,若不过滤会在TOP出现画像页看不到的幽灵场景
-        # (2026-08-19发现: 黄春煜job_seeking 85分被豁免后仍霸榜,画像只有data_exfiltration)
+        # TOP活跃风险(近7天·告警级·未处理): 每人取最近一次告警级(≥50)研判,
+        # 分数/场景/说明与告警行完全同源(告警分=最新研判分,2026-08-19统一口径:
+        # 废除一切峰值口径,杜绝列表78/说明55这类前后对不上);已确认/误报/关闭/
+        # 豁免的场景不参与——只反映还需要关注的活动风险
         _a7 = bj_now() - timedelta(days=7)
         _al_status = {}
         _al_summary = {}
@@ -958,22 +958,13 @@ def system_stats():
             if _st in ('CONFIRMED', 'FP', 'CLOSED'):
                 continue
             k = _v.employee_id
-            if k not in _agg:
+            _ws = _v.window_start.isoformat() if _v.window_start else ''
+            if k not in _agg or _ws > _agg[k]['latest']:
                 _agg[k] = {'employee': k, 'scenario': _v.intent, 'risk_score': _v.risk_score,
-                           'status': _st, 'latest': _v.window_start.isoformat() if _v.window_start else None,
-                           'top_exp': _v.explanation}
-            else:
-                g = _agg[k]
-                if (_v.risk_score or 0) > (g['risk_score'] or 0):
-                    g['risk_score'] = _v.risk_score
-                    g['scenario'] = _v.intent
-                    g['top_exp'] = _v.explanation
-                if _v.window_start and (g['latest'] or '') < _v.window_start.isoformat():
-                    g['latest'] = _v.window_start.isoformat()
+                           'status': _st, 'latest': _ws}
         top_active = []
         for g in sorted(_agg.values(), key=lambda x: -(x['risk_score'] or 0))[:10]:
-            # 说明: 优先告警行summary(与画像页一致),无告警行(如豁免外新场景)取最高分研判说明
-            g['summary'] = _al_summary.get((g['employee'], g['scenario'])) or (g.pop('top_exp') or '')
+            g['summary'] = _al_summary.get((g['employee'], g['scenario'])) or ''
             top_active.append(g)
 
         return {

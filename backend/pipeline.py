@@ -259,11 +259,11 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                                 # (2026-08-19夏玮案例: 75分告警挂着"复核降级35分"的过期说明)
                                 existing.verdict_id = vr.id
                                 existing.summary = v.get("explanation") or existing.summary
-                                if v.get("risk_score", 0) > (existing.risk_score or 0):
-                                    existing.risk_score = v.get("risk_score", 0)
-                                    existing.severity = severity_of(v.get("risk_score", 0))
-                                    existing.summary = v.get("explanation")
-                                    existing.verdict_id = vr.id
+                                # 分数=最新告警级研判分,与说明/研判历史同源。废除"只升不降取峰值":
+                                # 峰值口径造成列表78分/说明里55分两个数字对不上(2026-08-19逐告警
+                                # 核对发现15条不一致);历史峰值在研判历史里仍可见
+                                existing.risk_score = v.get("risk_score", 0)
+                                existing.severity = severity_of(v.get("risk_score", 0))
                     wsession.commit()
                     break  # 提交成功
                 except _OpErr as e:
@@ -369,8 +369,13 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 rs = (rv or {}).get("risk_score") or 0
                 q = v.get("risk_score") or 0
                 if rs >= 50:  # 一致 → 维持,取深模型的说明(通常更准)并标注双确认
-                    v = {**rv, "risk_score": max(q, rs),
-                         "explanation": f"[双模型一致·{_smart}复核{rs}分] " + (rv.get("explanation") or v.get("explanation") or "")}
+                    # 文案里的分数必须是终判分(max(q,rs)): 只写复核分会让读者把复核分
+                    # 当结论,出现"75分告警/说明写复核55分"的对不上(2026-08-19审计)
+                    _mx = max(q, rs)
+                    _tag = (f"[双模型一致·{_smart}复核{rs}分] " if _mx == rs
+                            else f"[双模型一致·终判{_mx}分(Qwen{q}/{_smart}复核{rs})] ")
+                    v = {**rv, "risk_score": _mx,
+                         "explanation": _tag + (rv.get("explanation") or v.get("explanation") or "")}
                 else:  # 分歧 → 降级到复核分,保留两模型意见供人工复核
                     v = {**v, "risk_score": max(rs, 30),
                          "explanation": f"[复核降级·{_smart}判{rs}分:证据不足告警级] " + (v.get("explanation") or "")}
