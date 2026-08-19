@@ -918,6 +918,31 @@ def system_stats():
         _day[_today_key] = s.query(AlertRow).filter(AlertRow.window_start >= today_start).count()  # 今日活跃=KPI口径
         alerts_by_day = list(_day.items())
 
+        # TOP活跃风险(近7天·告警级·未处理): 分数=近7天内最高研判分(非历史峰值),
+        # 已确认/误报/已关闭的场景不参与——只反映还需要关注的活动风险(2026-08-19用户口径)
+        _a7 = bj_now() - timedelta(days=7)
+        _al_status = {}
+        for _a in s.query(AlertRow.employee_id, AlertRow.scenario, AlertRow.status).all():
+            _al_status[(_a.employee_id, _a.scenario)] = _a.status
+        _agg = {}
+        for _v in s.query(VerdictRow).filter(VerdictRow.window_start >= _a7,
+                                             VerdictRow.risk_score >= 50).all():
+            _st = _al_status.get((_v.employee_id, _v.intent), 'NEW')
+            if _st in ('CONFIRMED', 'FP', 'CLOSED'):
+                continue
+            k = _v.employee_id
+            if k not in _agg:
+                _agg[k] = {'employee': k, 'scenario': _v.intent, 'risk_score': _v.risk_score,
+                           'status': _st, 'latest': _v.window_start.isoformat() if _v.window_start else None}
+            else:
+                g = _agg[k]
+                if (_v.risk_score or 0) > (g['risk_score'] or 0):
+                    g['risk_score'] = _v.risk_score
+                    g['scenario'] = _v.intent
+                if _v.window_start and (g['latest'] or '') < _v.window_start.isoformat():
+                    g['latest'] = _v.window_start.isoformat()
+        top_active = sorted(_agg.values(), key=lambda x: -(x['risk_score'] or 0))[:10]
+
         return {
             "events": {
                 "today": ev_today, "yesterday": ev_yesterday, "week": ev_week, "total": ev_total,
@@ -953,6 +978,7 @@ def system_stats():
             "syslog": syslog_recv.status(),
             "profile_updated_ts": profile_updated_ts,
             "alerts_by_day": alerts_by_day,
+            "top_active": top_active,
         }
     finally:
         s.close()

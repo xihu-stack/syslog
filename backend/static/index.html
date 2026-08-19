@@ -726,11 +726,8 @@ function Dashboard({go, goProfile}){
         <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警日趋势</b><span style={{color:'var(--ink3)',fontSize:11,marginLeft:10}}>近7天每日告警数 · 点击查看明细</span></div>
         <Card className="card" size="small" hoverable style={{marginBottom:16,cursor:'pointer'}} bodyStyle={{padding:'14px 18px'}} onClick={()=>go('alerts',{when:'week'})}><div ref={alertTrend} style={{height:200}}></div></Card>
         {(()=>{
-      // 近7天活跃口径: 只统计window_start(最近活动,再犯会刷新)在7天内的告警——
-      // 历史峰值口径下老高分永远霸榜,榜单僵死不反映当下态势(2026-08-18用户发现)
-      const _wk=(Date.now()/1000)-7*86400;
-      const ag={};(sysAl.list||[]).forEach(a=>{const wt=a.window_start?(new Date(a.window_start).getTime()/1000):0;if(wt<_wk)return;if(!ag[a.employee])ag[a.employee]={key:a.employee,employee:a.employee,scenario:'',scenarios:[],maxRisk:0,summary:'',status:a.status,latest:a.window_start};const g=ag[a.employee];const sc=INTENT[a.scenario]||a.scenario;if(!g.scenarios.includes(sc))g.scenarios.push(sc);if((a.risk_score||0)>g.maxRisk){g.maxRisk=a.risk_score;g.summary=a.summary;g.scenario=sc;}if(a.window_start>(g.latest||''))g.latest=a.window_start;});
-      const ga=Object.values(ag).sort((a,b)=>b.maxRisk-a.maxRisk);
+      // TOP活跃风险: 后端聚合(近7天最高研判分,已确认/误报/关闭不参与,2026-08-19口径)
+      const ga=(sys.top_active||[]).map(x=>({key:x.employee,employee:x.employee,scenario:INTENT[x.scenario]||x.scenario,scenarios:[INTENT[x.scenario]||x.scenario],maxRisk:x.risk_score,status:x.status,latest:x.latest}));
       return <Card className="card" title={<span><span className="brand-bar"></span>高风险告警 TOP5</span>} size="small" extra={<a onClick={()=>go('alerts')}>全部 →</a>}>
         {ga.length? <Table size="small" rowKey="key" pagination={false} dataSource={ga.slice(0,5)} onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
           columns={[{title:'用户',dataIndex:'employee',width:96,render:v=><span className="uname" style={{cursor:'inherit'}}>{v}</span>},
