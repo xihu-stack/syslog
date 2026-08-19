@@ -935,6 +935,7 @@ def system_stats():
                 "list": [{
                     "employee": r.employee_id, "scenario": r.scenario,
                     "risk_score": r.risk_score, "status": r.status, "summary": r.summary,
+                    "window_start": r.window_start.isoformat() if r.window_start else None,
                 } for r in s.query(AlertRow).order_by(desc(AlertRow.risk_score), desc(AlertRow.created_at)).limit(50).all()],
             },
             "exceptions": ex_count,
