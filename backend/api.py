@@ -924,8 +924,10 @@ def system_stats():
         # (2026-08-19发现: 黄春煜job_seeking 85分被豁免后仍霸榜,画像只有data_exfiltration)
         _a7 = bj_now() - timedelta(days=7)
         _al_status = {}
-        for _a in s.query(AlertRow.employee_id, AlertRow.scenario, AlertRow.status).all():
+        _al_summary = {}
+        for _a in s.query(AlertRow.employee_id, AlertRow.scenario, AlertRow.status, AlertRow.summary).all():
             _al_status[(_a.employee_id, _a.scenario)] = _a.status
+            _al_summary[(_a.employee_id, _a.scenario)] = _a.summary
         _exc_set = {(_x.employee_id, _x.signal_type) for _x in s.query(ExceptionRow).filter(
             (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > _utc_now)).all()}
         _agg = {}
@@ -939,15 +941,21 @@ def system_stats():
             k = _v.employee_id
             if k not in _agg:
                 _agg[k] = {'employee': k, 'scenario': _v.intent, 'risk_score': _v.risk_score,
-                           'status': _st, 'latest': _v.window_start.isoformat() if _v.window_start else None}
+                           'status': _st, 'latest': _v.window_start.isoformat() if _v.window_start else None,
+                           'top_exp': _v.explanation}
             else:
                 g = _agg[k]
                 if (_v.risk_score or 0) > (g['risk_score'] or 0):
                     g['risk_score'] = _v.risk_score
                     g['scenario'] = _v.intent
+                    g['top_exp'] = _v.explanation
                 if _v.window_start and (g['latest'] or '') < _v.window_start.isoformat():
                     g['latest'] = _v.window_start.isoformat()
-        top_active = sorted(_agg.values(), key=lambda x: -(x['risk_score'] or 0))[:10]
+        top_active = []
+        for g in sorted(_agg.values(), key=lambda x: -(x['risk_score'] or 0))[:10]:
+            # 说明: 优先告警行summary(与画像页一致),无告警行(如豁免外新场景)取最高分研判说明
+            g['summary'] = _al_summary.get((g['employee'], g['scenario'])) or (g.pop('top_exp') or '')
+            top_active.append(g)
 
         return {
             "events": {

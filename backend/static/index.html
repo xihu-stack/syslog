@@ -741,7 +741,7 @@ function Dashboard({go, goProfile}){
         <Card className="card" size="small" hoverable style={{marginBottom:16,cursor:'pointer'}} bodyStyle={{padding:'14px 18px'}} onClick={()=>go('alerts',{when:'week'})}><div ref={alertTrend} style={{height:200}}></div></Card>
         {(()=>{
       // TOP活跃风险: 后端聚合(近7天最高研判分,已确认/误报/关闭不参与,2026-08-19口径)
-      const ga=(sys.top_active||[]).map(x=>({key:x.employee,employee:x.employee,scenario:INTENT[x.scenario]||x.scenario,scenarios:[INTENT[x.scenario]||x.scenario],maxRisk:x.risk_score,status:x.status,latest:x.latest}));
+      const ga=(sys.top_active||[]).map(x=>({key:x.employee,employee:x.employee,scenario:INTENT[x.scenario]||x.scenario,scenarios:[INTENT[x.scenario]||x.scenario],maxRisk:x.risk_score,status:x.status,latest:x.latest,summary:x.summary}));
       return <Card className="card" title={<span><span className="brand-bar"></span>高风险告警 TOP5</span>} size="small" extra={<a onClick={()=>go('alerts')}>全部 →</a>}>
         {ga.length? <Table size="small" rowKey="key" pagination={false} dataSource={ga.slice(0,5)} onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
           columns={[{title:'用户',dataIndex:'employee',width:96,render:v=><span className="uname" style={{cursor:'inherit'}}>{v}</span>},
