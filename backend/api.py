@@ -515,7 +515,10 @@ def employee(emp: str):
 
 @app.get("/api/computers")
 def computers():
-    """按计算机(身份)合并：事件数/告警数/最高风险/最近活动——用于计算机视图与历史研判。"""
+    """用户视图: 按员工标识聚合事件/告警/风险。IP型标识(DHCP动态分配,同一IP不同时期
+    可能是不同的人)不作为用户展示——绝不用IP汇聚员工日志(2026-08-19用户红线)。"""
+    import re as _re
+    _ip = _re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
     s = Session()
     try:
         ev = (s.query(EventRow.employee_id, func.count(EventRow.id), func.max(EventRow.occurred_at))
@@ -530,7 +533,8 @@ def computers():
               .filter(EventRow.occurred_at >= _today).group_by(EventRow.employee_id).all()}
         out = [{"computer": e, "event_count": c, "event_count_today": et.get(e, 0),
                 "last_seen": (t.isoformat() if t else None),
-                "max_risk": vr.get(e), "alert_count": al.get(e, 0)} for e, c, t in ev]
+                "max_risk": vr.get(e), "alert_count": al.get(e, 0)}
+               for e, c, t in ev if not _ip.match(e or "")]
         out.sort(key=lambda x: -(x["max_risk"] or 0))
         return out
     finally:
@@ -1064,9 +1068,12 @@ def efficiency():
         lab_expr = func.coalesce(json_field(EventRow.raw, 'category'), json_field(EventRow.raw, 'app'), '')
         rows = s.query(EventRow.employee_id, EventRow.occurred_at, EventRow.count, dom_expr, lab_expr).filter(
             EventRow.category == "WEB", EventRow.occurred_at >= since).all()
+        _ipre = __import__("re").compile(r"^\d{1,3}(\.\d{1,3}){3}$")
         emp = {}
         dom_cache = {}
         for emp_id, occ, cnt, dom, lab in rows:
+            if _ipre.match(emp_id or ""):
+                continue  # IP型标识(DHCP动态): 不作为员工进效率榜,防换租后把别人行为算到人头上
             r = emp.setdefault(emp_id, {"wh": 0, "slack": 0, "work": 0, "cats": Counter(),
                                         "days": set(), "hours": set(), "stimes": [], "cat_times": {}})
             if occ:
@@ -1858,12 +1865,12 @@ def _alias_apply(account: str, name: str) -> int:
 def _alias_discover():
     """自动发现用户名映射(每小时维护跑):
     1) 拼音精确唯一命中 → 自动生效并清洗历史;
-    2) 其余非中文标识全部进待确认清单(2026-08-19用户口径: 不是中文的都提取出来):
-       拼音多重命中/同IP唯一中文名 → 给出候选; 无线索 → 留空等人工填写;
-       人工忽略的(数字访客ID等)记入 ignored 不再提示。"""
+    2) 其余非中文标识全部进待确认清单(2026-08-19用户口径: 不是中文的都提取出来),
+       等人工填写中文名。
+    注意: 不做同IP推测——办公网IP是DHCP动态分配,换租后同一IP是不同的人,
+    任何基于IP的员工关联都会张冠李戴(2026-08-19用户红线)。"""
     import json as _j
     import re as _re
-    from sqlalchemy import func as _f
     from pypinyin import lazy_pinyin
     from datetime import timedelta
     try:
@@ -1874,29 +1881,16 @@ def _alias_discover():
                 emps |= {r[0] for r in s.query(tbl.employee_id).filter(tbl.employee_id.isnot(None)).distinct().all()}
             cn = _re.compile(r"[一-鿿]")
             cn_names = sorted({e for e in emps if e and cn.search(e)})
-            cn_set = set(cn_names)
             accts = sorted({e for e in emps if e and not cn.search(e)})
             cn_py = {n: "".join(lazy_pinyin(n)) for n in cn_names}
             conf = _alias_load("employee_alias")
             ign = _alias_load("employee_alias_ignored")
             # 活跃度(近30天): 事件数+最近出现,辅助人工判断值不值得映射
+            from sqlalchemy import func as _f
             since = bj_now() - timedelta(days=30)
             act = {eid: (c, mx) for eid, c, mx in
                    s.query(EventRow.employee_id, _f.count(EventRow.id), _f.max(EventRow.occurred_at))
                    .filter(EventRow.occurred_at >= since).group_by(EventRow.employee_id).all()}
-            # 同IP关联表: employee -> 出现过的device_id; device_id -> 出现过的employee
-            dev_of, dev_names = {}, {}
-            for eid, dev in s.query(EventRow.employee_id, EventRow.device_id).distinct().all():
-                if eid and dev:
-                    dev_of.setdefault(eid, set()).add(dev)
-                    dev_names.setdefault(dev, set()).add(eid)
-
-            def _same_ip_cn(a):
-                names = set()
-                for ip in dev_of.get(a, ()):
-                    names |= {n for n in dev_names.get(ip, ()) if n in cn_set}
-                return sorted(names)
-
             changed = []
             new_pend = {}
             for a in accts:
@@ -1904,7 +1898,7 @@ def _alias_discover():
                     continue
                 a2 = a.lower().replace(".", "").replace("_", "").replace("-", "")
                 a2 = _re.sub(r"\d+$", "", a2)  # 剥离尾部编号(zhangsan01 → zhangsan)
-                is_ip = bool(_re.match(r"^\d+\.\d+\.\d+\.\d+$", a))
+                is_ip = bool(_re.match(r"^\d{1,3}(\.\d{1,3}){3}$", a))
                 hits = [] if is_ip or not a2 else [n for n, p in cn_py.items() if p == a2]
                 if len(hits) == 1:
                     conf[a] = hits[0]
@@ -1913,18 +1907,11 @@ def _alias_discover():
                 _c, _mx = act.get(a, (0, None))
                 entry = {"guess": "", "candidates": [], "reason": "",
                          "count": _c, "last_seen": str(_mx or "")[:16]}
-                sip = _same_ip_cn(a)
                 if len(hits) > 1:
                     entry["reason"] = "拼音匹配多人,请选择"
                     entry["candidates"] = hits
-                elif len(sip) == 1:
-                    entry["reason"] = "同IP唯一中文名,建议核实"
-                    entry["guess"] = sip[0]
-                elif len(sip) > 1:
-                    entry["reason"] = "共享IP出现" + str(len(sip)) + "人,慎选"
-                    entry["candidates"] = sip
                 elif is_ip:
-                    entry["reason"] = "IP型标识,无关联中文名"
+                    entry["reason"] = "IP型标识(DHCP动态分配,无法关联到员工,建议忽略)"
                 else:
                     entry["reason"] = "未推测到,请人工填写"
                 new_pend[a] = entry

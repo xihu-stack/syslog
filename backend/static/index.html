@@ -1359,13 +1359,13 @@ function AliasCard(){
   const pendEntries=Object.entries((data&&data.pending)||{}).map(([a,v])=>{ const o=(typeof v==='string')?{guess:v}:v; return {account:a,guess:o.guess||'',candidates:o.candidates||[],reason:o.reason||'',count:o.count||0,last_seen:o.last_seen||''}; });
   const ignored=(data&&data.ignored)||[];
   return (<div>
-    <Alert type='info' showIcon style={{marginBottom:12}} message='所有非中文标识(域账号/拼音/IP)都会被提取到待确认清单: 拼音唯一命中自动生效;有线索的给出推测候选(点击候选即填入);无线索的请人工填写中文名。确认后立即生效——新数据入库自动转换,历史数据同步清洗。数字访客ID等无需映射的可点忽略。'/>
+    <Alert type='info' showIcon style={{marginBottom:12}} message='所有非中文标识(域账号/拼音)都会被提取到待确认清单: 拼音唯一命中自动生效;拼音撞名给出候选(点击填入);其余请人工填写中文名。确认后立即生效——新数据入库自动转换,历史数据同步清洗。IP型标识因DHCP动态分配无法关联员工,建议忽略。'/>
     <Card className='card' size='small' title={'待确认 ('+pendEntries.length+') · 每小时自动扫描'} style={{marginBottom:16}}>
       {pendEntries.length===0?<Typography.Text type='secondary' style={{fontSize:12}}>暂无待确认标识——当前所有用户标识均为中文或已映射</Typography.Text>:
       <Table size='small' rowKey='account' pagination={{pageSize:10}} dataSource={pendEntries}
         columns={[
           {title:'非中文标识',dataIndex:'account',render:v=><span className='num' style={{fontSize:12}}>{v}</span>},
-          {title:'线索',dataIndex:'reason',width:170,render:v=><Tag style={{fontSize:11}} color={v&&v.indexOf('同IP唯一')>=0?'blue':'default'}>{v||'-'}</Tag>},
+          {title:'线索',dataIndex:'reason',width:170,render:v=><Tag style={{fontSize:11}}>{v||'-'}</Tag>},
           {title:'候选(点击填入)',width:180,render:(_,r)=>r.candidates.length?r.candidates.map(c=><Tag key={c} style={{cursor:'pointer',fontSize:11,marginBottom:2}} onClick={()=>setFix({...fix,[r.account]:c})}>{c}</Tag>):<span style={{color:'var(--ink3)',fontSize:11}}>-</span>},
           {title:'近30天',width:110,render:(_,r)=><span style={{fontSize:11,color:r.count?'var(--ink2)':'var(--ink3)'}}>{r.count?r.count+'条 · '+(r.last_seen||'').slice(5,10):'无活动'}</span>},
           {title:'确认为中文名',width:230,render:(_,r)=><Space.Compact>
