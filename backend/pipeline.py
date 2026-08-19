@@ -357,12 +357,39 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         except Exception:
             pass
         _hist = _emp_history(emp)
-        v = detector.analyze_window(w, summary, dev, exempt, gctx, history=_hist)
+        # 当日累计(截至研判): 窗口内高危域名的全天累计次数——窗口只是60分钟切片,
+        # 单窗口3次但全天10次的情况只写窗口数会让人误读(2026-08-19用户发现)
+        day_ctx = None
+        _day_tot = None
+        try:
+            _domset = {(((e.raw or {}).get("domain") or "")).lower() for e in w
+                       if e.category == "WEB" and dicts.risk_tier((e.raw or {}).get("domain") or "") in ("high", "mid", "job")}
+            if _domset:
+                _d0 = w[0].occurred_at.replace(hour=0, minute=0, second=0, microsecond=0)
+                _d1 = _d0 + timedelta(days=1)
+                _agg = {}
+                ds = Session()
+                try:
+                    for e in ds.query(EventRow).filter(EventRow.employee_id == emp,
+                                                       EventRow.occurred_at >= _d0,
+                                                       EventRow.occurred_at < _d1).all():
+                        d = ((e.raw or {}).get("domain") or "").lower()
+                        if d in _domset:
+                            _agg[d] = _agg.get(d, 0) + (e.count or 1)
+                finally:
+                    ds.close()
+                if _agg:
+                    _day_tot = sum(_agg.values())
+                    day_ctx = ("[当日累计(截至本研判)] " +
+                               ", ".join(f"{d}×{n}" for d, n in sorted(_agg.items(), key=lambda x: -x[1])[:6]))
+        except Exception:
+            pass
+        v = detector.analyze_window(w, summary, dev, exempt, gctx, history=_hist, day_ctx=day_ctx)
         # ---- 锚点接管: 访问即违规类(policy/data)分数统一按客观特征计算 ----
         # 同样的问题必须同分(2026-08-19用户要求);LLM分<30视为遥测等例外,不接管
         _anchored = None
         if isinstance(v, dict) and (v.get("risk_score") or 0) >= 30:
-            _a = detector.anchor_score(v.get("intent"), w)
+            _a = detector.anchor_score(v.get("intent"), w, day_total=_day_tot)
             if _a is not None:
                 v = {**v, "risk_score": _a}
                 _anchored = _a
@@ -373,7 +400,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
             _smart = _lc_smart()
             if _smart and isinstance(v, dict) and (v.get("risk_score") or 0) >= 50 \
                     and dicts.get_setting("llm_review", "1") == "1":
-                rv = detector.analyze_window(w, summary, dev, exempt, gctx, model=_smart, history=_hist)
+                rv = detector.analyze_window(w, summary, dev, exempt, gctx, model=_smart, history=_hist, day_ctx=day_ctx)
                 rs = (rv or {}).get("risk_score") or 0
                 q = v.get("risk_score") or 0
                 if rs >= 50:  # 一致 → 维持;锚点场景用锚点分,其余取深模型说明+较高分

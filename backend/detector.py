@@ -29,13 +29,15 @@ _TELEMETRY_PREFIX = ("st.", "abtest.", "ab.", "telemetry.", "tm.", "log.", "stat
                      "update.", "update-", "auto.", "dl.", "ws.", "wss.")
 
 
-def anchor_score(intent, window) -> int | None:
+def anchor_score(intent, window, day_total=None) -> int | None:
     """确定性锚点分: 访问即违规类(policy_violation/data_exfiltration)按窗口客观
     特征统一定分,消除LLM打分抖动(2026-08-19用户要求: 同样的问题分数必须一致,
     基线/频次/时段等客观差异允许分层)。
     policy_violation(个人邮箱/网盘等禁止类): 访问即 75
     data_exfiltration(文件助手/外发通道): 基础 70
-    修正: 高频(≥10次)+10 / 中频(≥4次)+5;DOC写/外发动作+10;深夜(22-7点)+5;封顶90
+    修正: 高频(≥10次)+10 / 中频(≥4次)+5(频次用当日累计day_total——窗口只是
+    60分钟切片,单窗口3次但全天10次的情况按10次分层,2026-08-19);DOC写/外发
+    动作+10;深夜(22-7点)+5;封顶90
     频次与偏离驱动的场景(job_seeking/baseline_deviation)不接管——输入不同分不同,
     属可理解的客观差异。窗口全是遥测子域时不接管(保留LLM低分例外)。"""
     if intent not in ("policy_violation", "data_exfiltration") or not window:
@@ -47,7 +49,7 @@ def anchor_score(intent, window) -> int | None:
         return None
     hours = [e.occurred_at.hour for e in window if e.occurred_at]
     night = any(h < 7 or h >= 22 for h in hours)
-    cnt = sum(e.count or 1 for e in window)
+    cnt = day_total if day_total else sum(e.count or 1 for e in window)
     has_write = any(e.category == "DOC" and e.action in WRITE_ACTIONS for e in window)
     score = 75 if intent == "policy_violation" else 70
     if intent == "data_exfiltration":
@@ -319,7 +321,7 @@ def _work_hours_cap(window, dev=None) -> int | None:
 
 
 def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exemptions=None, global_ctx=None,
-                   model=None, history=None) -> dict:
+                   model=None, history=None, day_ctx=None) -> dict:
     if profile:
         profile_txt = f"\n{profile}"
     else:
@@ -330,8 +332,10 @@ def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exempti
     exempt_txt = f"\n已知正常行为（豁免）：{exemptions}" if exemptions else ""
     g_txt = f"\n{global_ctx}" if global_ctx else ""
     hist_txt = f"\n{history}" if history else ""
+    day_txt = f"\n{day_ctx}" if day_ctx else ""
     user = (f"员工：{window[0].employee_id}（设备：{window[0].device_id}）\n"
-            f"行为序列：\n{_fmt_window(window)}{g_txt}{profile_txt}{dev_txt}{exempt_txt}{hist_txt}\n\n请输出 JSON。")
+            f"行为序列：\n{_fmt_window(window)}{g_txt}{profile_txt}{dev_txt}{exempt_txt}{hist_txt}{day_txt}\n\n"
+            f"写explanation时:域名次数用『本窗口N次,今日累计M次』双口径(累计来自[当日累计]行),不要只写窗口次数让人误读为全天。请输出 JSON。")
     try:
         raw = llm_client.chat(
             [{"role": "system", "content": SYSTEM_PROMPT},
