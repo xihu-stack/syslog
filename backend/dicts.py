@@ -23,8 +23,10 @@ DEFAULTS = {
     ],
     "netdisk_domains": [
         "pan.baidu.com", "eyun.baidu.com", "alipan.com", "aliyundrive.com", "weiyun.qq.com",
-        "jianguoyun.com", "onedrive.live.com", "dropbox.com", "115.com", "lanzou.com",
+        "jianguoyun.com", "dropbox.com", "115.com", "lanzou.com",
         "lanzoux", "pan.xunlei.com", "cloud.189.cn", "yun.139.com", "pan.quark.cn",
+        # onedrive.live.com 移除: OneDrive是公司采购的M365组件(2026-08-19用户确认),
+        # 全家域名走 risk_whitelist_domains 豁免
     ],
     "personal_email_domains": [
         "mail.qq.com", "mail.163.com", "mail.126.com", "gmail.com", "outlook.live.com",
@@ -40,7 +42,11 @@ DEFAULTS = {
         "破解", "泄密", "u盘启动", "文件恢复", "截图", "窃取",
     ],
     "slack_whitelist_domains": [],   # 摸鱼豁免白名单:公司业务需要访问的娱乐类站(命中不算摸鱼)
-    "risk_whitelist_domains": [],    # 风险豁免白名单:公司采购的正规网盘/企业邮箱等(命中不进风险识别)
+    "risk_whitelist_domains": [   # 风险豁免白名单:公司采购的正规网盘/企业邮箱等(命中不进风险识别)
+        # OneDrive全家=M365公司组件(2026-08-19用户确认"OneDrive是公司的"):
+        # 同步流量域storage.live.com曾漏判审查被误加禁止字典,已纠正;张雪凌晨OneDrive告警属误判
+        "storage.live.com", "onedrive.live.com", "my.microsoftpersonalcontent.com",
+    ],
     "slack_sdk_domains": [],         # 心跳/埋点排除域名:客户端挂后台的规律上报,不算摸鱼(AI扫描建议+人工采纳维护)
     "slack_domains": {
         "视频": ["bilibili.com", "douyin.com", "iesdouyin.com", "snssdk.com", "kuaishou.com",
