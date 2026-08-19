@@ -28,9 +28,13 @@ init_db()
 # ---------------- 管理员登录(单账号,密码哈希存 settings,token 内存会话) ----------------
 ADMIN_USER = "admin"
 INITIAL_PWD = os.environ.get("ADMIN_INITIAL_PWD", "admin123")  # 初始密码,首次登录后请在设置中修改
-_TOKENS: dict = {}          # token -> {exp, user, id_token};服务重启需重新登录
+_TOKENS: dict = {}          # token -> {exp, user, name(显示名), id_token};服务重启需重新登录
 _TOKEN_TTL = 7 * 86400
 _SSO_STATES: dict = {}      # state -> 过期epoch(10分钟), 授权码流程防CSRF
+
+
+def _re_cn(s: str) -> bool:
+    return any('\u4e00' <= ch <= '\u9fff' for ch in (s or ""))
 
 
 def _pwd_hash(pwd: str, salt: str) -> str:
@@ -212,10 +216,19 @@ def sso_callback(code: str = "", state: str = "", error: str = ""):
         if wl and not (ok_user or ok_mail):
             return RedirectResponse(front + "?sso_error=" + _up.quote(f"用户 {username} 不在访问白名单"))
         token = secrets.token_hex(16)
-        _TOKENS[token] = {"exp": _time.time() + _TOKEN_TTL, "user": username, "id_token": idt}
-        # 域账号+中文姓名 反哺用户映射(SSO给出的是官方权威对应,直接生效)
-        cname = str(info.get("name") or "").strip()
-        if cname and cname != username:
+        # 显示名: 优先中文姓名(name/display_name/nickname),用于顶栏展示
+        _disp = ""
+        for _k in ("name", "display_name", "nickname"):
+            _v = str(info.get(_k) or "").strip()
+            if _v and _v != username:
+                _disp = _v
+                break
+        _TOKENS[token] = {"exp": _time.time() + _TOKEN_TTL, "user": username,
+                          "name": _disp or username, "id_token": idt}
+        # 域账号+中文姓名 反哺用户映射(SSO给出的是官方权威对应,直接生效;
+        # 仅限含中文的姓名,防英文全名污染员工映射)
+        cname = _disp if _disp and _re_cn(_disp) else ""
+        if cname:
             try:
                 conf = _alias_load("employee_alias")
                 if conf.get(username) != cname:
@@ -251,7 +264,9 @@ def me(request: Request):
     h = request.headers.get("authorization", "")
     t = h[7:].strip() if h.lower().startswith("bearer ") else ""
     rec = _TOKENS.get(t) or {}
-    return {"ok": True, "username": rec.get("user") or ADMIN_USER, "sso": bool(rec.get("id_token"))}
+    return {"ok": True, "username": rec.get("user") or ADMIN_USER,
+            "display": rec.get("name") or rec.get("user") or ADMIN_USER,
+            "sso": bool(rec.get("id_token"))}
 
 
 @app.post("/api/change_pwd")

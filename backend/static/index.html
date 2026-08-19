@@ -573,6 +573,7 @@ function LoginPage({onOk}){
 function App(){
   // ---- 登录门:有 token 先探测 /api/me,无效/无 token 渲染登录页 ----
   const [authed,setAuthed]=useState(localStorage.getItem(TOKEN_KEY)?null:false);
+  const [meName,setMeName]=useState('');
   useEffect(()=>{  // SSO回调落地: ?sso_token=一次性会话令牌 / ?sso_error=失败原因
     const q=new URLSearchParams(location.search);
     const t=q.get('sso_token');
@@ -582,7 +583,10 @@ function App(){
   },[]);
   useEffect(()=>{
     if(!localStorage.getItem(TOKEN_KEY)){ setAuthed(false); return; }
-    fetch('/api/me',{headers:_authHdr()}).then(r=>{ if(r.ok) setAuthed(true); else { localStorage.removeItem(TOKEN_KEY); setAuthed(false);} }).catch(()=>setAuthed(false));
+    fetch('/api/me',{headers:_authHdr()}).then(r=>r.ok?r.json():null).then(m=>{
+      if(m&&m.ok){ setAuthed(true); setMeName(m.display||m.username||''); }
+      else { localStorage.removeItem(TOKEN_KEY); setAuthed(false); }
+    }).catch(()=>setAuthed(false));
   },[]);
   const [key,setKey]=useState('dashboard'); const [profileUser,setProfileUser]=useState(null); const [profileFrom,setProfileFrom]=useState('alerts');
   const [filter,setFilter]=useState({}); const navigate=(k,f={})=>{setFilter(f);setKey(k);};
@@ -666,6 +670,9 @@ function App(){
             <Upload showUploadList={false} beforeUpload={uploadLog}><Button type="primary"><i className="fa-solid fa-upload" style={{marginRight:6}}></i>导入日志</Button></Upload>
             <Button onClick={()=>{ POST('/api/run'); pollDetect(); }}><i className="fa-solid fa-rotate" style={{marginRight:6}}></i>重新研判</Button>
             <Button href="/api/export/alerts" target="_blank"><i className="fa-solid fa-download" style={{marginRight:6}}></i>导出</Button>
+            <span style={{color:'var(--ink2)',fontSize:12.5,marginLeft:4,display:'inline-flex',alignItems:'center',gap:5,padding:'0 4px'}} title={meName}>
+              <i className="fa-solid fa-circle-user" style={{color:'var(--brand)',fontSize:14}}></i>{meName==='admin'?'管理员':(meName||'')}
+            </span>
             <span className="num" style={{color:'var(--ink3)',fontSize:11,marginLeft:4}}>{now}</span>
           </Space>
         </Header>
