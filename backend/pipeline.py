@@ -358,9 +358,17 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
             pass
         _hist = _emp_history(emp)
         v = detector.analyze_window(w, summary, dev, exempt, gctx, history=_hist)
+        # ---- 锚点接管: 访问即违规类(policy/data)分数统一按客观特征计算 ----
+        # 同样的问题必须同分(2026-08-19用户要求);LLM分<30视为遥测等例外,不接管
+        _anchored = None
+        if isinstance(v, dict) and (v.get("risk_score") or 0) >= 30:
+            _a = detector.anchor_score(v.get("intent"), w)
+            if _a is not None:
+                v = {**v, "risk_score": _a}
+                _anchored = _a
         # ---- 双模型复核: Qwen判定达到告警级(≥阈值)时,用深度模型独立重判一遍。
-        # 两模型一致才维持告警;复核明显更低则降级(说明证据撑不起告警,典型如
-        # 单次招聘/页面级访问被判外发)。复核失败保守保留原判(可用性优先)。
+        # 两模型一致才维持告警;复核明显更低则降级(证据撑不起告警)。复核失败保守
+        # 保留原判。说明不写复核过程,直接给结论(2026-08-19用户要求)。
         try:
             _smart = _lc_smart()
             if _smart and isinstance(v, dict) and (v.get("risk_score") or 0) >= 50 \
@@ -368,17 +376,10 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 rv = detector.analyze_window(w, summary, dev, exempt, gctx, model=_smart, history=_hist)
                 rs = (rv or {}).get("risk_score") or 0
                 q = v.get("risk_score") or 0
-                if rs >= 50:  # 一致 → 维持,取深模型的说明(通常更准)并标注双确认
-                    # 文案里的分数必须是终判分(max(q,rs)): 只写复核分会让读者把复核分
-                    # 当结论,出现"75分告警/说明写复核55分"的对不上(2026-08-19审计)
-                    _mx = max(q, rs)
-                    _tag = (f"[双模型一致·{_smart}复核{rs}分] " if _mx == rs
-                            else f"[双模型一致·终判{_mx}分(Qwen{q}/{_smart}复核{rs})] ")
-                    v = {**rv, "risk_score": _mx,
-                         "explanation": _tag + (rv.get("explanation") or v.get("explanation") or "")}
-                else:  # 分歧 → 降级到复核分,保留两模型意见供人工复核
-                    v = {**v, "risk_score": max(rs, 30),
-                         "explanation": f"[复核降级·{_smart}判{rs}分:证据不足告警级] " + (v.get("explanation") or "")}
+                if rs >= 50:  # 一致 → 维持;锚点场景用锚点分,其余取深模型说明+较高分
+                    v = {**rv, "risk_score": _anchored if _anchored is not None else max(q, rs)}
+                else:  # 分歧 → 降级到复核分(锚点不再适用,证据已被复核否定)
+                    v = {**v, "risk_score": max(rs, 30)}
         except Exception:
             pass  # 复核异常不影响主判
         return (emp, w[0].device_id, w[0].occurred_at, w[-1].occurred_at, [e.event_hash() for e in w], v)

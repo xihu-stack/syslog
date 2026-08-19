@@ -24,6 +24,43 @@ WRITE_ACTIONS = {
 
 WINDOW_GAP = timedelta(minutes=60)
 
+# 遥测/自动更新类子域——LLM 判低分的例外,锚点不接管(拉到75会放大误判)
+_TELEMETRY_PREFIX = ("st.", "abtest.", "ab.", "telemetry.", "tm.", "log.", "stat.",
+                     "update.", "update-", "auto.", "dl.", "ws.", "wss.")
+
+
+def anchor_score(intent, window) -> int | None:
+    """确定性锚点分: 访问即违规类(policy_violation/data_exfiltration)按窗口客观
+    特征统一定分,消除LLM打分抖动(2026-08-19用户要求: 同样的问题分数必须一致,
+    基线/频次/时段等客观差异允许分层)。
+    policy_violation(个人邮箱/网盘等禁止类): 访问即 75
+    data_exfiltration(文件助手/外发通道): 基础 70
+    修正: 高频(≥10次)+10 / 中频(≥4次)+5;DOC写/外发动作+10;深夜(22-7点)+5;封顶90
+    频次与偏离驱动的场景(job_seeking/baseline_deviation)不接管——输入不同分不同,
+    属可理解的客观差异。窗口全是遥测子域时不接管(保留LLM低分例外)。"""
+    if intent not in ("policy_violation", "data_exfiltration") or not window:
+        return None
+    doms = [((getattr(e, "raw", None) or {}).get("domain") or "").lower()
+            for e in window if getattr(e, "category", "") == "WEB"]
+    doms = [d for d in doms if d]
+    if doms and all(d.startswith(_TELEMETRY_PREFIX) for d in doms):
+        return None
+    hours = [e.occurred_at.hour for e in window if e.occurred_at]
+    night = any(h < 7 or h >= 22 for h in hours)
+    cnt = sum(e.count or 1 for e in window)
+    has_write = any(e.category == "DOC" and e.action in WRITE_ACTIONS for e in window)
+    score = 75 if intent == "policy_violation" else 70
+    if intent == "data_exfiltration":
+        if cnt >= 10:
+            score += 10
+        elif cnt >= 4:
+            score += 5
+    if has_write:
+        score += 10
+    if night:
+        score += 5
+    return min(score, 90)
+
 SYSTEM_PROMPT = (
     "你是企业员工终端行为分析助手，识别数据外发、离职求职、违规等内部风险。\n"
     "输入：某员工一段时间窗口内的行为序列（可能附历史基线摘要、偏离信号、已知豁免）。\n"
@@ -35,6 +72,7 @@ SYSTEM_PROMPT = (
     "普通微信访问(weixin.qq.com等)=正常办公,不算风险。\n"
     "远程控制(todesk等)=工具使用,降权(凌晨/密集才告警)。\n\n"
     "【评分锚点——严格按此打分】\n"
+    "⚠ policy_violation 与 data_exfiltration 两类的 risk_score 由系统按统一规则计算(访问即违规=75/70+频次/时段/写动作修正),你的 risk_score 仅作参考——请把精力放在 explanation 的具体性上。\n"
     "• 个人邮箱/网盘(公司禁止) → 主动访问 65-75（访问即违规,不管时段）；但 update./自动更新/-debug/遥测等子域是软件后台联网、非员工主动操作 → 10-20\n"
     "• VPN/翻墙工具(privado/clash等) → 不算风险(业务规则:翻墙非违规),按常规浏览 5-15\n"
     "• 代码仓库(github/gitlab) → 40-55（代码外发嫌疑,看频次/时段）\n"
