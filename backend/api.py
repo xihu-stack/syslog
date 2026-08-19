@@ -1954,6 +1954,16 @@ def _alias_discover():
                 else:
                     entry["reason"] = "未推测到,请人工填写"
                 new_pend[a] = entry
+            # 前缀型中文名标识归一: "HLX-SZ-万亮"→"万亮"——与现有员工名精确匹配才
+            # 自动生效(2026-08-19全员审计: 7个HLX前缀标识与裸名并存致视图重复计数)
+            _pf = _re.compile(r"^[A-Za-z]{2,6}(?:-[A-Za-z]{2,6})+-")
+            for a in emps:
+                if a in conf or a in ign or not cn.search(a or "") or not _pf.match(a):
+                    continue
+                core = _pf.sub("", a).strip()
+                if core and core in cn_names and core != a:
+                    conf[a] = core
+                    changed.append((a, core))
             dicts.set_setting("employee_alias", _j.dumps(conf, ensure_ascii=False))
             dicts.set_setting("employee_alias_pending", _j.dumps(new_pend, ensure_ascii=False))
             if changed:

@@ -324,7 +324,9 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                     for lab, days in by_day_label.items():
                         seq = ", ".join(f"{d}×{n}" for d, n in sorted(days.items()))
                         consec = len(days)
-                        lines.append(f"{lab}: {seq} (共{consec}天)")
+                        # 显式升档提示: AI对"每天仅1次"的跨天累计不敏感,必须点名规则①
+                        hint = f"【⚠跨天规则①命中: 累计{consec}天≥4天,即使每天仅1次也属进行中行为,必须升档】" if consec >= 4 else ""
+                        lines.append(f"{lab}: {seq} (共{consec}天){hint}")
                     parts.append("风险类访问按天: " + "; ".join(lines))
                 if docs:
                     parts.append("敏感文档操作: " + "; ".join(docs[:5]))

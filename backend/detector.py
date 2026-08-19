@@ -85,7 +85,7 @@ SYSTEM_PROMPT = (
     "• AI助手(chatgpt/deepseek/豆包/kimi/copilot等) → 工作时段低频(1-3次) 5-15(正常使用)；反复高频(≥10次)或凌晨 → 35-48, baseline_deviation(重度依赖AI、异常,但纯对话无外发动作≠数据外发)；仅当窗口同时含真实外发(上传文件到AI/网盘/邮箱/文件助手) → 才判 data_exfiltration 60-75\n"
     "• 凌晨 + 仅常规网站(无外发通道) → 25-35\n"
     "• 工作时段 + 常规网站/普通微信 → 5-15\n\n"
-    "【跨天模式规则(结合近7天行为史判断)】①同类风险访问单日低频但连续≥4天重复(招聘/网盘/邮箱等) → 属进行中行为,分数上调一档(招聘类→45-60;外发通道类→55-70),explanation注明连续N天;②访问招聘网站+同期存在简历/离职类敏感文档操作 → job_seeking 65-80(强关联信号);③频率逐日爬坡 → 在①基础上再+5。孤立首次/单日低频不适用,严禁仅因行为史存在就无视当前窗口实际频次。\n"
+    "【跨天模式规则(结合近7天行为史判断)】①同类风险访问单日低频但累计≥4天(招聘/网盘/邮箱等,【每天仅1次也算】——累计天数是关键,不是单日频次) → 属进行中行为,分数必须上调一档(招聘类→45-60;外发通道类→55-70),explanation注明累计N天;②访问招聘网站+同期存在简历/离职类敏感文档操作 → job_seeking 65-80(强关联信号);③频率逐日爬坡 → 在①基础上再+5。孤立首次/单日低频不适用,严禁仅因行为史存在就无视当前窗口实际频次。\n"
     "【基线偏离的使用边界】'域名不在个人基线中'本身≠严重偏离——每人每天都会首次遇到大量新域名(见全局参照)。偏离档位必须综合:频次是否远超本人常态+时段(凌晨)+多外发通道叠加来判断;严禁仅以'首次出现/不在基线'把低频访问(≤5次)判为severe或抬进高危档。\n"
     "【intent 由窗口的主风险信号决定——勿被弱信号带偏】招聘网站【单次/低频夹杂在其他信号中≠job_seeking】:job_seeking 仅用于招聘网站反复高频(≥3次)/凌晨为主信号的窗口；若窗口主风险是邮箱/网盘/外发,按主风险定intent,不要因含1次领英/招聘就判求职。\n"
     "【intent 判定】个人邮箱/网盘(禁止) → policy_violation；VPN/翻墙 → normal_work(业务规则:翻墙非违规)；"
@@ -296,6 +296,29 @@ def should_trigger(window, dev, baseline) -> bool:
                 return True
     # 频次异常:外发通道工作时段密集访问(deviation算的channel_burst)
     if dev and "channel_burst" in dev:
+        return True
+    # 深夜(22-7)WEB活动: 非心跳/非遥测域名累计≥3条→触发(公司夜间无人需关注)。
+    # 2026-08-19全员审计发现: 注释一直宣称有此触发但代码没实现——徐浩深夜
+    # ftp.hp.com×155/outlook×130 完全零研判。遥测(wns./update.等)排除防噪音。
+    _night_real = 0
+    _mid_real = 0
+    for e in window:
+        if e.category != "WEB":
+            continue
+        dom = ((e.raw or {}).get("domain") or e.target_value or "").lower()
+        if not dom or dicts.is_heartbeat(dom) or dom.startswith(_TELEMETRY_PREFIX):
+            continue
+        if _is_off_hours(e.occurred_at):
+            _night_real += (e.count or 1)
+        if dicts.risk_tier(dom) == "mid":
+            _mid_real += (e.count or 1)
+    if _night_real >= 3:
+        return True
+    # mid类(AI助手/远程控制/代码仓库)工作时段高频: ≥30次→触发研判。
+    # 判出来通常35-48分不告警,但"重度依赖AI/常驻远控"在研判历史可见
+    # (2026-08-19审计: 胥鑫容deepseek×137/万亮github×169系统里完全无痕)。
+    # ws./wss.心跳计数已排除,30次门槛防日常使用误触。
+    if _mid_real >= 30:
         return True
     # 冷启动用户 + 整体量激增
     if (not baseline or baseline.get("sample_count", 0) < 3) and dev and "volume_spike" in dev:
