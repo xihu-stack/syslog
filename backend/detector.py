@@ -136,6 +136,10 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
             return f"×{n}(连接心跳,非主动操作次数)"
         if d.startswith(("update.", "update-", "auto.")) or ".update." in d or d.startswith("dl."):
             return f"×{n}(软件自动更新/后台子域,非员工主动操作→按锚点应10-20分)"
+        # st./abtest./telemetry./log. 遥测子域:客户端后台定时上报(每小时1条整点形态),
+        # 凌晨出现不代表人在用(2026-08-19 胡曦todesk凌晨心跳误读案例)
+        if d.startswith(("st.", "abtest.", "ab.", "telemetry.", "tm.", "log.", "stat.")):
+            return f"×{n}(遥测心跳,客户端后台定时上报,非主动访问)"
         return f"×{n}"
     for d, info in high_sig[:10]:
         rc = dicts.risk_class(d)
