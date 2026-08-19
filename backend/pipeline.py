@@ -254,9 +254,11 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                                                         v.get("explanation", ""))
                                 # 内容与时间同步: verdict_id/summary 指向本次(最新)窗口的研判——
                                 # 否则window_start刷到今天、说明还是老窗口的行为,今日告警展示昨天的内容(2026-08-18审计发现)
+                                # summary 必须与verdict_id无条件同步: 常态复犯(一直NEW且未破峰值)时
+                                # 若只在状态重置/破峰值时刷,会出现分数指向最新窗口、说明停留在旧文案
+                                # (2026-08-19夏玮案例: 75分告警挂着"复核降级35分"的过期说明)
                                 existing.verdict_id = vr.id
-                                if _was and _was != "NEW":
-                                    existing.summary = v.get("explanation") or existing.summary
+                                existing.summary = v.get("explanation") or existing.summary
                                 if v.get("risk_score", 0) > (existing.risk_score or 0):
                                     existing.risk_score = v.get("risk_score", 0)
                                     existing.severity = severity_of(v.get("risk_score", 0))
