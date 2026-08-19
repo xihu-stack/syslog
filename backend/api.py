@@ -1262,7 +1262,7 @@ def export_alerts():
 # ---------------- AI 问答（LLM 路由 → 查真数据 → LLM 总结）----------------
 _ASK_TOOLS = {
     "employee_risk": "查某个员工的风险行为/研判记录/画像。args: {employee: 员工姓名}",
-    "alerts": "告警榜(全时段top10+今日清单)。args: {}",
+    "alerts": "告警榜(全时段top10+今日清单)。args: {intent: 可选,按场景过滤: job_seeking(离职求职)|data_exfiltration(数据外发)|policy_violation(违规)|baseline_deviation(基线偏离)}",
     "slack": "摸鱼榜top10(近7天日均摸鱼时长)。args: {}",
     "attendance": "在岗情况(今日活跃/无活动名单/异常时段)。args: {}",
     "who_risk": "近30天谁访问了某类风险网站。args: {category: 远程控制|网盘|邮箱|招聘|文件助手}",
@@ -1307,7 +1307,7 @@ def _ask_tool_run(name: str, args: dict) -> str:
     args = args or {}
     if name not in ("trend", "sys_stats"):
         emp = args.get("employee") or args.get("name") or args.get("emp") or ""
-        cat = args.get("category") or args.get("cat") or args.get("type") or ""
+        cat = args.get("category") or args.get("cat") or args.get("type") or args.get("intent") or ""
         return _ask_query(name, str(emp), str(cat))
     if name == "trend":
         from sqlalchemy import func as _f
@@ -1364,8 +1364,12 @@ def ask(body: dict = Body(...)):
              "规则:\n"
              "1. 涉及数据的问题【必须】先调工具再回答,不得编造数字;对比/多条件/多人问题自行拆成多次工具调用(最多4次)。\n"
              "2. 结合最近对话理解追问(『他/它/昨天/再详细』),延续上轮员工与话题;路由到 employee_risk 时从对话中解析姓名。\n"
-             "3. 不需要数据的问题(闲聊/概念解释)直接 final;查不到数据就在 final 里说明并建议问法。\n"
-             "4. final 回答要求:结论先行,枚举用短列表,口径如实(告警=风险≥50研判;摸鱼=10分钟桶估算上限),"
+             "3. 【场景路由——严格执行】用户问『离职/求职/跳槽风险』必须调 alerts 且 args.intent=\"job_seeking\";"
+             "问『数据外发/泄密』→ intent=\"data_exfiltration\";『违规/个人邮箱/网盘』→ \"policy_violation\";『基线偏离/行为异常』→ \"baseline_deviation\"。"
+             "用户问某类风险时【严禁】拿其他场景的数据回答(问离职风险绝不能答外发风险);该场景无告警就如实说明无,"
+             "可按工具返回的研判线索补充『未达告警级』的提示。\n"
+             "4. 不需要数据的问题(闲聊/概念解释)直接 final;查不到数据就在 final 里说明并建议问法。\n"
+             "5. final 回答要求:结论先行,枚举用短列表,口径如实(告警=风险≥50研判;摸鱼=10分钟桶估算上限),"
              "结尾可给一句下一步建议,中文,像资深安全运营同事的口吻。")
     msgs = [{"role": "system", "content": sys_p}]
     for h in history:
@@ -1483,15 +1487,39 @@ def _ask_query(action, employee, category=""):
                     lines.append("风险域名明细(类别:域名 出现次数): " + ", ".join(f"{k}×{v}" for k, v in dom_cnt.most_common(15)))
             return "\n".join(lines)
         if action == "alerts":
-            rows = s.query(AlertRow).order_by(desc(AlertRow.risk_score), desc(AlertRow.created_at)).limit(10).all()
-            if not rows:
-                return "当前无告警。"
+            # 场景过滤(2026-08-19: 用户问"离职风险最高"被答成外发风险——问A类风险
+            # 必须按场景过滤,严禁拿其他场景顶数)
+            _im = {"离职": "job_seeking", "求职": "job_seeking", "招聘": "job_seeking", "跳槽": "job_seeking",
+                   "外发": "data_exfiltration", "泄密": "data_exfiltration", "泄露": "data_exfiltration",
+                   "违规": "policy_violation", "邮箱": "policy_violation", "网盘": "policy_violation",
+                   "偏离": "baseline_deviation", "异常": "baseline_deviation"}
+            _intent = (category or "").strip()
+            _f_intent = _intent if _intent in ("job_seeking", "data_exfiltration", "policy_violation", "baseline_deviation") \
+                else _im.get(_intent)
+            _base = s.query(AlertRow)
+            if _f_intent:
+                _base = _base.filter(AlertRow.scenario == _f_intent)
+            rows = _base.order_by(desc(AlertRow.risk_score), desc(AlertRow.created_at)).limit(10).all()
             _today = bj_now().replace(hour=0, minute=0, second=0, microsecond=0)
+            if not rows:
+                # 该场景无告警时补研判层线索(低分研判也是趋势信号),让AI能如实分层回答
+                _vq = s.query(VerdictRow).filter(VerdictRow.intent == _f_intent,
+                                                 VerdictRow.window_start >= _today - timedelta(days=30)) \
+                    .order_by(desc(VerdictRow.risk_score)).limit(5).all() if _f_intent else []
+                if _f_intent and _vq:
+                    return (f"当前无{_f_intent}场景告警。但近30天该场景研判(未达告警级50分或已处理)最高:\n" +
+                            "\n".join(f"  {v.employee_id} | 风险{v.risk_score} | {v.window_start} | {v.explanation}" for v in _vq) +
+                            "\n注意:这些未构成告警,回答时必须如实说明。")
+                return f"当前无{'该场景' if _f_intent else ''}告警。"
             # 条数单独 count（原用 len(limit15 列表) 当总数，>15 条时喂给 AI 的数是错的）
-            _td_count = s.query(AlertRow).filter(AlertRow.window_start >= _today).count()
-            _td = s.query(AlertRow).filter(AlertRow.window_start >= _today).order_by(desc(AlertRow.risk_score)).limit(15).all()
-            lines = ["告警 top10(全时段,按风险):"] + [f"  {a.employee_id} | {a.scenario} | R{a.risk_score}" for a in rows]
-            lines += ["", f"今日告警 {_td_count} 条(按行为时间):"] + [f"  {a.employee_id} | {a.scenario} | R{a.risk_score} | {a.summary}" for a in _td] if _td else ["", f"今日告警: {_td_count} 条"]
+            _td_q = s.query(AlertRow).filter(AlertRow.window_start >= _today)
+            if _f_intent:
+                _td_q = _td_q.filter(AlertRow.scenario == _f_intent)
+            _td_count = _td_q.count()
+            _td = _td_q.order_by(desc(AlertRow.risk_score)).limit(15).all()
+            _label = f"(场景={_f_intent}) " if _f_intent else ""
+            lines = [f"告警 top10(全时段,按风险){_label}:"] + [f"  {a.employee_id} | {a.scenario} | R{a.risk_score}" for a in rows]
+            lines += ["", f"今日告警 {_td_count} 条(按行为时间){_label}:"] + [f"  {a.employee_id} | {a.scenario} | R{a.risk_score} | {a.summary}" for a in _td] if _td else ["", f"今日告警: {_td_count} 条"]
             return "\n".join(lines)
         if action == "slack":
             eff = efficiency()  # 与效率监控页完全同源同口径(近7天工作时段,日均摸鱼时长)
