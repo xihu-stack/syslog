@@ -904,13 +904,18 @@ def system_stats():
             _day[_dk] = 0
         # 过滤下界与上方 _day 的 key 对齐：key 是"今天自然日往前 6 天"，
         # 下界也用 today_start-6d（最老一天 00:00），否则最老一柱只有[此刻,23:59]的数据，系统性偏低。
-        # 按 created_at(告警首次产生,不变)统计——window_start 会被再犯刷新到当天,
-        # 用它分组等于把历史告警搬到今天,昨天柱子会掉数(2026-08-18发现,同告警状态沿用问题同源)。
+        # 口径分两段(2026-08-19 与KPI对齐):
+        # - 历史柱(昨天及以前): 按created_at(首次产生,不变)锁定——window_start会被再犯刷新,
+        #   用它分组等于把历史告警搬到今天,昨天的柱子会掉数;
+        # - 今天的柱: 按window_start(今日活跃,含再犯刷新)实时——与KPI'今日告警'完全一致,
+        #   避免同屏'今日6 vs 趋势2'的自相矛盾(今天的态势本就还在变化中)。
         for _r in s.query(AlertRow).filter(AlertRow.created_at >= today_start - timedelta(days=6)).all():
             if _r.created_at:
                 _k = _r.created_at.date().isoformat()
                 if _k in _day:
                     _day[_k] += 1
+        _today_key = today_start.date().isoformat()
+        _day[_today_key] = s.query(AlertRow).filter(AlertRow.window_start >= today_start).count()  # 今日活跃=KPI口径
         alerts_by_day = list(_day.items())
 
         return {
