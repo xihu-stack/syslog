@@ -920,13 +920,19 @@ def system_stats():
 
         # TOP活跃风险(近7天·告警级·未处理): 分数=近7天内最高研判分(非历史峰值),
         # 已确认/误报/已关闭的场景不参与——只反映还需要关注的活动风险(2026-08-19用户口径)
+        # 豁免意图同样剔除: 豁免的研判不建告警,若不过滤会在TOP出现画像页看不到的幽灵场景
+        # (2026-08-19发现: 黄春煜job_seeking 85分被豁免后仍霸榜,画像只有data_exfiltration)
         _a7 = bj_now() - timedelta(days=7)
         _al_status = {}
         for _a in s.query(AlertRow.employee_id, AlertRow.scenario, AlertRow.status).all():
             _al_status[(_a.employee_id, _a.scenario)] = _a.status
+        _exc_set = {(_x.employee_id, _x.signal_type) for _x in s.query(ExceptionRow).filter(
+            (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > _utc_now)).all()}
         _agg = {}
         for _v in s.query(VerdictRow).filter(VerdictRow.window_start >= _a7,
                                              VerdictRow.risk_score >= 50).all():
+            if (_v.employee_id, _v.intent) in _exc_set:
+                continue
             _st = _al_status.get((_v.employee_id, _v.intent), 'NEW')
             if _st in ('CONFIRMED', 'FP', 'CLOSED'):
                 continue
