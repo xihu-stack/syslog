@@ -28,8 +28,9 @@ init_db()
 # ---------------- 管理员登录(单账号,密码哈希存 settings,token 内存会话) ----------------
 ADMIN_USER = "admin"
 INITIAL_PWD = os.environ.get("ADMIN_INITIAL_PWD", "admin123")  # 初始密码,首次登录后请在设置中修改
-_TOKENS: dict = {}          # token -> 过期epoch(7天);服务重启需重新登录
+_TOKENS: dict = {}          # token -> {exp, user, id_token};服务重启需重新登录
 _TOKEN_TTL = 7 * 86400
+_SSO_STATES: dict = {}      # state -> 过期epoch(10分钟), 授权码流程防CSRF
 
 
 def _pwd_hash(pwd: str, salt: str) -> str:
@@ -65,8 +66,8 @@ def _check_token(auth_header: str | None) -> bool:
     if not auth_header or not auth_header.startswith("Bearer "):
         return False
     t = auth_header[7:]
-    exp = _TOKENS.get(t)
-    if not exp or exp < _time.time():
+    rec = _TOKENS.get(t)
+    if not rec or rec.get("exp", 0) < _time.time():
         _TOKENS.pop(t, None)
         return False
     return True
@@ -87,7 +88,7 @@ async def _nocache_html(request: Request, call_next):
 async def _auth_guard(request: Request, call_next):
     """API 鉴权:/api/login 放行;其余 /api/* 需带有效 Bearer token;静态页面放行。"""
     p = request.url.path
-    if p.startswith("/api") and p != "/api/login":
+    if p.startswith("/api") and p != "/api/login" and not p.startswith("/api/auth/"):
         if not _check_token(request.headers.get("authorization")):
             return JSONResponse({"detail": "未登录或会话过期"}, status_code=401)
     return await call_next(request)
@@ -111,7 +112,7 @@ def login(body: dict = Body(...)):
     if u == ADMIN_USER and _pwd_hash(p, dicts.get_setting("admin_salt")) == dicts.get_setting("admin_pwd"):
         _LOGIN_FAILS.pop(u, None)
         token = secrets.token_hex(16)
-        _TOKENS[token] = _time.time() + _TOKEN_TTL
+        _TOKENS[token] = {"exp": _time.time() + _TOKEN_TTL, "user": u, "id_token": None}
         return {"ok": True, "token": token, "username": u}
     f = _LOGIN_FAILS.setdefault(u, {"n": 0, "until": 0})
     f["n"] += 1
@@ -123,17 +124,134 @@ def login(body: dict = Body(...)):
 
 @app.post("/api/logout")
 def logout(request: Request):
-    """退出登录:销毁服务端会话 token。"""
+    """退出登录:销毁服务端会话 token。SSO会话附带认证中心登出地址(带id_token_hint)。"""
     h = request.headers.get("authorization", "")
     t = h[7:].strip() if h.lower().startswith("bearer ") else ""
-    if t:
+    rec = _TOKENS.pop(t, None) if t else None
+    out = {"ok": True}
+    if rec and rec.get("id_token"):
+        base = (dicts.get_setting("sso_base") or "").rstrip("/")
+        if base:
+            # 坑1: 不带 post_logout_redirect_uri(未登记会400),让门户显示自己的登出页
+            out["sso_logout_url"] = f"{base}/connect/logout?id_token_hint={rec['id_token']}"
+    return out
+
+
+# ---------------- 统一身份认证 SSO(OAuth2授权码) ----------------
+def _sso_cfg() -> dict:
+    return {
+        "enabled": dicts.get_setting("sso_enabled", "0") == "1",
+        "base": (dicts.get_setting("sso_base") or "").rstrip("/"),
+        "client_id": dicts.get_setting("sso_client_id") or "",
+        "client_secret": dicts.get_setting("sso_client_secret") or "",
+        "redirect_uri": dicts.get_setting("sso_redirect_uri") or "",
+        "user_field": dicts.get_setting("sso_username_field") or "preferred_username",
+        "whitelist": [x.strip() for x in (dicts.get_setting("sso_whitelist") or "").split(",") if x.strip()],
+    }
+
+
+@app.get("/api/auth/mode")
+def auth_mode():
+    """登录页公开探测: SSO是否启用(未鉴权,只暴露开关)。"""
+    c = _sso_cfg()
+    return {"sso_enabled": bool(c["enabled"] and c["base"] and c["client_id"])}
+
+
+@app.get("/api/auth/sso/start")
+def sso_start():
+    """生成state并返回授权地址(前端跳转)。state 10分钟有效防CSRF。"""
+    c = _sso_cfg()
+    if not (c["enabled"] and c["base"] and c["client_id"]):
+        raise HTTPException(400, "SSO 未启用或配置不全")
+    import urllib.parse as _up0
+    state = secrets.token_hex(12)
+    _SSO_STATES[state] = _time.time() + 600
+    for k in [k for k, v in _SSO_STATES.items() if v < _time.time()]:
+        _SSO_STATES.pop(k, None)
+    ru = c["redirect_uri"]
+    url = (f"{c['base']}/oauth2/authorize?response_type=code&client_id={c['client_id']}"
+           f"&redirect_uri={_up0.quote(ru, safe='')}&scope=openid%20profile%20email&state={state}")
+    return {"url": url}
+
+
+@app.get("/api/auth/callback")
+def sso_callback(code: str = "", state: str = "", error: str = ""):
+    """SSO授权回调: 校验state→换令牌→取用户→白名单→建会话→302回前端。
+   坑位对策: id_token必须保留(登出要用,扔掉会返工);用户名字段可配置;
+    域账号+姓名反哺用户名映射系统。"""
+    import urllib.request as _urq
+    import urllib.parse as _up
+    import json as _j3  # api.py 无全局json,必须局部导入
+    from fastapi.responses import RedirectResponse
+    c = _sso_cfg()
+    front = c["redirect_uri"].replace("/api/auth/callback", "") or "/"
+    if error:
+        return RedirectResponse(front + "?sso_error=" + _up.quote(error))
+    if not code or not state or _SSO_STATES.pop(state, 0) < _time.time():
+        return RedirectResponse(front + "?sso_error=" + _up.quote("state校验失败,请重新登录"))
+    try:
+        body = _up.urlencode({"grant_type": "authorization_code", "code": code,
+                              "redirect_uri": c["redirect_uri"],
+                              "client_id": c["client_id"], "client_secret": c["client_secret"]}).encode()
+        req = _urq.Request(f"{c['base']}/oauth2/token", data=body,
+                           headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
+        tok = _j3.loads(_urq.urlopen(req, timeout=15).read().decode())
+        at, idt = tok.get("access_token"), tok.get("id_token")
+        if not at:
+            raise RuntimeError("无access_token")
+        req2 = _urq.Request(f"{c['base']}/userinfo", headers={"Authorization": f"Bearer {at}"})
+        info = _j3.loads(_urq.urlopen(req2, timeout=15).read().decode())
+        username = str(info.get(c["user_field"]) or info.get("preferred_username") or "").strip()
+        if not username:
+            raise RuntimeError("userinfo无可用户名字段")
+        # 坑6第二层: 本系统白名单(防SSO侧配置疏忽全员涌入);域账号名恒放行
+        wl = c["whitelist"] or []
+        email = str(info.get("email") or "")
+        ok_user = username in wl or username == ADMIN_USER
+        ok_mail = any(email.endswith(x) for x in wl if x.startswith("@") or "." in x)
+        if wl and not (ok_user or ok_mail):
+            return RedirectResponse(front + "?sso_error=" + _up.quote(f"用户 {username} 不在访问白名单"))
+        token = secrets.token_hex(16)
+        _TOKENS[token] = {"exp": _time.time() + _TOKEN_TTL, "user": username, "id_token": idt}
+        # 域账号+中文姓名 反哺用户映射(SSO给出的是官方权威对应,直接生效)
+        cname = str(info.get("name") or "").strip()
+        if cname and cname != username:
+            try:
+                conf = _alias_load("employee_alias")
+                if conf.get(username) != cname:
+                    conf[username] = cname
+                    import json as _j2
+                    dicts.set_setting("employee_alias", _j2.dumps(conf, ensure_ascii=False))
+                    _alias_apply(username, cname)
+            except Exception:
+                pass
+        return RedirectResponse(front + "?sso_token=" + token)
+    except Exception as e:
+        return RedirectResponse(front + "?sso_error=" + _up.quote(f"SSO登录失败: {e}")[:180])
+
+
+@app.post("/api/auth/logout-notify")
+def sso_logout_notify(body: dict = Body(...)):
+    """门户反向登出通知(坑3): 门户退出时POST {username, logoutAt},吊销该用户全部本地会话。
+    登记地址: {本系统}/api/auth/logout-notify 。"""
+    return {"ok": True, "revoked": _revoke_user_tokens(str(body.get("username") or ""))}
+
+
+def _revoke_user_tokens(username: str) -> int:
+    if not username:
+        return 0
+    dead = [t for t, r in _TOKENS.items() if r.get("user") == username]
+    for t in dead:
         _TOKENS.pop(t, None)
-    return {"ok": True}
+    return len(dead)
 
 
 @app.get("/api/me")
 def me(request: Request):
-    return {"ok": True, "username": ADMIN_USER}
+    h = request.headers.get("authorization", "")
+    t = h[7:].strip() if h.lower().startswith("bearer ") else ""
+    rec = _TOKENS.get(t) or {}
+    return {"ok": True, "username": rec.get("user") or ADMIN_USER, "sso": bool(rec.get("id_token"))}
 
 
 @app.post("/api/change_pwd")
@@ -617,6 +735,13 @@ def get_config():
         "retention_days": dicts.get_setting("retention_days", "90"),
         "raw_logs_retention_days": dicts.get_setting("raw_logs_retention_days", "7"),
         "llm_ask_model": dicts.get_setting("llm_ask_model", ""),
+        "sso_enabled": dicts.get_setting("sso_enabled", "0"),
+        "sso_base": dicts.get_setting("sso_base", ""),
+        "sso_client_id": dicts.get_setting("sso_client_id", ""),
+        "sso_redirect_uri": dicts.get_setting("sso_redirect_uri", ""),
+        "sso_username_field": dicts.get_setting("sso_username_field", "preferred_username"),
+        "sso_whitelist": dicts.get_setting("sso_whitelist", ""),
+        "has_sso_secret": bool(dicts.get_setting("sso_client_secret")),
         "llm_smart_model": dicts.get_setting("llm_smart_model", ""),
     }
 
@@ -625,9 +750,12 @@ def get_config():
 def set_config(body: dict = Body(...)):
     for k in ("llm_base_url", "llm_active", "llm_qwen_model", "llm_deepseek_model",
               "llm_deepseek_base_url", "syslog_enabled", "syslog_host", "syslog_port", "notify_webhook",
-              "retention_days", "raw_logs_retention_days", "llm_ask_model", "llm_smart_model"):
+              "retention_days", "raw_logs_retention_days", "llm_ask_model", "llm_smart_model",
+              "sso_enabled", "sso_base", "sso_client_id", "sso_redirect_uri", "sso_username_field", "sso_whitelist"):
         if body.get(k) is not None:
             dicts.set_setting(k, str(body[k]))
+    if body.get("sso_client_secret"):
+        dicts.set_setting("sso_client_secret", body["sso_client_secret"])
     if body.get("qwen_key"):
         dicts.set_setting("llm_qwen_key", body["qwen_key"])
     if body.get("deepseek_key"):

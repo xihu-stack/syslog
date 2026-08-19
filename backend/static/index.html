@@ -242,7 +242,7 @@
 <script>window.onerror=function(m,s,l,c,e){var d=document.getElementById('root');if(d)d.innerHTML='<div style="padding:30px;color:#c0392b;font-family:monospace;white-space:pre-wrap">前端出错：'+(e&&e.stack||m)+'\n\n请截图发我。</div>';return false;};</script>
 <script type="text/babel">
 const { Layout, Menu, Card, Row, Col, Table, Tag, Button, Input, Form, message, Select, Modal,
-        Space, Upload, Divider, Typography, Badge, Empty, Descriptions, Alert, Radio, ConfigProvider, Statistic, Segmented, Tooltip, Progress, Tabs, DatePicker, InputNumber } = antd;
+        Space, Upload, Divider, Typography, Badge, Empty, Descriptions, Alert, Radio, ConfigProvider, Statistic, Segmented, Tooltip, Progress, Tabs, DatePicker, InputNumber, Switch } = antd;
 const { Sider, Header, Content } = Layout;
 const { useState, useEffect, useRef, useSyncExternalStore } = React;
 
@@ -480,6 +480,9 @@ function ProfilePage({user, goBack, from}){
 // ---------------- 管理员登录页 ----------------
 function LoginPage({onOk}){
   const [u,setU]=useState('admin'); const [p,setP]=useState(''); const [busy,setBusy]=useState(false); const [err,setErr]=useState('');
+  const [ssoOn,setSsoOn]=useState(false); const [adminMode,setAdminMode]=useState(false);
+  const goSso=()=>{ fetch('/api/auth/sso/start').then(r=>r.json()).then(r=>{ if(r&&r.url) location.href=r.url; else setErr('SSO未配置或未启用'); }).catch(()=>setErr('SSO启动失败')); };
+  useEffect(()=>{ fetch('/api/auth/mode').then(r=>r.json()).then(r=>setSsoOn(!!(r&&r.sso_enabled))).catch(()=>{}); },[]);
   const pgRef=useRef(null);
   useEffect(()=>{  // 星空鼠标视差:两层星以不同深度缓动跟随鼠标(近层±22px/远层反向∓12px)
     const el=pgRef.current; if(!el) return;
@@ -536,12 +539,19 @@ function LoginPage({onOk}){
         <div style={{fontSize:12,color:'rgba(255,255,255,.62)',letterSpacing:6,textIndent:6}}>员工行为分析系统</div>
       </div>
       <Divider style={{margin:'14px 0 18px',borderColor:'rgba(255,255,255,.12)'}}/>
-      <div style={{fontSize:13,color:'rgba(255,255,255,.75)',marginBottom:16}}>请输入管理员账号登录</div>
+      {ssoOn&&!adminMode?(<div>
+        <Button size="large" block onClick={goSso} style={{height:46,fontWeight:600,fontSize:15}}><i className="fa-solid fa-arrow-right-to-bracket" style={{marginRight:8}}></i>统一身份认证登录</Button>
+        <div style={{marginTop:14,fontSize:12,color:'rgba(255,255,255,.4)',textAlign:'center'}}>使用公司统一账号单点登录 · 无需单独密码</div>
+        <div style={{marginTop:18,textAlign:'center'}}><a style={{fontSize:11,color:'rgba(255,255,255,.35)'}} onClick={()=>setAdminMode(true)}>管理员密码登录 ›</a></div>
+      </div>):(<div>
+      <div style={{fontSize:13,color:'rgba(255,255,255,.75)',marginBottom:16}}>{ssoOn?'本地管理员登录':'请输入管理员账号登录'}</div>
       <Input size="large" prefix={<i className="fa-solid fa-user" style={{color:'rgba(255,255,255,.4)'}}></i>} placeholder="用户名" value={u} onChange={e=>setU(e.target.value)} onPressEnter={doLogin} style={{marginBottom:12}}/>
       <Input.Password size="large" prefix={<i className="fa-solid fa-lock" style={{color:'rgba(255,255,255,.4)'}}></i>} placeholder="密码" value={p} onChange={e=>setP(e.target.value)} onPressEnter={doLogin} style={{marginBottom:6}}/>
       {err&&<div style={{color:'#f87171',fontSize:12,margin:'4px 0 6px'}}><i className="fa-solid fa-circle-exclamation" style={{marginRight:5}}></i>{err}</div>}
       <Button type="primary" size="large" block loading={busy} onClick={doLogin} style={{marginTop:8,height:42,fontWeight:600}}>登 录</Button>
-      <div style={{marginTop:16,fontSize:11,color:'rgba(255,255,255,.38)',textAlign:'center'}}>初始密码 admin123,登录后请在「系统设置→修改密码」更改</div>
+      {ssoOn&&<div style={{marginTop:12,textAlign:'center'}}><a style={{fontSize:11,color:'rgba(255,255,255,.35)'}} onClick={()=>setAdminMode(false)}>‹ 返回统一登录</a></div>}
+      <div style={{marginTop:16,fontSize:11,color:'rgba(255,255,255,.38)',textAlign:'center'}}>{ssoOn?'本地管理员账号':'初始密码 admin123,登录后请在「系统设置→修改密码」更改'}</div>
+      </div>)}
     </div>
   </div>);
 }
@@ -549,6 +559,13 @@ function LoginPage({onOk}){
 function App(){
   // ---- 登录门:有 token 先探测 /api/me,无效/无 token 渲染登录页 ----
   const [authed,setAuthed]=useState(localStorage.getItem(TOKEN_KEY)?null:false);
+  useEffect(()=>{  // SSO回调落地: ?sso_token=一次性会话令牌 / ?sso_error=失败原因
+    const q=new URLSearchParams(location.search);
+    const t=q.get('sso_token');
+    if(t){ localStorage.setItem(TOKEN_KEY,t); history.replaceState(null,'',location.pathname); setAuthed(true); }
+    const e=q.get('sso_error');
+    if(e){ history.replaceState(null,'',location.pathname); message.error({content:'SSO登录失败: '+e,key:'ssoerr',duration:5}); }
+  },[]);
   useEffect(()=>{
     if(!localStorage.getItem(TOKEN_KEY)){ setAuthed(false); return; }
     fetch('/api/me',{headers:_authHdr()}).then(r=>{ if(r.ok) setAuthed(true); else { localStorage.removeItem(TOKEN_KEY); setAuthed(false);} }).catch(()=>setAuthed(false));
@@ -617,7 +634,7 @@ function App(){
           ]}/>
         <div className="sb-foot">
           <div className="sb-status"><span className="sb-dot"></span><span>引擎在线 · 实时研判中</span></div>
-          <div className="sb-logout" onClick={()=>{fetch('/api/logout',{method:'POST',headers:_authHdr()}).catch(()=>{});localStorage.removeItem(TOKEN_KEY);setAuthed(false);}}><i className="fa-solid fa-right-from-bracket"></i><span>退出登录</span></div>
+          <div className="sb-logout" onClick={()=>{fetch('/api/logout',{method:'POST',headers:_authHdr()}).then(r=>r.ok?r.json():{}).then(r=>{ if(r&&r.sso_logout_url){ localStorage.removeItem(TOKEN_KEY); location.href=r.sso_logout_url; } }).catch(()=>{});localStorage.removeItem(TOKEN_KEY);setAuthed(false);}}><i className="fa-solid fa-right-from-bracket"></i><span>退出登录</span></div>
         </div>
       </Sider>
       <Layout style={{marginLeft:222}}>
@@ -1304,6 +1321,7 @@ function PwdCard(){
     if(r&&r.ok){ message.success('密码已修改,请用新密码重新登录'); setTimeout(()=>{ localStorage.removeItem(TOKEN_KEY); location.reload(); },1200); }
   };
   return (<Card className="card" title="修改管理员密码" size="small" style={{maxWidth:420}}>
+    {isSso&&<Alert type="info" showIcon style={{marginBottom:12}} message="当前为统一身份认证(SSO)登录,账号密码由公司门户管理;如需修改请前往门户的密码修改页面。本入口仅对本地管理员账号生效。"/>}
     <div style={{fontSize:12,color:'var(--ink3)',marginBottom:12}}>修改后所有会话失效,需用新密码重新登录。</div>
     <Input.Password placeholder="旧密码" value={old} onChange={e=>setOld(e.target.value)} style={{marginBottom:10}}/>
     <Input.Password placeholder="新密码(至少6位)" value={nw} onChange={e=>setNw(e.target.value)} style={{marginBottom:10}}/>
@@ -1360,7 +1378,11 @@ function Config(){
   const [sugs,setSugs]=useState(null); const [loadingSug,setLoadingSug]=useState(false);
   const [sugModal,setSugModal]=useState(null);  // 采纳疑似风险时,选归入哪个字典
   const [form]=Form.useForm();
-  const load=async()=>{ const c=await GET('/api/config'); setCfg(c); form.setFieldsValue({base_url:c.llm_base_url,active:c.llm_active||'qwen',qwen_model:(c.qwen||{}).model,deepseek_model:(c.deepseek||{}).model,deepseek_base_url:(c.deepseek||{}).base_url,ask_model:c.llm_ask_model||'',smart_model:c.llm_smart_model||''}); setDicts(await GET('/api/dicts')); setSyslog(await GET('/api/syslog/status')); setExcs(await GETL('/api/exceptions')); };
+  const [ssoForm]=Form.useForm();
+  const saveSso=async(v)=>{ setSaving(true); const body={sso_enabled:v.sso_enabled?'1':'0',sso_base:v.sso_base||'',sso_client_id:v.sso_client_id||'',sso_redirect_uri:v.sso_redirect_uri||'',sso_username_field:v.sso_username_field||'preferred_username',sso_whitelist:v.sso_whitelist||''};
+    if(v.sso_client_secret) body.sso_client_secret=v.sso_client_secret;
+    await PUTJ('/api/config',body); setSaving(false); message.success('SSO配置已保存'); load(); };
+  const load=async()=>{ const c=await GET('/api/config'); setCfg(c); form.setFieldsValue({base_url:c.llm_base_url,active:c.llm_active||'qwen',qwen_model:(c.qwen||{}).model,deepseek_model:(c.deepseek||{}).model,deepseek_base_url:(c.deepseek||{}).base_url,ask_model:c.llm_ask_model||'',smart_model:c.llm_smart_model||''}); ssoForm.setFieldsValue({sso_enabled:c.sso_enabled==='1',sso_base:c.sso_base||'',sso_client_id:c.sso_client_id||'',sso_redirect_uri:c.sso_redirect_uri||'',sso_username_field:c.sso_username_field||'preferred_username',sso_whitelist:c.sso_whitelist||''}); setDicts(await GET('/api/dicts')); setSyslog(await GET('/api/syslog/status')); setExcs(await GETL('/api/exceptions')); };
   useEffect(()=>{ load(); const t=setInterval(()=>GET('/api/syslog/status').then(setSyslog),5000); return ()=>clearInterval(t); },[]);
   const saveLlm=async(v)=>{ setSaving(true); const body={llm_base_url:v.base_url,llm_active:v.active,llm_qwen_model:v.qwen_model,llm_deepseek_model:v.deepseek_model,llm_deepseek_base_url:v.deepseek_base_url||'',llm_ask_model:(v.ask_model||'').trim(),llm_smart_model:(v.smart_model||'').trim()};
     if(v.qwen_key) body.qwen_key=v.qwen_key; if(v.deepseek_key) body.deepseek_key=v.deepseek_key;
@@ -1421,6 +1443,19 @@ function Config(){
         {syslog.recent&&syslog.recent.length? <div style={{background:'var(--bg)',padding:8,fontSize:12,maxHeight:110,overflow:'auto',border:'1px solid var(--ink4)',borderRadius:6}}>
           {syslog.recent.map((m,i)=><div key={i} style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><b>{m.t}</b> {m.from}: {m.msg.slice(0,80)}</div>)}</div>
           :<Typography.Text type="secondary" style={{fontSize:12}}>等待深信服推送（配好后自动接收→解析→研判）</Typography.Text>}
+      </Card>},
+      {key:'sso', label:'统一认证', children:<Card className='card' title='统一身份认证 (SSO)' size='small'>
+        <Alert type='info' showIcon style={{marginBottom:12}} message='对接公司统一身份认证(OAuth2授权码)。回调地址需在认证中心登记为: 本系统地址+/api/auth/callback ; 登出通知地址登记为: 本系统地址+/api/auth/logout-notify 。client_secret 只显示是否已配置,留空不改。'/>
+        <Form form={ssoForm} layout='vertical' onFinish={saveSso}>
+          <Form.Item label='启用 SSO' name='sso_enabled' valuePropName='checked'><Switch size='small'/></Form.Item>
+          <Form.Item label='认证中心地址' name='sso_base' extra='如 http://10.4.128.19:8080 (会自动拼 /oauth2/authorize 等)'><Input placeholder='http://10.4.128.19:8080'/></Form.Item>
+          <Form.Item label='client_id' name='sso_client_id'><Input/></Form.Item>
+          <Form.Item label={'client_secret ('+((cfg.sso_enabled!=='0'&&cfg.has_sso_secret)?'已配置,留空不改':'未配置')+')'} name='sso_client_secret'><Input.Password placeholder='留空不改'/></Form.Item>
+          <Form.Item label='回调地址' name='sso_redirect_uri' extra='必须与认证中心登记的一字不差;本系统默认 http://10.0.20.249:18000/api/auth/callback'><Input/></Form.Item>
+          <Form.Item label='用户名字段' name='sso_username_field' extra='取userinfo里的哪个字段做用户名(坑:自建SSO五花八门,报没有可用用户名时换字段)'><Input placeholder='preferred_username'/></Form.Item>
+          <Form.Item label='访问白名单' name='sso_whitelist' extra='逗号分隔的用户名或邮箱后缀(@xx.com);留空=不限制。第二层防线,防认证中心配置疏忽导致全员涌入'><Input placeholder='留空不限制'/></Form.Item>
+          <Button type='primary' htmlType='submit' loading={saving}>保存</Button>
+        </Form>
       </Card>},
       {key:'exempt', label:'豁免管理', children:<Card className="card" title={"误报复核 / 豁免管理（"+excs.length+"）"} size="small">
         {excs.length ? <Table size="small" rowKey="id" pagination={{pageSize:12}} dataSource={excs}
