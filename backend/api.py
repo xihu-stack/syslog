@@ -1252,7 +1252,7 @@ _ASK_TOOLS = {
 
 
 def _ask_parse_objs(text: str) -> list:
-    """从 LLM 输出提取 JSON 对象列表(支持嵌套 args、多个连续 JSON、<think>块)。
+    r"""从 LLM 输出提取 JSON 对象列表(支持嵌套 args、多个连续 JSON、<think>块)。
     正则 \{[^{}]*\} 不支持嵌套,必须用括号配平扫描。"""
     import re as _re
     import json as _json  # api.py 顶部无全局 import json,必须局部导入(此前 NameError 被 except 吞掉导致解析恒为空)
@@ -1849,39 +1849,85 @@ def _alias_apply(account: str, name: str) -> int:
 
 def _alias_discover():
     """自动发现用户名映射(每小时维护跑):
-    拼音精确匹配(账号拼音==某中文名拼音)→ 直接生效并清洗;
-    同IP唯一中文名 → 待确认候选(IP多为共享,推测不可靠,2026-08-18验证taofeiyan误配案例)。"""
+    1) 拼音精确唯一命中 → 自动生效并清洗历史;
+    2) 其余非中文标识全部进待确认清单(2026-08-19用户口径: 不是中文的都提取出来):
+       拼音多重命中/同IP唯一中文名 → 给出候选; 无线索 → 留空等人工填写;
+       人工忽略的(数字访客ID等)记入 ignored 不再提示。"""
     import json as _j
     import re as _re
+    from sqlalchemy import func as _f
     from pypinyin import lazy_pinyin
+    from datetime import timedelta
     try:
         s = Session()
         try:
-            emps = [r[0] for r in s.query(EventRow.employee_id).filter(EventRow.employee_id.isnot(None)).distinct().all()]
-            cn = re.compile(r"[一-鿿]")
-            cn_names = sorted({e for e in emps if cn.search(e or "")})
-            accts = {e for e in emps if e and not cn.search(e)}
+            emps = set()
+            for tbl in (EventRow, VerdictRow, AlertRow):
+                emps |= {r[0] for r in s.query(tbl.employee_id).filter(tbl.employee_id.isnot(None)).distinct().all()}
+            cn = _re.compile(r"[一-鿿]")
+            cn_names = sorted({e for e in emps if e and cn.search(e)})
+            cn_set = set(cn_names)
+            accts = sorted({e for e in emps if e and not cn.search(e)})
             cn_py = {n: "".join(lazy_pinyin(n)) for n in cn_names}
             conf = _alias_load("employee_alias")
-            pend = _alias_load("employee_alias_pending")
+            ign = _alias_load("employee_alias_ignored")
+            # 活跃度(近30天): 事件数+最近出现,辅助人工判断值不值得映射
+            since = bj_now() - timedelta(days=30)
+            act = {eid: (c, mx) for eid, c, mx in
+                   s.query(EventRow.employee_id, _f.count(EventRow.id), _f.max(EventRow.occurred_at))
+                   .filter(EventRow.occurred_at >= since).group_by(EventRow.employee_id).all()}
+            # 同IP关联表: employee -> 出现过的device_id; device_id -> 出现过的employee
+            dev_of, dev_names = {}, {}
+            for eid, dev in s.query(EventRow.employee_id, EventRow.device_id).distinct().all():
+                if eid and dev:
+                    dev_of.setdefault(eid, set()).add(dev)
+                    dev_names.setdefault(dev, set()).add(eid)
+
+            def _same_ip_cn(a):
+                names = set()
+                for ip in dev_of.get(a, ()):
+                    names |= {n for n in dev_names.get(ip, ()) if n in cn_set}
+                return sorted(names)
+
             changed = []
+            new_pend = {}
             for a in accts:
-                if a in conf:
+                if a in conf or a in ign:
                     continue
                 a2 = a.lower().replace(".", "").replace("_", "").replace("-", "")
-                if _re.match(r"^\d+\.\d+\.\d+\.\d+$", a):
-                    continue  # IP型标识不做拼音
-                hits = [n for n, p in cn_py.items() if p == a2]
+                a2 = _re.sub(r"\d+$", "", a2)  # 剥离尾部编号(zhangsan01 → zhangsan)
+                is_ip = bool(_re.match(r"^\d+\.\d+\.\d+\.\d+$", a))
+                hits = [] if is_ip or not a2 else [n for n, p in cn_py.items() if p == a2]
                 if len(hits) == 1:
                     conf[a] = hits[0]
                     changed.append((a, hits[0]))
-                    pend.pop(a, None)
+                    continue
+                _c, _mx = act.get(a, (0, None))
+                entry = {"guess": "", "candidates": [], "reason": "",
+                         "count": _c, "last_seen": str(_mx or "")[:16]}
+                sip = _same_ip_cn(a)
+                if len(hits) > 1:
+                    entry["reason"] = "拼音匹配多人,请选择"
+                    entry["candidates"] = hits
+                elif len(sip) == 1:
+                    entry["reason"] = "同IP唯一中文名,建议核实"
+                    entry["guess"] = sip[0]
+                elif len(sip) > 1:
+                    entry["reason"] = "共享IP出现" + str(len(sip)) + "人,慎选"
+                    entry["candidates"] = sip
+                elif is_ip:
+                    entry["reason"] = "IP型标识,无关联中文名"
+                else:
+                    entry["reason"] = "未推测到,请人工填写"
+                new_pend[a] = entry
+            dicts.set_setting("employee_alias", _j.dumps(conf, ensure_ascii=False))
+            dicts.set_setting("employee_alias_pending", _j.dumps(new_pend, ensure_ascii=False))
             if changed:
-                dicts.set_setting("employee_alias", _j.dumps(conf, ensure_ascii=False))
-                dicts.set_setting("employee_alias_pending", _j.dumps(pend, ensure_ascii=False))
                 for a, n in changed:
                     _alias_apply(a, n)
-                print(f"[alias] 拼音自动统一 {len(changed)} 个账号", flush=True)
+                print(f"[alias] 拼音自动统一 {len(changed)} 个; 待确认 {len(new_pend)} 个", flush=True)
+            elif new_pend:
+                print(f"[alias] 待确认 {len(new_pend)} 个", flush=True)
         finally:
             s.close()
     except Exception as e:
@@ -1890,7 +1936,28 @@ def _alias_discover():
 
 @app.get("/api/alias")
 def alias_list():
-    return {"confirmed": _alias_load("employee_alias"), "pending": _alias_load("employee_alias_pending")}
+    return {"confirmed": _alias_load("employee_alias"),
+            "pending": _alias_load("employee_alias_pending"),
+            "ignored": list(_alias_load("employee_alias_ignored").keys())}
+
+
+@app.post("/api/alias/ignore")
+def alias_ignore(body: dict = Body(...)):
+    """忽略待确认标识(数字访客ID等不需要映射的) / undo=1 恢复。"""
+    import json as _j
+    account = (body.get("account") or "").strip()
+    if not account:
+        raise HTTPException(400, "account 不能为空")
+    ign = _alias_load("employee_alias_ignored")
+    pend = _alias_load("employee_alias_pending")
+    if body.get("undo"):
+        ign.pop(account, None)
+    else:
+        ign[account] = 1
+        pend.pop(account, None)
+    dicts.set_setting("employee_alias_ignored", _j.dumps(ign, ensure_ascii=False))
+    dicts.set_setting("employee_alias_pending", _j.dumps(pend, ensure_ascii=False))
+    return {"ok": True}
 
 
 @app.post("/api/alias/confirm")

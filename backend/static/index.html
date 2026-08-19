@@ -1345,7 +1345,7 @@ function PwdCard(){
   </Card>);
 }
 function AliasCard(){
-  const [data,setData]=useState(null); const [na,setNa]=useState(''); const [nn,setNn]=useState('');
+  const [data,setData]=useState(null); const [na,setNa]=useState(''); const [nn,setNn]=useState(''); const [fix,setFix]=useState({});
   const load=async()=>{ setData(await GET('/api/alias')); };
   useEffect(()=>{load();},[]);
   const confirm=async(account,name)=>{
@@ -1354,20 +1354,27 @@ function AliasCard(){
     load();
   };
   const del=async(a)=>{ await DEL('/api/alias/'+encodeURIComponent(a)); message.success('已删除'); load(); };
-  const conf=(data&&data.confirmed)||{}; const pend=(data&&data.pending)||{};
+  const ignore=async(a)=>{ await POST('/api/alias/ignore',{headers:{'Content-Type':'application/json'},body:JSON.stringify({account:a})}); message.success('已忽略(不再提示)'); load(); };
+  const conf=(data&&data.confirmed)||{};
+  const pendEntries=Object.entries((data&&data.pending)||{}).map(([a,v])=>{ const o=(typeof v==='string')?{guess:v}:v; return {account:a,guess:o.guess||'',candidates:o.candidates||[],reason:o.reason||'',count:o.count||0,last_seen:o.last_seen||''}; });
+  const ignored=(data&&data.ignored)||[];
   return (<div>
-    <Alert type='info' showIcon style={{marginBottom:12}} message='把域账号/IP型标识统一为中文名: 确认后立即生效——新数据入库时自动转换,历史数据同步清洗。候选来自拼音精确匹配与同IP关联推测,推测的请人工核实后再确认。'/>
-    <Card className='card' size='small' title={'待确认候选 ('+Object.keys(pend).length+')'} style={{marginBottom:16}}>
-      {Object.keys(pend).length===0?<Typography.Text type='secondary' style={{fontSize:12}}>暂无候选(每周自动扫描发现新账号)</Typography.Text>:
-      <Table size='small' rowKey='account' pagination={{pageSize:10}} dataSource={Object.entries(pend).map(([a,n])=>({account:a,guess:n}))}
+    <Alert type='info' showIcon style={{marginBottom:12}} message='所有非中文标识(域账号/拼音/IP)都会被提取到待确认清单: 拼音唯一命中自动生效;有线索的给出推测候选(点击候选即填入);无线索的请人工填写中文名。确认后立即生效——新数据入库自动转换,历史数据同步清洗。数字访客ID等无需映射的可点忽略。'/>
+    <Card className='card' size='small' title={'待确认 ('+pendEntries.length+') · 每小时自动扫描'} style={{marginBottom:16}}>
+      {pendEntries.length===0?<Typography.Text type='secondary' style={{fontSize:12}}>暂无待确认标识——当前所有用户标识均为中文或已映射</Typography.Text>:
+      <Table size='small' rowKey='account' pagination={{pageSize:10}} dataSource={pendEntries}
         columns={[
-          {title:'账号/IP标识',dataIndex:'account',render:v=><span className='num' style={{fontSize:12}}>{v}</span>},
-          {title:'推测中文名',dataIndex:'guess'},
-          {title:'实际应为(可改)',render:(_,r)=><Input size='small' style={{width:120}} defaultValue={r.guess} onChange={e=>r._fix=e.target.value} onPressEnter={()=>confirm(r.account, r._fix||r.guess)}/>},
-          {title:'',width:150,render:(_,r)=><Space size={4}>
-            <Button size='small' type='primary' onClick={()=>confirm(r.account, r._fix||r.guess)}>确认并统一</Button>
-          </Space>},
+          {title:'非中文标识',dataIndex:'account',render:v=><span className='num' style={{fontSize:12}}>{v}</span>},
+          {title:'线索',dataIndex:'reason',width:170,render:v=><Tag style={{fontSize:11}} color={v&&v.indexOf('同IP唯一')>=0?'blue':'default'}>{v||'-'}</Tag>},
+          {title:'候选(点击填入)',width:180,render:(_,r)=>r.candidates.length?r.candidates.map(c=><Tag key={c} style={{cursor:'pointer',fontSize:11,marginBottom:2}} onClick={()=>setFix({...fix,[r.account]:c})}>{c}</Tag>):<span style={{color:'var(--ink3)',fontSize:11}}>-</span>},
+          {title:'近30天',width:110,render:(_,r)=><span style={{fontSize:11,color:r.count?'var(--ink2)':'var(--ink3)'}}>{r.count?r.count+'条 · '+(r.last_seen||'').slice(5,10):'无活动'}</span>},
+          {title:'确认为中文名',width:230,render:(_,r)=><Space.Compact>
+            <Input size='small' style={{width:110}} placeholder='中文名' value={fix[r.account]!==undefined?fix[r.account]:r.guess} onChange={e=>setFix({...fix,[r.account]:e.target.value})} onPressEnter={()=>{ if(fix[r.account]||r.guess){confirm(r.account, fix[r.account]||r.guess); setFix({...fix,[r.account]:undefined});} }}/>
+            <Button size='small' type='primary' disabled={!(fix[r.account]||r.guess)} onClick={()=>{ confirm(r.account, fix[r.account]||r.guess); setFix({...fix,[r.account]:undefined}); }}>确认</Button>
+            <Button size='small' onClick={()=>ignore(r.account)}>忽略</Button>
+          </Space.Compact>},
         ]}/>}
+      {ignored.length>0&&<div style={{marginTop:8,fontSize:11,color:'var(--ink3)'}}>已忽略({ignored.length}): {ignored.slice(0,8).map(a=><Tag key={a} style={{fontSize:10}}>{a}</Tag>)}{ignored.length>8?' …':''}</div>}
     </Card>
     <Card className='card' size='small' title={'已生效映射 ('+Object.keys(conf).length+')'} style={{marginBottom:16}}>
       {Object.keys(conf).length===0?<Typography.Text type='secondary' style={{fontSize:12}}>暂无</Typography.Text>:
