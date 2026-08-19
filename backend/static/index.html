@@ -480,9 +480,21 @@ function ProfilePage({user, goBack, from}){
 // ---------------- 管理员登录页 ----------------
 function LoginPage({onOk}){
   const [u,setU]=useState('admin'); const [p,setP]=useState(''); const [busy,setBusy]=useState(false); const [err,setErr]=useState('');
-  const [ssoOn,setSsoOn]=useState(false); const [adminMode,setAdminMode]=useState(false);
-  const goSso=()=>{ fetch('/api/auth/sso/start').then(r=>r.json()).then(r=>{ if(r&&r.url) location.href=r.url; else setErr('SSO未配置或未启用'); }).catch(()=>setErr('SSO启动失败')); };
+  const [ssoOn,setSsoOn]=useState(false); const [adminMode,setAdminMode]=useState(()=>{ try{ return new URLSearchParams(location.search).get('admin')==='1' }catch(e){ return false } });
+  const [autoJump,setAutoJump]=useState(false);
+  const goSso=()=>{ fetch('/api/auth/sso/start').then(r=>r.json()).then(r=>{ if(r&&r.url) location.href=r.url; else { setAutoJump(false); setErr('SSO未配置或未启用'); } }).catch(()=>{ setAutoJump(false); setErr('SSO启动失败'); }); };
   useEffect(()=>{ fetch('/api/auth/mode').then(r=>r.json()).then(r=>setSsoOn(!!(r&&r.sso_enabled))).catch(()=>{}); },[]);
+  useEffect(()=>{  // SSO开启时未登录自动跳门户;守卫:回调落地参数不跳/每标签页只尝试一次(防循环)/管理员模式不跳
+    if(!ssoOn||adminMode) return;
+    const q=new URLSearchParams(location.search);
+    if(q.get('sso_token')||q.get('sso_error')||q.get('admin')) return;
+    let tried=false; try{ tried=sessionStorage.getItem('sso_auto_tried')==='1' }catch(e){}
+    if(tried) return;
+    try{ sessionStorage.setItem('sso_auto_tried','1') }catch(e){}
+    setAutoJump(true);
+    const tm=setTimeout(()=>goSso(),1600);
+    return ()=>{ clearTimeout(tm); setAutoJump(false); };
+  },[ssoOn,adminMode]);
   const pgRef=useRef(null);
   useEffect(()=>{  // 星空鼠标视差:两层星以不同深度缓动跟随鼠标(近层±22px/远层反向∓12px)
     const el=pgRef.current; if(!el) return;
@@ -540,6 +552,8 @@ function LoginPage({onOk}){
       </div>
       <Divider style={{margin:'14px 0 18px',borderColor:'rgba(255,255,255,.12)'}}/>
       {ssoOn&&!adminMode?(<div>
+        {autoJump&&<div style={{marginBottom:12,textAlign:'center',fontSize:12,color:'#a5b4fc'}}><i className="fa-solid fa-spinner fa-spin" style={{marginRight:6}}></i>正在跳转到统一身份认证…</div>}
+        {err&&!autoJump&&<div style={{color:'#f87171',fontSize:12,margin:'0 0 10px',textAlign:'center'}}><i className="fa-solid fa-circle-exclamation" style={{marginRight:5}}></i>{err}</div>}
         <Button size="large" block onClick={goSso} style={{height:46,fontWeight:600,fontSize:15}}><i className="fa-solid fa-arrow-right-to-bracket" style={{marginRight:8}}></i>统一身份认证登录</Button>
         <div style={{marginTop:14,fontSize:12,color:'rgba(255,255,255,.4)',textAlign:'center'}}>使用公司统一账号单点登录 · 无需单独密码</div>
         <div style={{marginTop:18,textAlign:'center'}}><a style={{fontSize:11,color:'rgba(255,255,255,.35)'}} onClick={()=>setAdminMode(true)}>管理员密码登录 ›</a></div>
