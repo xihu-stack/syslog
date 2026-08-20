@@ -46,6 +46,10 @@ def _flush_events():
                         if _m2: _u = _m2.group(1).strip()
                         _m3 = _re_mod.search(r"\[app:([^\]]+)\]", msg)
                         if _m3: _a = _m3.group(1).strip()
+                        if not _u:  # IPG报文: 解析线程已回填的lt/u/a优先于空regex
+                            _lt = m.get("lt") or _lt
+                            _u = m.get("u") or _u
+                            _a = m.get("a") or _a
                         s.add(RawLogRow(log_type=_lt, user=_u, app=_a, msg=msg[:4000]))
                     s.commit()
                     print(f"[raw] insert from recent {len(recents)}条", flush=True)
@@ -250,12 +254,20 @@ def _listen(host, port):
             try:
                 from parser_sangfor import parse_sangfor_syslog
                 ev = parse_sangfor_syslog(text)
+                _is_ipg = False
                 if ev is None:  # 深信服格式不匹配 → 试IP-Guard(OTransLog JSON)
                     from parser_ipg import parse_ipg_syslog
                     ev = parse_ipg_syslog(text)
+                    _is_ipg = ev is not None
                 if ev:
                     with _buf_lock:
                         _event_buffer.append(ev)
+                    if _is_ipg:  # 原始日志页的用户/应用/类型列: IPG报文无[user:]标记,
+                        with _lock:  # 用解析结果回填(2026-08-20用户反馈"没有用户和应用")
+                            if _state["recent"]:
+                                _state["recent"][-1]["lt"] = f"IPG-{ev.category.lower()}"
+                                _state["recent"][-1]["u"] = ev.employee_id
+                                _state["recent"][-1]["a"] = (ev.raw or {}).get("app") or (ev.raw or {}).get("title") or ""
             except Exception:
                 pass
         except socket.timeout:
