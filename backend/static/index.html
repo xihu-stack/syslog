@@ -610,7 +610,9 @@ function App(){
     const tick=()=>fetch('/api/detect/status',{headers:_authHdr()}).then(r=>r.json()).then(s=>{
       if(s.running){
         const pct = s.total ? Math.round(s.done/s.total*100) : 0;
-        message.loading({content:'研判中 '+s.done+'/'+s.total+' ('+pct+'%)',key:'det',duration:0});
+        const ph = s.phase ? s.phase : '';
+        const txt = ph && !s.total ? ph : (ph ? ph+' '+s.done+'/'+s.total+' ('+pct+'%)' : '研判中 '+s.done+'/'+s.total+' ('+pct+'%)');
+        message.loading({content:txt,key:'det',duration:0});
         setTimeout(tick,3000);
       } else {
         message.success({content:'研判完成：'+s.judged+' 窗口，告警 '+s.alerts,key:'det',duration:3});

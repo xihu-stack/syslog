@@ -128,9 +128,11 @@ def ingest_events(events) -> int:
                                 s.query(EventRow.event_hash).filter(EventRow.event_hash.in_(hashes[i:i + 400])).all())
             added = 0
             ignored = _ignored_employees()
-            for e, h in zip(events, hashes):
-                if h in existing or (e.employee_id or "").isdigit() or (e.employee_id or "") in ignored:  # 跳过已存在 + 访客(纯数字) + 忽略名单
+            seen = set()  # 批内去重: 同批两条相同hash(深信服重发/聚合边界重叠)会撞
+            for e, h in zip(events, hashes):    # UNIQUE约束且整批回滚丢数据(2026-08-20)
+                if h in existing or h in seen or (e.employee_id or "").isdigit() or (e.employee_id or "") in ignored:  # 跳过已存在 + 访客(纯数字) + 忽略名单
                     continue
+                seen.add(h)
                 s.add(EventRow(event_hash=h, occurred_at=e.occurred_at, employee_id=e.employee_id,
                                device_id=e.device_id, category=e.category, action=e.action,
                                target_type=e.target_type, target_value=e.target_value,
@@ -158,6 +160,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         print(f"[detect] 读取阶段开始 wm={wm}", flush=True)
         new_rows = rs.query(EventRow).filter(EventRow.id > wm).order_by(EventRow.occurred_at).all()
         print(f"[detect] 读取完成 {len(new_rows)}行 耗{_t0.time()-_T:.1f}s", flush=True)
+        _detect_status.update(phase="筛选风险窗口(约1-5分钟,此时进度为0属正常)")
         # 过滤访客（纯数字手机号/guest）+ 忽略名单（测试账号等）——不是正式员工
         ignored = _ignored_employees()
         new_rows = [r for r in new_rows
@@ -206,6 +209,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         rs.close()
 
     print(f"[detect] 窗口筛选完成 to_judge={len(to_judge)} 耗{_t0.time()-_T:.1f}s", flush=True)
+    _detect_status.update(phase="LLM研判中")
     if on_progress:
         on_progress("total", len(to_judge))
 
@@ -544,17 +548,17 @@ def start_detection(risk_threshold: int = 50) -> dict:
 
     def _worker():
         try:
-            _detect_status.update(running=True, total=0, done=0, judged=0, alerts=0, error=None)
+            _detect_status.update(running=True, total=0, done=0, judged=0, alerts=0, error=None, phase="读取数据")
 
             def _prog(kind, val):
                 _detect_status["total" if kind == "total" else "done"] = val
 
             judged, alerts = run_detection(risk_threshold, on_progress=_prog)
-            _detect_status.update(running=False, judged=judged, alerts=alerts,
+            _detect_status.update(running=False, judged=judged, alerts=alerts, phase=None,
                                   last_finished=bj_now().isoformat(),  # 北京时间,前端直接显示(旧utcnow差8h)
                                   last_judged=judged, last_alerts=alerts)
         except Exception as e:
-            _detect_status.update(running=False, error=str(e))
+            _detect_status.update(running=False, error=str(e), phase=None)
         finally:
             _detect_lock.release()
 
