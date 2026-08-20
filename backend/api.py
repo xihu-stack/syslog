@@ -964,8 +964,10 @@ def system_stats():
             if k not in _agg or _ws > _agg[k]['latest']:
                 _agg[k] = {'employee': k, 'scenario': _v.intent, 'risk_score': _v.risk_score,
                            'status': _st, 'latest': _ws}
+        # 同分时按场景优先级: 求职离职 > 数据外发 > 违规/其他(2026-08-20用户口径)
+        _PRIO = {"job_seeking": 0, "data_exfiltration": 1}
         top_active = []
-        for g in sorted(_agg.values(), key=lambda x: -(x['risk_score'] or 0))[:10]:
+        for g in sorted(_agg.values(), key=lambda x: (-(x['risk_score'] or 0), _PRIO.get(x['scenario'], 2)))[:10]:
             g['summary'] = _al_summary.get((g['employee'], g['scenario'])) or ''
             top_active.append(g)
 
