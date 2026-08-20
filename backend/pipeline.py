@@ -451,12 +451,15 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
             if _mj or _gn:
                 _off = any(detector._is_off_hours(e.occurred_at) for e in w)
                 _xd = "跨天规则①命中" in (_hist or "")
-                _mj = max(_mj, _day_mj)  # 档位按当日累计定(高聪案例:分散多窗口不降档)
-                _gn = max(_gn, _day_gn)
+                # 接管看窗口自身计数(含招聘域名才判job);定档用当日累计(高聪案例:
+                # 分散多窗口不降档)。万亮案例: 纯AI窗口被当日累计拔成job80,说明全是
+                # AI域名与场景矛盾(2026-08-20)——窗口无招聘域名的不判求职。
+                _mj_lvl = max(_mj, _day_mj)
+                _gn_lvl = max(_gn, _day_gn)
                 if _mj >= 1:
-                    if _mj >= 10:
+                    if _mj_lvl >= 10:
                         _js = 90
-                    elif _mj >= 3:
+                    elif _mj_lvl >= 3:
                         _js = 85
                     else:
                         _js = 75
@@ -464,7 +467,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                          "risk_score": min(_js + (5 if _off else 0) + (5 if _xd else 0), 95)}
                     _anchored = v["risk_score"]  # 客观计数定分,复核不推翻(见下)
                 elif _gn >= 3 or (_gn >= 1 and _xd):
-                    _js = 60 if _gn >= 10 else 55
+                    _js = 60 if _gn_lvl >= 10 else 55
                     v = {**v, "intent": "job_seeking",
                          "risk_score": min(_js + (5 if _off else 0) + (5 if _xd else 0), 65)}
                     _anchored = v["risk_score"]
