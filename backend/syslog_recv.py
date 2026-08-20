@@ -37,6 +37,12 @@ def _flush_events():
             with write_lock:  # 与研判 _flush 串行写，避免写锁互等
                 s = Session()
                 try:
+                    try:  # 原始日志用户列走别名转换(2026-08-20反馈: 已映射账号仍显示拼音)
+                        import json as _js2
+                        import dicts as _dc2
+                        _al = _js2.loads(_dc2.get_setting("employee_alias") or "{}")
+                    except Exception:
+                        _al = {}
                     for m in recents:
                         msg = m.get("msg", "")
                         _lt = _u = _a = ""
@@ -50,6 +56,8 @@ def _flush_events():
                             _lt = m.get("lt") or _lt
                             _u = m.get("u") or _u
                             _a = m.get("a") or _a
+                        if _u in _al:  # 账号→中文名,与events同口径
+                            _u = _al[_u]
                         s.add(RawLogRow(log_type=_lt, user=_u, app=_a, msg=msg[:4000]))
                     s.commit()
                     print(f"[raw] insert from recent {len(recents)}条", flush=True)
