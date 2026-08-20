@@ -277,10 +277,16 @@ def should_trigger(window, dev, baseline) -> bool:
     """
     for e in window:
         if e.category == "DOC":
-            if e.action in WRITE_ACTIONS:
+            # IPG接入前闸门收紧(2026-08-20): 普通本地写(SAVE/MODIFY/RENAME等每人
+            # 每天海量)不单独触发,只有真实外发信号才触发——UPLOAD/SEND/PRINT/BURN
+            # (上传/发送/打印/刻录)、非本地通道(USB/网盘)、或文件名含敏感词
+            if e.action in ("UPLOAD", "SEND", "PRINT", "BURN"):
                 return True
             ch = (e.raw or {}).get("channel")
             if ch and ch != "LOCAL":
+                return True
+            if e.action in WRITE_ACTIONS and any(
+                    k in (e.target_value or "") for k in dicts.get("sensitive_keywords")):
                 return True
         if e.category == "SEARCH" and _search_risky(e.target_value):
             return True

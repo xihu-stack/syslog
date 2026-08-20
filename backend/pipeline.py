@@ -37,6 +37,10 @@ def _window_trigger_domains(w) -> set:
             d = (e.raw or {}).get("domain") or e.target_value
             if d and dicts.risk_tier(d) in ("high", "job"):
                 doms.add(d.lower())
+        elif e.category == "DOC" and e.action in ("UPLOAD", "SEND", "PRINT", "BURN"):
+            # DOC外发伪域名去重键: IPG接入后防止同员工同类外发动作反复送LLM
+            ch = (e.raw or {}).get("channel")
+            doms.add(f"doc:{e.action}:{ch or 'LOCAL'}")
     return doms
 
 
