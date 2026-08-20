@@ -131,6 +131,25 @@ def _health_watchdog():
             _notify("数据流疑似中断: 服务运行中但启动后从未收到报文,请检查深信服推送配置")
     except Exception:
         pass
+    # 1b) IPG(OTransLog)断流检测(2026-08-20接入): 工作时间2小时无IPG报文即提醒
+    #     ——IPG推送独立于深信服,可能单边断;原始报文里含OTransLog即视为IPG在线
+    try:
+        from db import Session as _S2
+        from db import RawLogRow as _RL2, bj_now as _bj2
+        _hour = datetime.datetime.now().hour
+        if 9 <= _hour < 20:
+            _ss = _S2()
+            try:
+                _last_ipg = _ss.query(_RL2.received_at).filter(
+                    _RL2.msg.like("%OTransLog%")).order_by(_RL2.id.desc()).first()
+                if _last_ipg and _last_ipg[0]:
+                    _silent = (_bj2() - _last_ipg[0]).total_seconds()
+                    if _silent > 7200 and _once_per_day("ipg_silent"):
+                        _notify(f"IPG日志断流: 工作时间已{_silent/3600:.0f}小时未收到IP-Guard报文(最后{_last_ipg[0].strftime('%H:%M')}),请检查IPG外发配置")
+            finally:
+                _ss.close()
+    except Exception:
+        pass
     # 2) 研判兜底率
     try:
         from db import Session
