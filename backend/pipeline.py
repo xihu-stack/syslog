@@ -486,6 +486,37 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 v = {**v, "explanation": f"[已豁免:{_exr or '岗位需要'}] " + (v.get("explanation") or "")}
         except Exception:
             pass
+        # ---- 锚点场景说明一致性: 锚点强制intent时,AI说明可能以窗口主信号(如AI)
+        # 为主而只字不提触发域名(鄢荣梅案例: job告警说明全是doubao,招聘2次没写,
+        # 2026-08-20)——说明不含触发域名的,前置事实摘要
+        try:
+            _SCEN_KW = {"job_seeking": ("招聘",),
+                        "policy_violation": ("网盘", "邮箱"),
+                        "data_exfiltration": ("文件助手", "网盘", "邮箱", "文件传输")}
+            if isinstance(v, dict) and v.get("intent") in _SCEN_KW:
+                _kw = _SCEN_KW[v["intent"]]
+                _fd = defaultdict(int)
+                for e in w:
+                    if e.category != "WEB":
+                        continue
+                    d = ((e.raw or {}).get("domain") or "").lower()
+                    rc = dicts.risk_class(d)
+                    if rc and any(k in rc for k in _kw):
+                        _fd[f"{rc}|{d}"] += (e.count or 1)
+                if _fd:
+                    _expl = v.get("explanation") or ""
+                    _hit = False
+                    for key in _fd:
+                        d = key.split("|", 1)[1]
+                        if d in _expl or ".".join(d.split(".")[-2:]) in _expl:
+                            _hit = True
+                            break
+                    if not _hit:
+                        _facts = "、".join(f"{k.split('|')[0]}({k.split('|')[1]})×{n}次"
+                                           for k, n in sorted(_fd.items(), key=lambda x: -x[1])[:3])
+                        v = {**v, "explanation": f"访问{_facts}。原始说明: " + _expl}
+        except Exception:
+            pass
         # ---- 双模型复核: Qwen判定达到告警级(≥阈值)时,用深度模型独立重判一遍。
         # 两模型一致才维持告警;复核明显更低则降级(证据撑不起告警)。复核失败保守
         # 保留原判。说明不写复核过程,直接给结论(2026-08-19用户要求)。

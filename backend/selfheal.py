@@ -106,8 +106,15 @@ def selfcheck() -> dict:
                     a.status = "CLOSED"
                     fixes.append(f"I5 关闭无据: {a.employee_id}/{a.scenario}")
 
-        # ---- 锚点档位吸附: policy/data/job 的NEW告警分数必须落在合法档位,
-        # 档位外(历史AI自由分残留)向上吸附到最近合法档 ----
+        # ---- 锚点档位吸附: 先吸研判(源头)再吸告警——只吸告警会和I1对齐
+        # 无限震荡(2026-08-20实测: 刘倩雯75->70(I1)->75(I6)每轮拉锯) ----
+        for v in s.query(VerdictRow).filter(VerdictRow.intent.in_(_ANCHOR_TIERS)).all():
+            tiers = _ANCHOR_TIERS[v.intent]
+            if (v.risk_score or 0) >= 50 and v.risk_score not in tiers:
+                legal = sorted(x for x in tiers if x >= (v.risk_score or 0))
+                if legal:
+                    fixes.append(f"I6 研判档位吸附: {v.employee_id}/{v.intent} {v.risk_score}->{legal[0]}")
+                    v.risk_score = legal[0]
         for a in s.query(AlertRow).all():
             if a.status == "NEW" and a.scenario in _ANCHOR_TIERS and a.risk_score not in _ANCHOR_TIERS[a.scenario]:
                 legal = sorted(x for x in _ANCHOR_TIERS[a.scenario] if x >= (a.risk_score or 0))
