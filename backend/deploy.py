@@ -132,6 +132,7 @@ def main():
     for f in files:
         run(f"docker cp {REMOTE}/{f} {CONTAINER}:/app/{f}")
     if files:
+        run(f"docker exec {CONTAINER} sh -c 'rm -rf /app/__pycache__'")  # 陈旧pyc曾致新代码不生效(2026-08-20巡检)
         run(f"docker restart {CONTAINER}")
         time.sleep(10)
     run("curl -s -o /dev/null -w 'page:%{http_code}' http://localhost:18000/index.html && "
