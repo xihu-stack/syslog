@@ -103,6 +103,7 @@ SYSTEM_PROMPT = (
     "【风险域名不属于基线】招聘/网盘/邮箱/文件助手等风险类域名【永不计入个人基线或全局常见】——即使该员工天天访问、即使在其常用域名中,也绝不构成正常理由;天天访问恰是进行中风险信号(跨天模式)。\n"
     "【基线偏离的使用边界】'域名不在个人基线中'本身≠严重偏离——每人每天都会首次遇到大量新域名(见全局参照)。偏离档位必须综合:频次是否远超本人常态+时段(凌晨)+多外发通道叠加来判断;严禁仅以'首次出现/不在基线'把低频访问(≤5次)判为severe或抬进高危档。\n"
     "【intent 由窗口的主风险信号决定——勿被弱信号带偏】招聘网站【单次/低频夹杂在其他信号中≠job_seeking】:job_seeking 仅用于招聘网站反复高频(≥3次)/凌晨为主信号的窗口；若窗口主风险是邮箱/网盘/外发,按主风险定intent,不要因含1次领英/招聘就判求职。\n"
+    "【浏览器标签标题的用法】URL旁的《标题》是页面内容直接证据: 招聘站标题含『简历/人才/候选人/沟通过的』→ 多为HR/主管筛选简历(招聘工作,不判job_seeking);含具体职位名/薪资/『招聘中』/『立即沟通』→ 多为本人查看JD(求职信号)。依据标题修正意图与说明,explanation引用标题原文。\n"
     "【intent 判定】个人邮箱/网盘(禁止) → policy_violation；VPN/翻墙 → normal_work(业务规则:翻墙非违规)；"
     "微信文件助手 → data_exfiltration；代码仓库 → baseline_deviation；"
     "招聘网站仅反复高频(≥3)/凌晨 → job_seeking（单次/低频 → normal_work）；远程控制 → baseline_deviation；"
@@ -200,6 +201,12 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
     for d, info in high_sig[:10]:
         rc = dicts.risk_class(d)
         cat_tag = f"[{info['cat']}]" if info["cat"] else ""
+        # 浏览器标签标题(2026-08-20): IPG的APP_TITLE是页面内容语义——招聘站标题
+        # 含"简历/人才"多为HR筛选,含职位名/薪资多为看JD;仅风险类域名,控token
+        _titles = [t for t in {(e.raw or {}).get("title") or "" for e in window
+                               if e.category == "WEB" and d in ((e.raw or {}).get("domain") or "")}
+                   if t and t != "-"][:2]
+        title_tag = f" 《{'》/《'.join(t[:28] for t in _titles)}》" if _titles else ""
         # 外发通道类域名附带URL路径样本(3个):让AI区分"打开页面/轮询"vs"真实上传/发送"
         path_hint = ""
         if rc and ("文件" in rc or "微信" in rc or "网盘" in rc or "邮箱" in rc):
@@ -207,7 +214,7 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
                           if e.category == "WEB" and d in ((e.raw or {}).get("domain") or "") and (e.target_value or "").count("/") >= 2})[:3]
             if paths:
                 path_hint = " 路径样本:" + " | ".join(paths)
-        lines.append(f"[⚠{rc}] {d} {_cnt_tag(d, info['count'])} {cat_tag}{path_hint}")
+        lines.append(f"[⚠{rc}] {d} {_cnt_tag(d, info['count'])} {cat_tag}{title_tag}{path_hint}")
     # 低信号(个人邮箱/微信)：标注但明确"访问≠外发"，避免被当高危
     for d, info in low_sig[:8]:
         rc = dicts.risk_class(d)
