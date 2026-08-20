@@ -621,6 +621,13 @@ def delete_exception(eid: int):
         s.close()
 
 
+@app.post("/api/massops")
+def massops_run():
+    """行为聚合扫描(大量删除=离职前兆),手动触发。"""
+    from massops import scan_mass_deletes
+    return scan_mass_deletes()
+
+
 @app.post("/api/docscan")
 def docscan_run():
     """IPG文档行为AI深扫(R1,手动触发;维护任务每周自动)。"""

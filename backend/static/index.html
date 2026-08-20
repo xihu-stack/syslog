@@ -262,7 +262,7 @@ const _askLoad=async()=>{ const r=await GET('/api/ask/history'); if(r&&r.items) 
 const _askClear=async()=>{ await fetch('/api/ask/history',{method:'DELETE',headers:_authHdr()}); _askSet({msgs:[]}); };
 
 const LVL = s => (s==null)?{c:'#94a3b8',l:'-'} : s>=76?{c:'#ef4444',l:'严重'} : s>=56?{c:'#f97316',l:'高危'} : s>=31?{c:'#3b82f6',l:'关注'} : {c:'#22c55e',l:'正常'};
-const INTENT = {data_exfiltration:'数据外发', job_seeking:'求职离职', baseline_deviation:'行为偏离', policy_violation:'违规', normal_work:'正常', unknown:'未知'};
+const INTENT = {data_exfiltration:'数据外发', job_seeking:'求职离职', baseline_deviation:'行为偏离', policy_violation:'违规', normal_work:'正常', unknown:'未知', mass_delete:'大量删除'};
 const DEV = {none:'无', minor:'轻微', major:'重大', severe:'严重', unknown:'未知'};
 const STATUS_MAP = {NEW:{c:'#ef4444',t:'待处理',i:'fa-clock'}, TRIAGING:{c:'#f59e0b',t:'处理中',i:'fa-spinner'}, CONFIRMED:{c:'#6366f1',t:'已知晓',i:'fa-circle-exclamation'}, FP:{c:'#94a3b8',t:'误报',i:'fa-xmark'}, CLOSED:{c:'#22c55e',t:'已关闭',i:'fa-circle-check'}};
 // 防抖回调（延迟ms后执行，取消前序）

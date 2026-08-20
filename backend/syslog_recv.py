@@ -220,6 +220,13 @@ def _flush_loop():
                 _alias_discover()  # 用户名映射自动发现(拼音级自动,推测级进候选)
             except Exception:
                 pass
+            try:  # 行为聚合告警(每小时): 大量删除=离职前兆(2026-08-20用户要求)
+                from massops import scan_mass_deletes
+                _md = scan_mass_deletes()
+                if _md.get("created"):
+                    print(f"[massops] 新增聚合告警{_md['created']}条", flush=True)
+            except Exception as _me:
+                print(f"[massops] 失败: {_me}", flush=True)
             try:  # IPG文档AI深扫(每周,R1): 外发模式/敏感文件特征/建议(2026-08-20)
                 from datetime import timedelta as _td6
                 from db import bj_now as _bj6

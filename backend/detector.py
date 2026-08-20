@@ -24,6 +24,24 @@ WRITE_ACTIONS = {
 
 WINDOW_GAP = timedelta(minutes=60)
 
+# 噪声文档(2026-08-20用户口径: 缓存的不能算)——系统/缓存/程序自写文件,
+# 不触发研判、不进行为统计;SEND类保留(外发实锤)但标注
+_NOISE_PATH = ("appdata", "programdata", "program files", "windows", "/windows/",
+               "\\temp\\", "/temp/", ".cache", "node_modules", ".git")
+_NOISE_NAME = ("sendphotoes", "preferences", "thumbs.db", "desktop.ini", "~$",
+               ".tmp", ".crdownload", ".part", "cache")
+
+
+def is_noise_doc(e) -> bool:
+    """缓存/系统噪声文档: 路径在系统目录或文件名命中缓存特征。"""
+    if getattr(e, "category", "") != "DOC":
+        return False
+    if e.action in ("SEND", "UPLOAD", "PRINT", "BURN"):
+        return False  # 外发/打印类即使源是缓存名也是真实动作
+    p = ((e.raw or {}).get("src_path") or "").lower() + (e.target_value or "").lower()
+    n = (e.target_value or "").lower()
+    return any(k in p for k in _NOISE_PATH) or any(k in n for k in _NOISE_NAME)
+
 # 遥测/自动更新类子域——LLM 判低分的例外,锚点不接管(拉到75会放大误判)
 _TELEMETRY_PREFIX = ("st.", "abtest.", "ab.", "telemetry.", "tm.", "log.", "stat.",
                      "update.", "update-", "auto.", "dl.", "ws.", "wss.")
@@ -111,7 +129,7 @@ SYSTEM_PROMPT = (
     "若基线摘要含'已知正常行为(豁免)'，同类行为判 normal_work。\n\n"
     "只输出 JSON：intent(data_exfiltration|job_seeking|baseline_deviation|policy_violation|normal_work), "
     "deviation(none|minor|major|severe), risk_score(0-100整数), "
-    "explanation(一句中文,必须具体:含【域名+次数/频次+时段(凌晨/工作)+是否偏离个人基线】,禁止泛泛套话), "
+    "explanation格式(5W,严格执行):【谁】在【何时(日期+时段)】通过【通道(应用/域名/设备)】【干了什么(动作+对象:文件名或域名×次数)】,属于【问题定性(场景+风险含义)】。例: 张三在08-20凌晨通过微信文件助手发送『HX15001试验手册.pdf』等3个文件,属数据外发。禁止泛泛套话,对象必须是具体文件名/域名。", 
     "channels(数组,取自 usb|netdisk|personal_email|upload|local|remote_control)。"
 )
 
@@ -303,6 +321,8 @@ def should_trigger(window, dev, baseline) -> bool:
             # (上传/发送/打印/刻录)、非本地通道(USB/网盘)、或文件名含敏感词
             if e.action in ("UPLOAD", "SEND", "PRINT", "BURN"):
                 return True
+            if is_noise_doc(e):
+                continue  # 缓存/系统文件不算行为证据(2026-08-20)
             ch = (e.raw or {}).get("channel")
             if ch and ch != "LOCAL":
                 return True
