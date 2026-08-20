@@ -164,6 +164,18 @@ def _flush_loop():
     global _flush_timer, _flush_count
     _flush_events()
     _flush_count += 1
+    # 不变量自检自愈: 每10分钟独立跑一次(20×30s),不等小时级维护——
+    # 用户要求循环检测加密(2026-08-20),纯程序检查零LLM成本
+    if _flush_count % 20 == 0:
+        try:
+            from selfheal import selfcheck
+            _r = selfcheck()
+            if _r.get("fixes"):
+                print(f"[selfheal] 修复 {len(_r['fixes'])} 项: " + "; ".join(_r["fixes"][:6]), flush=True)
+            if _r.get("error"):
+                print(f"[selfheal] 失败: {_r['error']}", flush=True)
+        except Exception as _se:
+            print(f"[selfheal] 失败: {_se}", flush=True)
     if _flush_count % 120 == 0:  # 约1小时维护一次
         try:
             import pipeline, dicts
@@ -177,13 +189,6 @@ def _flush_loop():
                 _alias_discover()  # 用户名映射自动发现(拼音级自动,推测级进候选)
             except Exception:
                 pass
-            try:
-                from selfheal import selfcheck
-                _r = selfcheck()  # 不变量自检自愈(告警-证据/豁免/悬空/档位,
-                if _r.get("fixes"):  # 2026-08-20用户要求: 比人工更早发现同类问题)
-                    print(f"[selfheal] 修复 {len(_r['fixes'])} 项: " + "; ".join(_r["fixes"][:6]), flush=True)
-            except Exception as _se:
-                print(f"[selfheal] 失败: {_se}", flush=True)
         except Exception:
             pass
     if _state["enabled"]:
