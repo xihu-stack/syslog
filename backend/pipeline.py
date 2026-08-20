@@ -153,7 +153,11 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
     rs = Session()
     try:
         wm = int(dicts.get_setting("last_judged_event_id", "0") or "0")
+        import time as _t0
+        _T = _t0.time()
+        print(f"[detect] 读取阶段开始 wm={wm}", flush=True)
         new_rows = rs.query(EventRow).filter(EventRow.id > wm).order_by(EventRow.occurred_at).all()
+        print(f"[detect] 读取完成 {len(new_rows)}行 耗{_t0.time()-_T:.1f}s", flush=True)
         # 过滤访客（纯数字手机号/guest）+ 忽略名单（测试账号等）——不是正式员工
         ignored = _ignored_employees()
         new_rows = [r for r in new_rows
@@ -168,13 +172,19 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
             source=r.source or "", raw=r.raw or {}) for r in new_rows]
         max_id = max(r.id for r in new_rows)
         gdomains = profiles.global_common_domains(rs)
-        gctx = profiles.global_summary(rs)  # 全局参照：每轮算一次，喂给所有窗口的 AI
+        gctx = profiles.global_summary(rs)
+        print(f"[detect] 全局参照完成 耗{_t0.time()-_T:.1f}s", flush=True)  # 全局参照：每轮算一次，喂给所有窗口的 AI
         dedup_hours = int(dicts.get_setting("dedup_window_hours", "6") or "6")
         to_judge = []
         _run_seen = set()  # 轮内去重:(员工,高危域名) 已排队送AI的,同轮不再重复判
+        _base_cache = {}  # (员工, 日期)→基线: 同员工同天的窗口共享一份。全量重判时
+        # 3000+窗口逐个重算基线(每人查全量事件+算画像)会拖到几十分钟(2026-08-19实测卡死)
         for emp, wins in detector.build_windows(new_events).items():
             for w in wins:
-                baseline = profiles.baseline_for(rs, emp, w[0].occurred_at)
+                _bk = (emp, w[0].occurred_at.date())
+                if _bk not in _base_cache:
+                    _base_cache[_bk] = profiles.baseline_for(rs, emp, w[0].occurred_at)
+                baseline = _base_cache[_bk]
                 dev = detector.deviation(w, baseline, global_domains=gdomains)
                 if not detector.should_trigger(w, dev, baseline):
                     continue
@@ -195,6 +205,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
     finally:
         rs.close()
 
+    print(f"[detect] 窗口筛选完成 to_judge={len(to_judge)} 耗{_t0.time()-_T:.1f}s", flush=True)
     if on_progress:
         on_progress("total", len(to_judge))
 
@@ -565,17 +576,23 @@ def _notify_webhook(user: str, risk: int, explanation: str):
 
 
 def rejudge_all(risk_threshold: int = 50) -> dict:
-    """清空 verdicts/alerts + 重置研判水位 → 异步重新研判全部历史（修复模型/prompt 后重跑用）。"""
+    """重置研判水位到7天前 → 异步按当前规则重判近7天(修复模型/prompt后重跑用)。
+    告警行保留: 重判后复犯刷新逻辑会更新分数/说明/verdict_id,而状态(已知晓/误报)
+    不动——用户处置历史不丢(2026-08-19改造;旧版删告警导致处置状态全重置)。
+    范围限近7天: 全量历史回放窗口过万会拖死(2026-08-19实测),且告警/TOP均为7天口径。"""
+    from datetime import timedelta as _td5
     init_db()
     s = Session()
     try:
         s.query(VerdictRow).delete()
-        s.query(AlertRow).delete()
+        row = s.query(EventRow).filter(EventRow.occurred_at >= bj_now() - _td5(days=7)) \
+            .order_by(EventRow.id).first()
+        wm_val = str(row.id) if row else "0"
         wm = s.query(SettingRow).filter_by(key="last_judged_event_id").first()
         if wm:
-            wm.value = "0"
+            wm.value = wm_val
         else:
-            s.add(SettingRow(key="last_judged_event_id", value="0"))
+            s.add(SettingRow(key="last_judged_event_id", value=wm_val))
         s.commit()
     finally:
         s.close()

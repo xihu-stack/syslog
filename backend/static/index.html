@@ -669,7 +669,7 @@ function App(){
           </div>
           <Space size={8}>
             <Upload showUploadList={false} beforeUpload={uploadLog}><Button type="primary"><i className="fa-solid fa-upload" style={{marginRight:6}}></i>导入日志</Button></Upload>
-            <Button onClick={()=>{ POST('/api/run'); pollDetect(); }}><i className="fa-solid fa-rotate" style={{marginRight:6}}></i>重新研判</Button>
+            <Button onClick={()=>{ Modal.confirm({title:'全量重新研判', content:'用当前规则对全部历史窗口重判(约几分钟,LLM调用量较大)。已知晓/误报的处置状态保留,告警分数与说明会按新规则刷新。', okText:'开始重判', cancelText:'取消', onOk:()=>{ POST('/api/rejudge'); pollDetect(); }}); }}><i className="fa-solid fa-rotate" style={{marginRight:6}}></i>重新研判</Button>
             <Button href="/api/export/alerts" target="_blank"><i className="fa-solid fa-download" style={{marginRight:6}}></i>导出</Button>
             <span style={{color:'var(--ink2)',fontSize:12.5,marginLeft:4,display:'inline-flex',alignItems:'center',gap:5,padding:'0 4px'}} title={meName}>
               <i className="fa-solid fa-circle-user" style={{color:'var(--brand)',fontSize:14}}></i>{meName==='admin'?'管理员':(meName||'')}
@@ -1298,7 +1298,7 @@ gunzip ipguard_XXXX.db.gz && docker cp ipguard_XXXX.db ipguard-ai:/app/data/ipgu
       ['页面数字没更新/样式旧','浏览器缓存。URL 加 ?cb=新值 强刷(见 §9)'],
       ['AI 问答转圈/超时','问答含两次大模型调用,4-10 秒正常;超过1分钟查 LLM 服务是否可用(系统设置→模型配置)'],
       ['服务整体无响应','历史上因 DB 连接池耗尽(慢查询占满),已改 NullPool 根治;若复发,查 /api/efficiency 是否异常慢并重启容器'],
-      ['想重跑全部历史研判','系统设置→重新研判(清空 verdicts/alerts 后按当前规则全量重判,约几分钟;会丢失已有处置状态,谨慎)'],
+      ['想重跑全部历史研判','顶栏「重新研判」=全量重判:按当前规则重判全部历史窗口(约几分钟),告警分数/说明刷新为最新口径,已知晓/误报状态保留'],
       ['DB 文件越来越大','清理是 DELETE 不缩文件;低峰期在容器内对 SQLite 执行 VACUUM 回收'],
       ['导入 Excel/CSV','大屏右上"导入日志"上传,自动识别深信服/IP-Guard 格式,导入后自动研判'],
       ['忘记管理员密码','服务器容器内执行: docker exec ipguard-ai python3 -c "import sys;sys.path.insert(0,\'/app\');import dicts;dicts.set_setting(\'admin_salt\',\'\');dicts.set_setting(\'admin_pwd\',\'\')" 后重启容器,恢复初始密码 admin123'],
