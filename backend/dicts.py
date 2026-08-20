@@ -19,7 +19,7 @@ DEFAULTS = {
         "boss.com", "bosszhipin", "zhilian", "jobcn.com", "51zhaopin", "linkedin.com",
         "maimai.cn", "kanzhun.com", "chinahr.com", "yingjiesheng.com", "dajie.com",
         "indeed.com", "glassdoor", "nowcoder.com", "xiaoyuan", "zhaopin.baidu",
-        "jobui.com", "tianji", "fesco", "fescoadecco", "zhipin", "zhaopin",
+        "jobui.com", "tianji", "fesco", "fescoadecco", "zhipin", "zhaopin", "sndhr.com",
     ],
     "netdisk_domains": [
         "pan.baidu.com", "eyun.baidu.com", "alipan.com", "aliyundrive.com", "weiyun.qq.com",
