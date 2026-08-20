@@ -130,14 +130,24 @@ def _ensure():
 
 
 def get(name: str) -> list:
-    """取一个字典（带进程内缓存）。"""
+    """取一个字典（带进程内缓存）。
+    合并策略(2026-08-20): 源码DEFAULTS为底 + DB行只追加增量——此前DB快照整体
+    覆盖DEFAULTS,源码新增域名(sndhr/hrss/OneDrive豁免)连续两次静默失效。
+    用户在字典管理页添加的条目(DB有、DEFAULTS无)照常生效。"""
     _ensure()
     if name in _cache:
         return _cache[name]
+    base = DEFAULTS.get(name, [])
     s = Session()
     try:
         d = s.query(DictRow).filter_by(name=name).first()
-        vals = d.payload if d else DEFAULTS.get(name, [])
+        if isinstance(base, dict):
+            vals = dict(base)
+            if d and isinstance(d.payload, dict):
+                vals.update({k: v for k, v in d.payload.items() if k not in vals})
+        else:
+            extra = [x for x in ((d.payload if d else None) or []) if x not in base]
+            vals = list(base) + extra
         _cache[name] = vals
         return vals
     finally:
