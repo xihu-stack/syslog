@@ -59,6 +59,10 @@ def anchor_score(intent, window, day_total=None) -> int | None:
             score += 5
     if has_write:
         score += 10
+    # IPG实锤外发(SEND/UPLOAD+非本地通道): 文件确实离开本机,底分80(2026-08-20)
+    if any(e.category == "DOC" and e.action in ("SEND", "UPLOAD") and
+           (e.raw or {}).get("channel") not in (None, "", "LOCAL") for e in window):
+        score = max(score, 80)
     if night:
         score += 5
     return min(score, 90)
@@ -215,7 +219,9 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
         if e.category == "SEARCH":
             lines.append(f"{t} [{src}] [搜索] \"{e.target_value}\"")
         else:
-            lines.append(f"{t} [{src}] [{e.action}] {e.target_value}（通道={(e.raw or {}).get('channel')}, 应用={(e.raw or {}).get('application')}）")
+            _dp = (e.raw or {}).get("dest_path") or ""
+            _dest = f" → {_dp[:60]}" if _dp and e.action in ("SEND", "UPLOAD", "PRINT") else ""
+            lines.append(f"{t} [{src}] [{e.action}] {e.target_value}（通道={(e.raw or {}).get('channel')}, 应用={(e.raw or {}).get('app')}）{_dest}")
     if n_other > 12:
         lines.append(f"…及另外 {n_other - 12} 条文档/搜索")
     raw = "\n".join(lines) if lines else "(无行为)"

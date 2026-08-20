@@ -26,6 +26,7 @@ DEFAULTS = {
         "pan.baidu.com", "eyun.baidu.com", "alipan.com", "aliyundrive.com", "weiyun.qq.com",
         "jianguoyun.com", "dropbox.com", "115.com", "lanzou.com",
         "lanzoux", "pan.xunlei.com", "cloud.189.cn", "yun.139.com", "pan.quark.cn",
+        "smallpdf.com", "wetransfer.com", "cowtransfer.com", "filemail.com",  # 网页文件中转/上传工具=外发通道(2026-08-20)
         # onedrive.live.com 移除: OneDrive是公司采购的M365组件(2026-08-19用户确认),
         # 全家域名走 risk_whitelist_domains 豁免
     ],

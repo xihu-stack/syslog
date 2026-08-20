@@ -134,6 +134,8 @@ def parse_ipg_syslog(text: str):
         occ = datetime.now()
     agt = d.get(f"{pre}_AGT_ID")
     usr = d.get(f"{pre}_USR_ID")
+    if not agt and not usr:  # 无任何身份标识,无法归属——不产事件(原始报文仍留存)
+        return None
 
     if kind == "url_log":
         dom = (d.get("URL_SITE") or "").lower() or (d.get("URL_URL") or "")

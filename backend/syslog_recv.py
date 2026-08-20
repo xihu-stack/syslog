@@ -220,6 +220,19 @@ def _flush_loop():
                 _alias_discover()  # 用户名映射自动发现(拼音级自动,推测级进候选)
             except Exception:
                 pass
+            try:  # IPG文档AI深扫(每周,R1): 外发模式/敏感文件特征/建议(2026-08-20)
+                from datetime import timedelta as _td6
+                from db import bj_now as _bj6
+                _last = dicts.get_setting("ipg_doc_scan_last", "")
+                _today = _bj6().strftime("%Y%m%d")
+                if _last != _today and (_last == "" or
+                        _bj6() - datetime.datetime.strptime(_last, "%Y%m%d") >= _td6(days=7)):
+                    dicts.set_setting("ipg_doc_scan_last", _today)
+                    from docscan import run_doc_scan
+                    _r6 = run_doc_scan()
+                    print(f"[docscan] 周扫完成: findings={len(_r6.get('findings', []))}", flush=True)
+            except Exception as _dse:
+                print(f"[docscan] 失败: {_dse}", flush=True)
         except Exception:
             pass
     if _state["enabled"]:

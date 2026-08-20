@@ -621,6 +621,13 @@ def delete_exception(eid: int):
         s.close()
 
 
+@app.post("/api/docscan")
+def docscan_run():
+    """IPG文档行为AI深扫(R1,手动触发;维护任务每周自动)。"""
+    from docscan import run_doc_scan
+    return run_doc_scan()
+
+
 @app.post("/api/rejudge")
 def rejudge():
     """清空旧研判 + 重置水位，全量重研判（修复模型/prompt 后重跑）。"""
