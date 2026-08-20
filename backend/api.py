@@ -1513,9 +1513,14 @@ def _ask_query(action, employee, category=""):
             _today = bj_now().replace(hour=0, minute=0, second=0, microsecond=0)
             if not rows:
                 # 该场景无告警时补研判层线索(低分研判也是趋势信号),让AI能如实分层回答
-                _vq = s.query(VerdictRow).filter(VerdictRow.intent == _intent,
+                # 剔除豁免员工: HR等豁免人员的高分研判不该出现在"离职风险最高"回答里(2026-08-20展佳案例)
+                _exc2 = {x.employee_id for x in s.query(ExceptionRow).filter(
+                    ExceptionRow.signal_type == _intent,
+                    (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > datetime.utcnow())).all()}
+                _vq = [x for x in s.query(VerdictRow).filter(VerdictRow.intent == _intent,
                                                  VerdictRow.window_start >= _today - timedelta(days=30)) \
-                    .order_by(desc(VerdictRow.risk_score)).limit(5).all() if _intent else []
+                    .order_by(desc(VerdictRow.risk_score)).limit(15).all()
+                    if x.employee_id not in _exc2][:5] if _intent else []
                 if _intent and _vq:
                     return (f"当前无{_CN_INTENT[_intent]}({_intent})场景告警。但近30天该场景研判(未达告警级50分或已处理)最高:\n" +
                             "\n".join(f"  {v.employee_id} | 风险{v.risk_score} | {v.window_start} | {v.explanation}" for v in _vq) +

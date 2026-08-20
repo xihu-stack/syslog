@@ -478,6 +478,14 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                     # 的招聘访问支撑,历史标记只能加档不能独立成立
                     v = {**v, "intent": "baseline_deviation",
                          "risk_score": min(v.get("risk_score") or 30, 45)}
+        # 豁免场景的研判加显式标注: 豁免人员(如HR)的研判照常落库但告警被拦,
+        # 研判页/AI问答看到时必须能认出"这是已豁免的岗位行为"(2026-08-20展佳案例)
+        try:
+            if isinstance(v, dict) and exs and any(e.signal_type == v.get("intent") for e in exs):
+                _exr = next(e.reason for e in exs if e.signal_type == v.get("intent"))
+                v = {**v, "explanation": f"[已豁免:{_exr or '岗位需要'}] " + (v.get("explanation") or "")}
+        except Exception:
+            pass
         # ---- 双模型复核: Qwen判定达到告警级(≥阈值)时,用深度模型独立重判一遍。
         # 两模型一致才维持告警;复核明显更低则降级(证据撑不起告警)。复核失败保守
         # 保留原判。说明不写复核过程,直接给结论(2026-08-19用户要求)。
