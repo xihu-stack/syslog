@@ -424,8 +424,9 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 v = {**v, "risk_score": _a}
                 _anchored = _a
         # ---- 招聘锚点: 程序化定分,AI只负责行为描述 ----
-        # 重点站(BOSS/猎聘/51job/智联sndhr)——第一优先级场景(2026-08-19用户口径):
-        #   单次(1-2次)=65; 反复3-9次=80; 高频≥10次=85(全系统最高档,高于外发);
+        # 重点站(BOSS/猎聘/51job/智联sndhr)——第一优先级场景(2026-08-20口径:
+        # 求职分数必须≥邮箱/外发同档——单次65曾低于邮箱单次75,倒挂修正):
+        #   单次(1-2次)=75(平邮箱单次); 反复3-9次=85; 高频≥10次=90(高于外发85);
         # 一般站(领英等)——"关注即可,分数不用太高":
         #   单次=15正常; 反复3-9次=55; 高频≥10次=60; 跨天(≥4天,每天1次也算)=55;
         # 修正: 凌晨+5 / 跨天+5 / 封顶95(重点)、65(一般)。
@@ -450,11 +451,11 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 _gn = max(_gn, _day_gn)
                 if _mj >= 1:
                     if _mj >= 10:
-                        _js = 85
+                        _js = 90
                     elif _mj >= 3:
-                        _js = 80
+                        _js = 85
                     else:
-                        _js = 65
+                        _js = 75
                     v = {**v, "intent": "job_seeking",
                          "risk_score": min(_js + (5 if _off else 0) + (5 if _xd else 0), 95)}
                     _anchored = v["risk_score"]  # 客观计数定分,复核不推翻(见下)
