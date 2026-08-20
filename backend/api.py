@@ -939,38 +939,21 @@ def system_stats():
         _day[_today_key] = s.query(AlertRow).filter(AlertRow.window_start >= today_start).count()  # 今日活跃=KPI口径
         alerts_by_day = list(_day.items())
 
-        # TOP活跃风险(近7天·告警级·未处理): 每人取最近一次告警级(≥50)研判,
-        # 分数/场景/说明与告警行完全同源(告警分=最新研判分,2026-08-19统一口径:
-        # 废除一切峰值口径,杜绝列表78/说明55这类前后对不上);已确认/误报/关闭/
-        # 豁免的场景不参与——只反映还需要关注的活动风险
-        _a7 = bj_now() - timedelta(days=7)
-        _al_status = {}
-        _al_summary = {}
-        for _a in s.query(AlertRow.employee_id, AlertRow.scenario, AlertRow.status, AlertRow.summary).all():
-            _al_status[(_a.employee_id, _a.scenario)] = _a.status
-            _al_summary[(_a.employee_id, _a.scenario)] = _a.summary
-        _exc_set = {(_x.employee_id, _x.signal_type) for _x in s.query(ExceptionRow).filter(
-            (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > _utc_now)).all()}
-        _agg = {}
-        for _v in s.query(VerdictRow).filter(VerdictRow.window_start >= _a7,
-                                             VerdictRow.risk_score >= 50).all():
-            if (_v.employee_id, _v.intent) in _exc_set:
-                continue
-            _st = _al_status.get((_v.employee_id, _v.intent), 'NEW')
-            if _st in ('CONFIRMED', 'FP', 'CLOSED'):
-                continue
-            k = _v.employee_id
-            _ws = _v.window_start.isoformat() if _v.window_start else ''
-            if k not in _agg or _ws > _agg[k]['latest']:
-                _agg[k] = {'employee': k, 'scenario': _v.intent, 'risk_score': _v.risk_score,
-                           'status': _st, 'latest': _ws}
-        # 同分时按场景优先级: 求职离职 > 数据外发 > 违规/其他(2026-08-20用户口径)
+        # TOP活跃风险(2026-08-20终版): 直接从未处理(NEW)告警派生,与告警页完全同源
+        # ——此前从研判计算,告警已删的孤儿研判(叶珂祯等3人)带着空summary混进TOP;
+        # 分数取该员工该场景最新告警级研判(告警分口径),同分按场景优先级: 求职>外发>其他
         _PRIO = {"job_seeking": 0, "data_exfiltration": 1}
-        top_active = []
-        for g in sorted(_agg.values(), key=lambda x: (-(x['risk_score'] or 0), _PRIO.get(x['scenario'], 2)))[:10]:
-            g['summary'] = _al_summary.get((g['employee'], g['scenario'])) or ''
-            top_active.append(g)
-
+        _a7 = bj_now() - timedelta(days=7)
+        _new_alerts = s.query(AlertRow).filter(AlertRow.status == "NEW").all()
+        _agg = {}
+        for _a in _new_alerts:
+            _ws = _a.window_start.isoformat() if _a.window_start else ''
+            k = _a.employee_id
+            if k not in _agg or _ws > _agg[k]['latest']:
+                _agg[k] = {'employee': k, 'scenario': _a.scenario, 'risk_score': _a.risk_score,
+                           'status': _a.status, 'latest': _ws, 'summary': _a.summary or ''}
+        top_active = sorted(_agg.values(),
+                            key=lambda x: (-(x['risk_score'] or 0), _PRIO.get(x['scenario'], 2)))[:10]
         return {
             "events": {
                 "today": ev_today, "yesterday": ev_yesterday, "week": ev_week, "total": ev_total,
