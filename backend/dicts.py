@@ -16,11 +16,11 @@ DEFAULTS = {
     ],
     "recruitment_sites": [
         "zhaopin.com", "51job.com", "51job.cn", "lagou.com", "zhipin.com", "liepin.com",
-        "boss.com", "bosszhipin", "zhilian", "jobcn.com", "51zhaopin", "linkedin.com",
+        "boss.com", "bosszhipin", "zhilian", "jobcn.com", "51zhaopin",
         "maimai.cn", "kanzhun.com", "chinahr.com", "yingjiesheng.com", "dajie.com",
         "indeed.com", "glassdoor", "nowcoder.com", "xiaoyuan", "zhaopin.baidu",
         "jobui.com", "tianji", "fesco", "fescoadecco", "zhipin", "zhaopin", "sndhr.com",
-        "hrss.suzhou.com.cn",  # 苏州人社人才网(冉昊30次,AI已识别为招聘站,入字典走锚点定分)
+        # linkedin(领英)/hrss.suzhou(苏州人才网)已移除: 2026-08-20用户确认属正常业务行为,不算离职求职
     ],
     "netdisk_domains": [
         "pan.baidu.com", "eyun.baidu.com", "alipan.com", "aliyundrive.com", "weiyun.qq.com",
