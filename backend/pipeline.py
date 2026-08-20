@@ -457,12 +457,19 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                         _js = 65
                     v = {**v, "intent": "job_seeking",
                          "risk_score": min(_js + (5 if _off else 0) + (5 if _xd else 0), 95)}
+                    _anchored = v["risk_score"]  # 客观计数定分,复核不推翻(见下)
                 elif _gn >= 3 or (_gn >= 1 and _xd):
                     _js = 60 if _gn >= 10 else 55
                     v = {**v, "intent": "job_seeking",
                          "risk_score": min(_js + (5 if _off else 0) + (5 if _xd else 0), 65)}
-                elif v.get("intent") == "job_seeking" and not _off and not _xd:
-                    v = {**v, "intent": "normal_work", "risk_score": 15}
+                    _anchored = v["risk_score"]
+                elif v.get("intent") == "job_seeking":
+                    # 窗口内无任何招聘域名 → job_seeking结论无证据支撑,无条件压回。
+                    # 行为史跨天标记+重度AI窗口曾让AI把纯AI使用误判成求职(2026-08-20
+                    # 重判发现: 万亮AI助手221次被判job 70)——求职结论必须由当前窗口
+                    # 的招聘访问支撑,历史标记只能加档不能独立成立
+                    v = {**v, "intent": "baseline_deviation",
+                         "risk_score": min(v.get("risk_score") or 30, 45)}
         # ---- 双模型复核: Qwen判定达到告警级(≥阈值)时,用深度模型独立重判一遍。
         # 两模型一致才维持告警;复核明显更低则降级(证据撑不起告警)。复核失败保守
         # 保留原判。说明不写复核过程,直接给结论(2026-08-19用户要求)。
@@ -475,7 +482,11 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 q = v.get("risk_score") or 0
                 if rs >= 50:  # 一致 → 维持;锚点场景用锚点分,其余取深模型说明+较高分
                     v = {**rv, "risk_score": _anchored if _anchored is not None else max(q, rs)}
-                else:  # 分歧 → 降级到复核分(锚点不再适用,证据已被复核否定)
+                elif _anchored is not None:
+                    pass  # 锚点场景(访问即违规类/招聘档位)分数由客观计数决定,
+                    # 复核低分不推翻——单次访问BOSS必须65告警是用户口径,证据是
+                    # 计数不是AI观点;复核降级只作用于AI自由判分的场景
+                else:  # 分歧 → 降级到复核分(证据已被复核否定)
                     v = {**v, "risk_score": max(rs, 30)}
         except Exception:
             pass  # 复核异常不影响主判

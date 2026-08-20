@@ -49,6 +49,7 @@ def compute_profile(rows) -> dict:
     web_classes = Counter()
     domains = Counter()
     channels, actions, keywords = set(), set(), set()
+    _rc = {}  # risk_class按域名缓存(域名仅数千个,逐行全模式匹配太慢)
     for r in rows:
         hours[r.occurred_at.hour] += 1
         per_day[r.occurred_at.date()] += 1
@@ -61,7 +62,9 @@ def compute_profile(rows) -> dict:
                 # 风险类域名永不计入个人基线(2026-08-19用户口径): 招聘/网盘/邮箱等
                 # 即使天天访问也不构成"正常"——高频恰恰是进行中风险信号,基线只描述
                 # 正常办公习惯。否则AI看到"在其基线内"会降权误判。
-                if not dicts.risk_class(d):
+                if d not in _rc:
+                    _rc[d] = dicts.risk_class(d)
+                if not _rc[d]:
                     domains[d] += 1
             dc = (r.raw or {}).get("domain_class")
             if dc and dc != "other":
