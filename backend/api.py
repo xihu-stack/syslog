@@ -671,7 +671,9 @@ def update_alert_status(alert_id: int, status: str = "TRIAGING"):
 
 @app.post("/api/verdicts/{vid}/confirm")
 def verdict_confirm(vid: int, reason: str = ""):
-    """通过研判ID确认告警（自动找到对应alert）;reason=处理备注(可空),留痕到feedback。"""
+    """通过研判ID标记已知晓(自动找到对应alert);reason=备注(可空),留痕到feedback。
+    已知晓=纯状态标记:不写豁免、不影响研判和复犯提醒(告警非事故,无需"确认"处置,
+    2026-08-19用户语义:只有误报才影响系统)。"""
     s = Session()
     try:
         a = s.query(AlertRow).filter_by(verdict_id=vid).first()
@@ -683,7 +685,7 @@ def verdict_confirm(vid: int, reason: str = ""):
         if not a:
             return {"ok": False, "error": "未找到对应告警"}
         a.status = "CONFIRMED"
-        s.add(FeedbackRow(alert_id=a.id, label="TP", reason=reason or "确认"))
+        s.add(FeedbackRow(alert_id=a.id, label="TP", reason=reason or "已知晓"))
         s.commit()
         return {"ok": True}
     finally:
@@ -1373,7 +1375,9 @@ def ask(body: dict = Body(...)):
              "问某类风险时必须带 intent 过滤、严禁拿其他场景数据答非所问;该场景无告警就如实说明;"
              "问总体风险/可疑行为时不带 intent。问具体某员工用 employee_risk。\n"
              "4. 不需要数据的问题(闲聊/概念解释)直接 final;查不到数据就在 final 里说明并建议问法。\n"
-             "5. final 回答要求:结论先行,枚举用短列表,口径如实(告警=风险≥50研判;摸鱼=10分钟桶估算上限),"
+             "5. 告警状态语义: NEW=待处理; CONFIRMED=已知晓(管理员已看到,不代表风险解除,复犯会再提醒);"
+             "FP=误报(系统判错,已豁免);CLOSED=已关闭。回答时用这些中文名称,不要说'已确认'。\n"
+             "6. final 回答要求:结论先行,枚举用短列表,口径如实(告警=风险≥50研判;摸鱼=10分钟桶估算上限),"
              "结尾可给一句下一步建议,中文,像资深安全运营同事的口吻。")
     msgs = [{"role": "system", "content": sys_p}]
     for h in history:

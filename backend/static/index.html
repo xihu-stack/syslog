@@ -264,10 +264,10 @@ const _askClear=async()=>{ await fetch('/api/ask/history',{method:'DELETE',heade
 const LVL = s => (s==null)?{c:'#94a3b8',l:'-'} : s>=76?{c:'#ef4444',l:'严重'} : s>=56?{c:'#f97316',l:'高危'} : s>=31?{c:'#3b82f6',l:'关注'} : {c:'#22c55e',l:'正常'};
 const INTENT = {data_exfiltration:'数据外发', job_seeking:'求职离职', baseline_deviation:'行为偏离', policy_violation:'违规', normal_work:'正常', unknown:'未知'};
 const DEV = {none:'无', minor:'轻微', major:'重大', severe:'严重', unknown:'未知'};
-const STATUS_MAP = {NEW:{c:'#ef4444',t:'待处理',i:'fa-clock'}, TRIAGING:{c:'#f59e0b',t:'处理中',i:'fa-spinner'}, CONFIRMED:{c:'#6366f1',t:'已确认',i:'fa-circle-exclamation'}, FP:{c:'#94a3b8',t:'误报',i:'fa-xmark'}, CLOSED:{c:'#22c55e',t:'已关闭',i:'fa-circle-check'}};
+const STATUS_MAP = {NEW:{c:'#ef4444',t:'待处理',i:'fa-clock'}, TRIAGING:{c:'#f59e0b',t:'处理中',i:'fa-spinner'}, CONFIRMED:{c:'#6366f1',t:'已知晓',i:'fa-circle-exclamation'}, FP:{c:'#94a3b8',t:'误报',i:'fa-xmark'}, CLOSED:{c:'#22c55e',t:'已关闭',i:'fa-circle-check'}};
 // 防抖回调（延迟ms后执行，取消前序）
 function debounce(fn, delay){ let t; return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), delay); }; }
-const STATUS_OPTS = [{label:'待处理',value:'NEW'},{label:'处理中',value:'TRIAGING'},{label:'已确认',value:'CONFIRMED'},{label:'误报',value:'FP'},{label:'已关闭',value:'CLOSED'}];
+const STATUS_OPTS = [{label:'待处理',value:'NEW'},{label:'处理中',value:'TRIAGING'},{label:'已知晓',value:'CONFIRMED'},{label:'误报',value:'FP'},{label:'已关闭',value:'CLOSED'}];
 const fmt = s => (s||'').replace('T',' ').slice(0,16);
 // ---- 登录态:token 存 localStorage;任何请求 401 → 清 token 重登 ----
 const TOKEN_KEY='bg_token';
@@ -772,7 +772,7 @@ function Dashboard({go, goProfile}){
         </Card>
         <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警状态</b></div>
         <Card className="card" size="small" style={{flex:1,display:'flex',flexDirection:'column'}} bodyStyle={{padding:'12px 18px',flex:1,display:'flex',flexDirection:'column',justifyContent:'center'}}>
-          {(()=>{const st_map={NEW:['#ef4444','待处理'],CONFIRMED:['#6366f1','已确认'],FP:['#94a3b8','误报'],CLOSED:['#22c55e','已关闭']};const sc=sysAl.status||{};const tot=Object.values(sc).reduce((a,b)=>a+b,0)||1;const rows=Object.keys(st_map).filter(k=>sc[k]);if(!rows.length) return <Empty description="暂无" style={{padding:16}}/>;return <div>{rows.map(k=>{const pct=Math.round((sc[k]||0)/tot*100);const cc=st_map[k][0];return <div key={k} title={'点击查看「'+st_map[k][1]+'」告警'} onClick={()=>go('alerts',{status:k==='NEW'?'NEW':'handled'})} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 0',cursor:'pointer'}}><span style={{width:60,fontSize:12,color:'var(--ink2)'}}>{st_map[k][1]}</span><div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:cc,borderRadius:4}}></div></div><span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{sc[k]||0}</span></div>})}</div>;})()}
+          {(()=>{const st_map={NEW:['#ef4444','待处理'],CONFIRMED:['#6366f1','已知晓'],FP:['#94a3b8','误报'],CLOSED:['#22c55e','已关闭']};const sc=sysAl.status||{};const tot=Object.values(sc).reduce((a,b)=>a+b,0)||1;const rows=Object.keys(st_map).filter(k=>sc[k]);if(!rows.length) return <Empty description="暂无" style={{padding:16}}/>;return <div>{rows.map(k=>{const pct=Math.round((sc[k]||0)/tot*100);const cc=st_map[k][0];return <div key={k} title={'点击查看「'+st_map[k][1]+'」告警'} onClick={()=>go('alerts',{status:k==='NEW'?'NEW':'handled'})} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 0',cursor:'pointer'}}><span style={{width:60,fontSize:12,color:'var(--ink2)'}}>{st_map[k][1]}</span><div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:cc,borderRadius:4}}></div></div><span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{sc[k]||0}</span></div>})}</div>;})()}
         </Card>
         <div style={{marginBottom:10,marginTop:16}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警级别</b></div>
         <Card className="card" size="small" style={{flex:1,display:'flex',flexDirection:'column'}} bodyStyle={{padding:'12px 18px',flex:1,display:'flex',flexDirection:'column',justifyContent:'center'}}>
@@ -960,7 +960,7 @@ function Alerts({goProfile,filter}){
   useEffect(()=>{ load(); const t=setInterval(load,15000); return ()=>clearInterval(t); },[when,statusF]);
   const doConfirm=(e,vid)=>{ e.stopPropagation(); setCfModal({open:true,vid,note:''}); };
   const submitConfirm=()=>{
-    POST('/api/verdicts/'+cfModal.vid+'/confirm?reason='+encodeURIComponent(cfModal.note||'')).then(()=>{ message.success('已确认'); setCfModal({...cfModal,open:false}); load(); });
+    POST('/api/verdicts/'+cfModal.vid+'/confirm?reason='+encodeURIComponent(cfModal.note||'')).then(()=>{ message.success('已标记已知晓'); setCfModal({...cfModal,open:false}); load(); });
   };
   const [fpModal,setFpModal]=useState({open:false,vid:0,intent:'',emp:'',reason:'岗位需要',note:'',allScenarios:[]});
   const doFP=(e,r)=>{ e.stopPropagation(); setFpModal({open:true,vid:r.verdict_id,intent:r.intent,emp:r.employee,reason:'岗位需要',note:'',allScenarios:r.scenarios||[{label:r.intent}]}); };
@@ -1002,9 +1002,9 @@ function Alerts({goProfile,filter}){
           {title:<TH t="风险" tip="该员工告警中的最高风险分(0-100)。76+严重/56+高危/31+关注。" />,dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
           {title:<TH t="说明" tip="该员工当前最高分告警的AI判定说明。文字默认两行截断,悬浮可预览全文,点击展开/收起。" />,dataIndex:'summary',render:v=><SummaryTxt text={v}/>},
           {title:'操作',width:120,render:(_,r)=>r.status==='NEW'?(<Space size={4}>
-            <Button size="small" type="primary" onClick={(e)=>doConfirm(e,r.verdict_id)}>确认</Button>
+            <Button size="small" type="primary" onClick={(e)=>doConfirm(e,r.verdict_id)}>已知晓</Button>
             <Button size="small" onClick={(e)=>doFP(e,r)} style={{color:'var(--danger)',border:'1px solid var(--danger)'+'55',background:'var(--danger-soft)'}}>误报</Button>
-          </Space>):(<Tag color={r.status==='CONFIRMED'?'green':r.status==='FP'?'default':'blue'}>{({CONFIRMED:'已确认',FP:'误报',CLOSED:'已关闭',TRIAGING:'处理中'}[r.status])||r.status}</Tag>)}]}/>
+          </Space>):(<Tag color={r.status==='CONFIRMED'?'green':r.status==='FP'?'default':'blue'}>{({CONFIRMED:'已知晓',FP:'误报',CLOSED:'已关闭',TRIAGING:'处理中'}[r.status])||r.status}</Tag>)}]}/>
     </Card>
     <Modal open={fpModal.open} title={'确认误报 — '+fpModal.emp} okText="确认误报" cancelText="取消" okType="danger"
       onCancel={()=>setFpModal({...fpModal,open:false})} onOk={submitFP}>
@@ -1041,9 +1041,9 @@ function Alerts({goProfile,filter}){
       <Alert type="info" showIcon style={{marginTop:12}}
         message={"将豁免「"+(INTENT[fpModal.intent]||fpModal.intent)+"」场景，其他场景仍正常监控。AI会记住此标签。"} />
     </Modal>
-    <Modal open={cfModal.open} title="确认告警" okText="确认" cancelText="取消"
+    <Modal open={cfModal.open} title="标记已知晓" okText="已知晓" cancelText="取消"
       onCancel={()=>setCfModal({...cfModal,open:false})} onOk={submitConfirm}>
-      <div style={{marginBottom:8,color:'var(--ink2)',fontSize:13}}>确认此告警为真实风险？确认后状态变为「已确认」。</div>
+      <div style={{marginBottom:8,color:'var(--ink2)',fontSize:13}}>标记为已知晓？仅表示你已了解此风险——不影响后续研判,同类行为复犯仍会重新提醒。</div>
       <Typography.Text type="secondary" style={{fontSize:12}}>处理备注（可选，留痕到反馈记录）：</Typography.Text>
       <Input placeholder="如：已通知部门负责人核实" value={cfModal.note} onChange={e=>setCfModal({...cfModal,note:e.target.value})} style={{marginTop:4}}/>
     </Modal>
@@ -1246,7 +1246,7 @@ function Handbook(){
       ['告警日趋势 / 告警分布 / 告警状态','周趋势是否抬升;分布里哪类风险多;待处理积压多少'],
     ]},
     {id:'alerts',icon:'fa-bell',title:'3. 告警处理流程',body:<><p>告警页按"员工+意图"合并(同人同类只保留最高分一条)。每条两个动作:</p>
-      <ul><li><b>确认</b>:属实的风险,状态→已确认(归档,不再出现在"未处理")。</li>
+      <ul><li><b>已知晓</b>:我知道了这个风险——仅作标记,不影响系统判断,复犯会重新提醒;TOP榜暂不显示已知晓场景。</li>
       <li><b>误报</b>:选择原因(岗位/工作/时间正常等)后可创建<b>豁免</b>——该员工该场景后续研判时 AI 会看到豁免标签,且不再重复生成同类告警。豁免可在 系统设置→豁免管理 查看/删除(删除后恢复告警)。</li></ul>
       <p className="hb-tip">数字口径:用户视图"告警 N 条" = alerts 表条数;画像页顶部"告警明细"与之同源。研判次数(远大于告警数)是 AI 分析过的窗口总数,风险≥50 才升级为告警。</p></>},
     {id:'policy',icon:'fa-shield-halved',title:'4. 风险类型与当前策略',items:[
