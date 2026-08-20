@@ -23,7 +23,8 @@ def _events_for(session, emp):
 
 def global_common_domains(session, min_users_ratio=0.3, min_count=5):
     """全局通用域名：超过 min_users_ratio 比例用户访问过的域名。
-    这些域名对任何人都不算'陌生'（微软云/CDN/搜索引擎等）。"""
+    这些域名对任何人都不算'陌生'（微软云/CDN/搜索引擎等）。
+    风险类域名(招聘/网盘等)排除——多人访问不代表正常,不能稀释风险判断(2026-08-19)。"""
     from collections import Counter
     from sqlalchemy import func as _f
     total_users = session.query(EventRow.employee_id).distinct().count()
@@ -39,7 +40,7 @@ def global_common_domains(session, min_users_ratio=0.3, min_count=5):
         EventRow.category == 'WEB',
         dom.isnot(None)
     ).group_by(dom).all()
-    return {r[0] for r in rows if r[0] and r[1] >= threshold}
+    return {r[0] for r in rows if r[0] and r[1] >= threshold and not dicts.risk_class(r[0])}
 
 
 def compute_profile(rows) -> dict:
@@ -57,7 +58,11 @@ def compute_profile(rows) -> dict:
         if r.category == "WEB":
             d = (r.raw or {}).get("domain")
             if d:
-                domains[d] += 1
+                # 风险类域名永不计入个人基线(2026-08-19用户口径): 招聘/网盘/邮箱等
+                # 即使天天访问也不构成"正常"——高频恰恰是进行中风险信号,基线只描述
+                # 正常办公习惯。否则AI看到"在其基线内"会降权误判。
+                if not dicts.risk_class(d):
+                    domains[d] += 1
             dc = (r.raw or {}).get("domain_class")
             if dc and dc != "other":
                 web_classes[dc] += 1
