@@ -98,17 +98,18 @@ def _remember(agt_id, usr_id, account):
 
 
 def _resolve(agt_id, usr_id, account_hint=None):
-    """优先路径账号;其次USR人员级映射(跨机器稳定);再AGT机器级;最后占位(人工匹配)。"""
+    """身份解析(2026-08-20用户口径: AGT_ID=计算机ID,机器对应使用人):
+    路径账号(最权威) > AGT计算机映射 > USR映射 > IPG:<AGT>占位(人工匹配)。"""
     if account_hint:
         return _clean_account(account_hint)
     with _agt_lock:
         _load_map()
-        acc = _usr_map.get(str(usr_id)) if usr_id else None
+        acc = _agt_map.get(str(agt_id)) if agt_id else None
         if not acc:
-            acc = _agt_map.get(str(agt_id)) if agt_id else None
+            acc = _usr_map.get(str(usr_id)) if usr_id else None
     if acc:
         return acc
-    return f"IPG:{usr_id or agt_id}"
+    return f"IPG:{agt_id or usr_id}"
 
 
 def parse_ipg_syslog(text: str):
