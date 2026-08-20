@@ -393,8 +393,16 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                     ds.close()
                 if _agg:
                     _day_tot = sum(_agg.values())
-                    day_ctx = ("[当日累计(截至本研判)] " +
-                               ", ".join(f"{d}×{n}" for d, n in sorted(_agg.items(), key=lambda x: -x[1])[:6]))
+                    # 家族(按风险类别)累计: AI按完整域名报数会漏子域(高聪sndhr
+                    # 实际13次AI只报主域9次,2026-08-19复审发现),给类别合计供引用
+                    _fam = {}
+                    for d, n in _agg.items():
+                        rc = dicts.risk_class(d) or d
+                        _fam[rc] = _fam.get(rc, 0) + n
+                    fam_txt = ", ".join(f"{k}类合计{v2}次" for k, v2 in sorted(_fam.items(), key=lambda x: -x[1]))
+                    day_ctx = ("[当日累计(截至本研判,含全部子域)] " +
+                               ", ".join(f"{d}×{n}" for d, n in sorted(_agg.items(), key=lambda x: -x[1])[:6]) +
+                               "; " + fam_txt)
         except Exception:
             pass
         v = detector.analyze_window(w, summary, dev, exempt, gctx, history=_hist, day_ctx=day_ctx)
@@ -406,6 +414,24 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
             if _a is not None:
                 v = {**v, "risk_score": _a}
                 _anchored = _a
+        # ---- 招聘锚点: 程序化定分,AI只负责行为描述 ----
+        # ①单次保护(硬防线): 窗口招聘≤2次+无凌晨+无跨天命中 → 强制normal——AI偶发
+        #   违反"单次=normal"规则(叶珂祯单次boss被判65,2026-08-19复审发现);
+        # ②反复(≥3次)分档(用户口径2026-08-19): 重点站(BOSS/猎聘/51job/智联sndhr)
+        #   基础70;一般站(领英等)基础50;凌晨+5;跨天模式命中+10;封顶85。
+        if isinstance(v, dict) and v.get("intent") == "job_seeking" and _anchored is None:
+            _jn = sum(e.count or 1 for e in w
+                      if e.category == "WEB" and dicts.risk_tier((e.raw or {}).get("domain") or "") == "job")
+            _off = any(detector._is_off_hours(e.occurred_at) for e in w)
+            _xd = "跨天规则①命中" in (_hist or "")
+            if _jn <= 2 and not _off and not _xd:
+                v = {**v, "intent": "normal_work", "risk_score": 15}
+            elif _jn >= 3:
+                _MAJOR = ("zhipin", "liepin", "51job", "zhaopin", "sndhr")
+                _major = any(any(m in (((e.raw or {}).get("domain") or "").lower()) for m in _MAJOR)
+                             for e in w if e.category == "WEB")
+                _js = (70 if _major else 50) + (5 if _off else 0) + (10 if _xd else 0)
+                v = {**v, "risk_score": min(_js, 85)}
         # ---- 双模型复核: Qwen判定达到告警级(≥阈值)时,用深度模型独立重判一遍。
         # 两模型一致才维持告警;复核明显更低则降级(证据撑不起告警)。复核失败保守
         # 保留原判。说明不写复核过程,直接给结论(2026-08-19用户要求)。
