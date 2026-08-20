@@ -23,7 +23,7 @@ HOST, USER, PWD = "10.0.20.249", "root", "LX2320**"
 HERE = os.path.dirname(os.path.abspath(__file__))
 REMOTE = "/root/syslog/backend"
 CONTAINER = "ipguard-ai"
-PY_FILES = ["api.py", "db.py", "dicts.py", "detector.py", "llm_client.py", "pipeline.py", "profiles.py", "syslog_recv.py", "selfheal.py"]
+PY_FILES = ["api.py", "db.py", "dicts.py", "detector.py", "llm_client.py", "pipeline.py", "profiles.py", "syslog_recv.py", "selfheal.py", "parser_ipg.py"]
 
 
 def _node() -> str:

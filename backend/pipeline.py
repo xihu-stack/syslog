@@ -122,6 +122,34 @@ def ingest_events(events) -> int:
                 e.employee_id = _alias.get(e.employee_id or "", e.employee_id)
     except Exception:
         pass
+    # 跨源网页去重(2026-08-20 IPG接入): IPG的url_log与深信服重复覆盖同一浏览,
+    # 同员工同域名10分钟内已有任一来源事件 → 丢弃IPG副本(避免效率/事件量双计)
+    _ipg_web = [e for e in events if getattr(e, "source", "") == "ipguard" and e.category == "WEB"]
+    if _ipg_web:
+        try:
+            from datetime import timedelta as _td2
+            _keys = {(e.employee_id, ((e.raw or {}).get("domain") or "").lower()) for e in _ipg_web}
+            _emps = {k[0] for k in _keys}
+            _cand = set()
+            s2 = Session()
+            try:
+                for _r in s2.query(EventRow.employee_id, EventRow.raw).filter(
+                        EventRow.employee_id.in_(list(_emps)[:100]),
+                        EventRow.category == "WEB",
+                        EventRow.occurred_at >= bj_now() - _td2(minutes=10)).all():
+                    _d = ((_r.raw or {}).get("domain") or "").lower() if isinstance(_r.raw, dict) else ""
+                    if _d:
+                        _cand.add((_r.employee_id, _d))
+            finally:
+                s2.close()
+            if _cand:
+                _before = len(events)
+                events = [e for e in events if not (
+                    getattr(e, "source", "") == "ipguard" and e.category == "WEB"
+                    and (e.employee_id, ((e.raw or {}).get("domain") or "").lower()) in _cand)]
+                print(f"[ingest] 跨源网页去重: {_before - len(events)}条IPG副本跳过", flush=True)
+        except Exception:
+            pass
     with write_lock:  # 与研判 _flush 串行写，避免写锁互等报 database is locked
         s = Session()
         try:

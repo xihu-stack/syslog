@@ -46,7 +46,7 @@ def _flush_events():
                         if _m2: _u = _m2.group(1).strip()
                         _m3 = _re_mod.search(r"\[app:([^\]]+)\]", msg)
                         if _m3: _a = _m3.group(1).strip()
-                        s.add(RawLogRow(log_type=_lt, user=_u, app=_a, msg=msg[:1000]))
+                        s.add(RawLogRow(log_type=_lt, user=_u, app=_a, msg=msg[:4000]))
                     s.commit()
                     print(f"[raw] insert from recent {len(recents)}条", flush=True)
                 finally:
@@ -224,13 +224,16 @@ def _listen(host, port):
                 _state["recent"].append({
                     "t": datetime.datetime.now().strftime("%H:%M:%S"),
                     "from": addr[0],
-                    "msg": text[:500],
+                    "msg": text[:4000],  # IPG JSON报文1-3KB,500截断丢掉文件名/动作/用户字段(2026-08-20)
                 })
                 _state["recent"] = _state["recent"][-500:]
             # 实时解析为标准事件
             try:
                 from parser_sangfor import parse_sangfor_syslog
                 ev = parse_sangfor_syslog(text)
+                if ev is None:  # 深信服格式不匹配 → 试IP-Guard(OTransLog JSON)
+                    from parser_ipg import parse_ipg_syslog
+                    ev = parse_ipg_syslog(text)
                 if ev:
                     with _buf_lock:
                         _event_buffer.append(ev)
