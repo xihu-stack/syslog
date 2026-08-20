@@ -24,23 +24,21 @@ WRITE_ACTIONS = {
 
 WINDOW_GAP = timedelta(minutes=60)
 
-# 噪声文档(2026-08-20用户口径: 缓存的不能算)——系统/缓存/程序自写文件,
-# 不触发研判、不进行为统计;SEND类保留(外发实锤)但标注
+# 噪声文档路径(2026-08-20): 只保留"结构事实"——系统/程序目录是客观位置,
+# 不是语义判断;文件名是否缓存/敏感一律由本地AI判断(用户口径: 不写死关键词)
 _NOISE_PATH = ("appdata", "programdata", "program files", "windows", "/windows/",
                "\\temp\\", "/temp/", ".cache", "node_modules", ".git")
-_NOISE_NAME = ("sendphotoes", "preferences", "thumbs.db", "desktop.ini", "~$",
-               ".tmp", ".crdownload", ".part", "cache")
 
 
 def is_noise_doc(e) -> bool:
-    """缓存/系统噪声文档: 路径在系统目录或文件名命中缓存特征。"""
+    """系统/程序目录内的文档操作=程序自写,不触发研判(结构性排除);
+    文件名层面的缓存/敏感语义由AI判断,不做关键词枚举。"""
     if getattr(e, "category", "") != "DOC":
         return False
     if e.action in ("SEND", "UPLOAD", "PRINT", "BURN"):
-        return False  # 外发/打印类即使源是缓存名也是真实动作
+        return False  # 外发/打印类是真实动作,交给AI按文件名语义判断
     p = ((e.raw or {}).get("src_path") or "").lower() + (e.target_value or "").lower()
-    n = (e.target_value or "").lower()
-    return any(k in p for k in _NOISE_PATH) or any(k in n for k in _NOISE_NAME)
+    return any(k in p for k in _NOISE_PATH)
 
 # 遥测/自动更新类子域——LLM 判低分的例外,锚点不接管(拉到75会放大误判)
 _TELEMETRY_PREFIX = ("st.", "abtest.", "ab.", "telemetry.", "tm.", "log.", "stat.",
@@ -79,16 +77,14 @@ def anchor_score(intent, window, day_total=None) -> int | None:
         score += 10
     # IPG实锤外发分层(2026-08-20): 文件确实离开本机——
     # 目的地=网页上传工具/个人邮箱/网盘(稀有通道) 85;微信(日常高频) 80;
-    # 文件名含敏感词再+5(敏感文件+实锤外发的最强组合,封顶90)
+    # 目的地稀有度分层: 网盘/个人邮箱等稀有通道85,微信等日常通道80;
+    # 文件名是否敏感不在此判断——AI在说明里定性,锚点只管动作+通道的客观强度
     _send_dests = [((e.raw or {}).get("dest_path") or "").lower() for e in window
                    if e.category == "DOC" and e.action in ("SEND", "UPLOAD")
                    and (e.raw or {}).get("channel") not in (None, "", "LOCAL")]
     if _send_dests:
         _rare = any(dicts.risk_class(d) in ("网盘/云盘", "个人邮箱") for d in _send_dests)
         score = max(score, 85 if _rare else 80)
-        if any(any(k in (e.target_value or "") for k in dicts.get("sensitive_keywords"))
-               for e in window if e.category == "DOC"):
-            score = min(score + 5, 90)
     if night:
         score += 5
     return min(score, 90)
@@ -122,6 +118,7 @@ SYSTEM_PROMPT = (
     "【基线偏离的使用边界】'域名不在个人基线中'本身≠严重偏离——每人每天都会首次遇到大量新域名(见全局参照)。偏离档位必须综合:频次是否远超本人常态+时段(凌晨)+多外发通道叠加来判断;严禁仅以'首次出现/不在基线'把低频访问(≤5次)判为severe或抬进高危档。\n"
     "【intent 由窗口的主风险信号决定——勿被弱信号带偏】招聘网站【单次/低频夹杂在其他信号中≠job_seeking】:job_seeking 仅用于招聘网站反复高频(≥3次)/凌晨为主信号的窗口；若窗口主风险是邮箱/网盘/外发,按主风险定intent,不要因含1次领英/招聘就判求职。\n"
     "【浏览器标签标题——语义自主判断】URL旁的《标题》是页面内容的直接证据,如何解读由你判断:同一个人访问同一类网站,标题揭示的真实意图可能完全不同(如招聘相关页面,到底是在做招聘工作还是自己在找工作;邮箱/网盘页面是登录页还是操作页)。禁止仅凭域名类别下结论,必须结合标题语义定意图与分档;explanation引用关键标题原文作为依据。\n"
+    "【语义判断总则——不依赖固定词表】文件名/搜索词/标题的敏感性、意图方向,全部由你按语义判断:文件名看内容性质(项目资料/试验记录/合同客户/财务/个人证件/纯缓存或临时文件),搜索词看意图(求职流程/数据带出/规避审计/正常工作疑问),同一文件名在不同路径语境下意义不同。判断依据写进explanation,不要引用任何『关键词表』。\n"
     "【intent 判定】个人邮箱/网盘(禁止) → policy_violation；VPN/翻墙 → normal_work(业务规则:翻墙非违规)；"
     "微信文件助手 → data_exfiltration；代码仓库 → baseline_deviation；"
     "招聘网站仅反复高频(≥3)/凌晨 → job_seeking（单次/低频 → normal_work）；远程控制 → baseline_deviation；"
@@ -318,18 +315,17 @@ def should_trigger(window, dev, baseline) -> bool:
         if e.category == "DOC":
             # IPG接入前闸门收紧(2026-08-20): 普通本地写(SAVE/MODIFY/RENAME等每人
             # 每天海量)不单独触发,只有真实外发信号才触发——UPLOAD/SEND/PRINT/BURN
-            # (上传/发送/打印/刻录)、非本地通道(USB/网盘)、或文件名含敏感词
+            # (上传/发送/打印/刻录)或非本地通道(USB/网盘);文件名是否敏感由AI判断
             if e.action in ("UPLOAD", "SEND", "PRINT", "BURN"):
                 return True
             if is_noise_doc(e):
-                continue  # 缓存/系统文件不算行为证据(2026-08-20)
+                continue  # 系统/程序目录=程序自写,不算行为证据
             ch = (e.raw or {}).get("channel")
             if ch and ch != "LOCAL":
                 return True
-            if e.action in WRITE_ACTIONS and any(
-                    k in (e.target_value or "") for k in dicts.get("sensitive_keywords")):
-                return True
-        if e.category == "SEARCH" and _search_risky(e.target_value):
+        if e.category == "SEARCH":
+            # 搜索词语义(求职/数据带出/正常)交AI判断,不做关键词触发(2026-08-20
+            # 用户口径;IPG搜索量低,全量送判可承受)
             return True
         if e.category == "WEB":
             dom = (e.raw or {}).get("domain") or e.target_value
