@@ -40,7 +40,8 @@ _SUBTYPE_ACT = {"1": "OPEN", "3": "COPY", "4": "RENAME", "6": "DELETE", "7": "RE
 _CORP_SUFFIX = (".huashen", ".helixon", ".bio")   # 域账号后缀剥离
 
 _agt_lock = threading.Lock()
-_agt_map = None          # {str(agt_id): 账号}
+_agt_map = None          # {str(agt_id): 账号} 机器级
+_usr_map = None          # {str(usr_id): 账号} 人员级(优先)——doc路径反推,跨机器稳定
 _agt_dirty = False
 _last_persist = 0.0
 
@@ -54,35 +55,42 @@ def _clean_account(a: str) -> str:
 
 
 def _load_map():
-    global _agt_map
+    global _agt_map, _usr_map
     if _agt_map is not None:
         return
     try:
         import dicts
         raw = dicts.get_setting("ipg_agt_map") or "{}"
         _agt_map = json.loads(raw) if isinstance(raw, str) else dict(raw or {})
+        raw2 = dicts.get_setting("ipg_usr_map") or "{}"
+        _usr_map = json.loads(raw2) if isinstance(raw2, str) else dict(raw2 or {})
     except Exception:
-        _agt_map = {}
+        _usr_map = {}
 
 
-def _remember(agt_id, account):
-    """doc路径反推出 AGT→账号,节流持久化(60s一次)。"""
+def _remember(agt_id, usr_id, account):
+    """doc路径反推出 AGT→账号 + USR→账号(人员级,优先),节流持久化(60s一次)。"""
     global _agt_dirty, _last_persist
     import time
     acc = _clean_account(account)
-    if not acc or not agt_id:
+    if not acc:
         return
     with _agt_lock:
         _load_map()
-        if _agt_map.get(str(agt_id)) == acc:
-            return
-        _agt_map[str(agt_id)] = acc
-        _agt_dirty = True
+        changed = False
+        if agt_id and _agt_map.get(str(agt_id)) != acc:
+            _agt_map[str(agt_id)] = acc
+            changed = True
+        if usr_id and _usr_map.get(str(usr_id)) != acc:
+            _usr_map[str(usr_id)] = acc
+            changed = True
+        _agt_dirty = _agt_dirty or changed
         now = time.time()
         if _agt_dirty and now - _last_persist > 60:
             try:
                 import dicts
                 dicts.set_setting("ipg_agt_map", json.dumps(_agt_map, ensure_ascii=False))
+                dicts.set_setting("ipg_usr_map", json.dumps(_usr_map, ensure_ascii=False))
                 _agt_dirty = False
                 _last_persist = now
             except Exception:
@@ -90,12 +98,14 @@ def _remember(agt_id, account):
 
 
 def _resolve(agt_id, usr_id, account_hint=None):
-    """优先路径账号;否则AGT映射;最后 IPG:<usr> 占位(进人工匹配)。"""
+    """优先路径账号;其次USR人员级映射(跨机器稳定);再AGT机器级;最后占位(人工匹配)。"""
     if account_hint:
         return _clean_account(account_hint)
     with _agt_lock:
         _load_map()
-        acc = _agt_map.get(str(agt_id))
+        acc = _usr_map.get(str(usr_id)) if usr_id else None
+        if not acc:
+            acc = _agt_map.get(str(agt_id)) if agt_id else None
     if acc:
         return acc
     return f"IPG:{usr_id or agt_id}"
@@ -152,7 +162,7 @@ def parse_ipg_syslog(text: str):
         mu = _RE_USER_PATH.search(src_path) or _RE_USER_PATH.search(d.get("DOC_DEST_PATH") or "")
         if mu:
             hint = mu.group(1)
-            _remember(agt, hint)
+            _remember(agt, usr, hint)
         dev = d.get("DOC_DEST_DEVICE")
         ch = _DEV_CH.get(dev if isinstance(dev, int) else int(dev or 0), "LOCAL")
         if act == "SEND" and ch == "LOCAL":

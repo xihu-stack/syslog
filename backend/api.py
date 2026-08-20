@@ -225,9 +225,9 @@ def sso_callback(code: str = "", state: str = "", error: str = ""):
                 break
         _TOKENS[token] = {"exp": _time.time() + _TOKEN_TTL, "user": username,
                           "name": _disp or username, "id_token": idt}
-        # 域账号+中文姓名 反哺用户映射(SSO给出的是官方权威对应,直接生效;
-        # 仅限含中文的姓名,防英文全名污染员工映射)
-        cname = _disp if _disp and _re_cn(_disp) else ""
+        # 域账号+中文姓名 反哺用户映射(SSO官方权威对应;从显示名中只提取
+        # 连续中文段,防"Chunyuan Zhou 周春远"这类英文名混入污染映射,2026-08-20)
+        cname = "".join(__import__("re").findall(r"[一-鿿]+", _disp)) if _disp else ""
         if cname:
             try:
                 conf = _alias_load("employee_alias")
