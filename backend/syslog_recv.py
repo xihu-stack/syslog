@@ -250,15 +250,18 @@ def _listen(host, port):
                     "msg": text[:4000],  # IPG JSON报文1-3KB,500截断丢掉文件名/动作/用户字段(2026-08-20)
                 })
                 _state["recent"] = _state["recent"][-500:]
-            # 实时解析为标准事件
+            # 实时解析为标准事件——按报文特征路由(2026-08-20修复:
+            # 深信服解析器是宽松KV提取,对IPG报文也返回垃圾事件,IPG解析器从未被执行;
+            # 必须先认OTransLog特征再落深信服)
             try:
-                from parser_sangfor import parse_sangfor_syslog
-                ev = parse_sangfor_syslog(text)
-                _is_ipg = False
-                if ev is None:  # 深信服格式不匹配 → 试IP-Guard(OTransLog JSON)
+                _is_ipg = "OTransLog" in text
+                ev = None
+                if _is_ipg:
                     from parser_ipg import parse_ipg_syslog
                     ev = parse_ipg_syslog(text)
-                    _is_ipg = ev is not None
+                else:
+                    from parser_sangfor import parse_sangfor_syslog
+                    ev = parse_sangfor_syslog(text)
                 if ev:
                     with _buf_lock:
                         _event_buffer.append(ev)
