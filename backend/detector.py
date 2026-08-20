@@ -63,6 +63,16 @@ def anchor_score(intent, window, day_total=None) -> int | None:
     doms = [d for d in doms if d]
     if doms and all(d.startswith(_TELEMETRY_PREFIX) for d in doms):
         return None
+    # 证据前置(2026-08-21): 窗口须含本场景真实证据(禁止类域名/文件助手/非本地
+    # DOC通道),锚点才接管——否则AI把微软登录/未识别应用的夜间流量误标policy时,
+    # 锚点会把错误意图锁进75+档(潘利锋凌晨案例,selfheal连续多轮对齐暴露)
+    _has_evidence = any(dicts.risk_class(d) in ("网盘/云盘", "个人邮箱", "微信文件助手")
+                        for d in doms) or any(
+        e.category == "DOC" and ((e.raw or {}).get("channel") not in (None, "", "LOCAL")
+                                 or e.action in ("SEND", "UPLOAD", "PRINT", "BURN"))
+        for e in window)
+    if not _has_evidence:
+        return None
     hours = [e.occurred_at.hour for e in window if e.occurred_at]
     night = any(h < 7 or h >= 22 for h in hours)
     cnt = day_total if day_total else sum(e.count or 1 for e in window)
