@@ -59,10 +59,18 @@ def anchor_score(intent, window, day_total=None) -> int | None:
             score += 5
     if has_write:
         score += 10
-    # IPG实锤外发(SEND/UPLOAD+非本地通道): 文件确实离开本机,底分80(2026-08-20)
-    if any(e.category == "DOC" and e.action in ("SEND", "UPLOAD") and
-           (e.raw or {}).get("channel") not in (None, "", "LOCAL") for e in window):
-        score = max(score, 80)
+    # IPG实锤外发分层(2026-08-20): 文件确实离开本机——
+    # 目的地=网页上传工具/个人邮箱/网盘(稀有通道) 85;微信(日常高频) 80;
+    # 文件名含敏感词再+5(敏感文件+实锤外发的最强组合,封顶90)
+    _send_dests = [((e.raw or {}).get("dest_path") or "").lower() for e in window
+                   if e.category == "DOC" and e.action in ("SEND", "UPLOAD")
+                   and (e.raw or {}).get("channel") not in (None, "", "LOCAL")]
+    if _send_dests:
+        _rare = any(dicts.risk_class(d) in ("网盘/云盘", "个人邮箱") for d in _send_dests)
+        score = max(score, 85 if _rare else 80)
+        if any(any(k in (e.target_value or "") for k in dicts.get("sensitive_keywords"))
+               for e in window if e.category == "DOC"):
+            score = min(score + 5, 90)
     if night:
         score += 5
     return min(score, 90)
