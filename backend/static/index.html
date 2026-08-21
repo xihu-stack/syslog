@@ -785,7 +785,7 @@ function Dashboard({go, goProfile}){
   const KPIS=[
     {k:'alert', icon:'fa-bell', v:sysAl.today, l:'今日告警', sub:'涉及 '+(sysAl.today_people||0)+' 人 · '+(sysAl.today_critical||0)+' 严重 · 待处理'+((sysAl.status||{}).NEW||0)+'条', tip:'今日(北京时间0点起)新增的告警条数。按"员工+意图"合并去重后计数。76+为严重。', go:()=>go('alerts',{today:true}), danger:true, loaded:Object.keys(sys).length>0},
     {k:'eff', icon:'fa-fire', v:(sp60==='—'?null:sp60), l:'重度摸鱼', sub:'日均摸鱼≥1小时', tip:'日均摸鱼时长≥60分钟的员工数(近7天,与效率监控同口径)。时长按10分钟访问桶估算,单次保底5分钟。', go:()=>go('efficiency',{tier:'60'}), loaded:eff.length>0},
-    {k:'user', icon:'fa-users', v:sys.employees, l:'今日活跃', sub:'累计 '+(((sys.events||{}).total?Math.round((sys.events.total)/10000):0))+' 万条事件', tip:'今日有行为记录的员工数。事件经降噪聚合(同域名10分钟内合并),非原始日志行数。', go:()=>go('computers',{today:true}), loaded:Object.keys(sys).length>0},
+    {k:'user', icon:'fa-users', v:sys.employees, l:'今日活跃', sub:'正式员工 · 累计 '+(((sys.events||{}).total?Math.round((sys.events.total)/10000):0))+' 万条事件', tip:'今日有行为记录的员工数。事件经降噪聚合(同域名10分钟内合并),非原始日志行数。', go:()=>go('computers',{today:true}), loaded:Object.keys(sys).length>0},
   ];
   const Ske=()=> <span style={{display:'inline-block',width:54,height:30,verticalAlign:-7,borderRadius:6,background:'linear-gradient(90deg,var(--ink4) 25%,var(--bg) 37%,var(--ink4) 63%)',backgroundSize:'400% 100%',animation:'sk 1.2s ease infinite'}}/>;
   return (<Tabs activeKey={tab} onChange={k=>{setTab(k); if(k==='risk')setTimeout(()=>alertTrendChart.current&&alertTrendChart.current.resize(),0);}} items={[
@@ -810,7 +810,7 @@ function Dashboard({go, goProfile}){
         <span style={{fontSize:11,color:'var(--ink3)'}}>深信服 + IP-Guard · 事件分钟级入库研判</span>
         <div style={{flex:1}}></div>
         {crit>0
-          ? <a onClick={()=>go('alerts',{today:true,lvl:'crit'})} style={{display:'flex',alignItems:'center',gap:6,padding:'5px 14px',borderRadius:8,background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'#fff',fontWeight:700,fontSize:12.5,boxShadow:'0 2px 8px rgba(239,68,68,.35)'}}><i className="fa-solid fa-triangle-exclamation"></i>{crit} 条高危未处理 · 立即处置</a>
+          ? <a onClick={()=>go('alerts',{lvl:'crit',status:'NEW'})} style={{display:'flex',alignItems:'center',gap:6,padding:'5px 14px',borderRadius:8,background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'#fff',fontWeight:700,fontSize:12.5,boxShadow:'0 2px 8px rgba(239,68,68,.35)'}}><i className="fa-solid fa-triangle-exclamation"></i>{crit} 条高危未处理 · 立即处置</a>
           : <span style={{fontSize:11.5,color:'#16a34a',display:'flex',alignItems:'center',gap:5}}><i className="fa-solid fa-circle-check"></i>无高危待处理</span>}
       </div>);})()}
     {(()=>{ const [board,setBoard]=useState(null);
@@ -853,17 +853,17 @@ function Dashboard({go, goProfile}){
       </Col>
       <Col span={7}>
         <Card className="card" size="small" title={<span><span className="brand-bar"></span>告警构成</span>} style={{height:'100%'}} bodyStyle={{padding:'16px 18px'}}>
-        <div style={{fontSize:11,color:'var(--ink3)',marginBottom:4}}>按场景</div>
+        <div style={{fontSize:11,color:'var(--ink3)',marginBottom:4}}>按场景·全时段</div>
           {(()=>{const cnt={};(sysAl.list||[]).forEach(a=>{const s=a.scenario||'unknown';cnt[s]=(cnt[s]||0)+1;});const tot=Object.values(cnt).reduce((a,b)=>a+b,0)||1;const rows=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,5);
           return rows.length?<div>{rows.map(([k,v])=>{const L=LVL(k==='policy_violation'?80:k==='data_exfiltration'?70:50);const pct=Math.round(v/tot*100);return <div key={k} title={'点击查看「'+(INTENT[k]||k)+'」告警明细'} onClick={()=>go('alerts',{scenario:k})} style={{display:'flex',alignItems:'center',gap:10,padding:'11px 0',cursor:'pointer'}}>
             <span style={{width:72,fontSize:12,color:'var(--ink2)',fontWeight:500}}>{INTENT[k]||k}</span>
             <div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:LVL(k==='policy_violation'?80:70).c,borderRadius:4}}></div></div>
             <span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{v}</span></div>})}</div>:<Empty description="暂无告警" style={{padding:16}}/>;})()}
         <Divider style={{margin:'12px 0 8px'}}/>
-        <div style={{fontSize:11,color:'var(--ink3)',marginBottom:4}}>按状态</div>
+        <div style={{fontSize:11,color:'var(--ink3)',marginBottom:4}}>按状态·全时段</div>
           {(()=>{const st_map={NEW:['#ef4444','待处理'],CONFIRMED:['#6366f1','已知晓'],FP:['#94a3b8','误报'],CLOSED:['#22c55e','已关闭']};const sc=sysAl.status||{};const tot=Object.values(sc).reduce((a,b)=>a+b,0)||1;const rows=Object.keys(st_map).filter(k=>sc[k]);if(!rows.length) return <Empty description="暂无" style={{padding:16}}/>;return <div>{rows.map(k=>{const pct=Math.round((sc[k]||0)/tot*100);const cc=st_map[k][0];return <div key={k} title={'点击查看「'+st_map[k][1]+'」告警'} onClick={()=>go('alerts',{status:k==='NEW'?'NEW':'handled'})} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 0',cursor:'pointer'}}><span style={{width:60,fontSize:12,color:'var(--ink2)'}}>{st_map[k][1]}</span><div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:cc,borderRadius:4}}></div></div><span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{sc[k]||0}</span></div>})}</div>;})()}
         <Divider style={{margin:'12px 0 8px'}}/>
-        <div style={{fontSize:11,color:'var(--ink3)',marginBottom:4}}>按级别</div>
+        <div style={{fontSize:11,color:'var(--ink3)',marginBottom:4}}>按级别·全时段</div>
           {(()=>{const lv=[['crit',s=>s>=76,'严重76+','#ef4444'],['high',s=>s>=56&&s<76,'高危56-75','#f59e0b'],['mid',s=>s>=31&&s<56,'关注31-55','#eab308'],['low',s=>s<31,'正常0-30','#94a3b8']];const tot=(sysAl.list||[]).length||1;const rows=lv.map(([k,fn,label,c])=>[k,label,c,(sysAl.list||[]).filter(a=>fn(a.risk_score||0)).length]).filter(r=>r[3]>0);if(!rows.length) return <Empty description="暂无" style={{padding:16}}/>;return <div>{rows.map(([k,label,c,v])=>{const pct=Math.round(v/tot*100);return <div key={k} title={'点击查看「'+label+'」告警'} onClick={()=>go('alerts',{lvl:k==='low'?'all':k})} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 0',cursor:'pointer'}}><span style={{width:72,fontSize:12,color:'var(--ink2)'}}>{label}</span><div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:c,borderRadius:4}}></div></div><span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{v}</span></div>})}</div>;})()}
         </Card>
       </Col>
