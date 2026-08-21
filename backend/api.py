@@ -538,11 +538,14 @@ def computers():
     try:
         ev = (s.query(EventRow.employee_id, func.count(EventRow.id), func.max(EventRow.occurred_at))
               .group_by(EventRow.employee_id).all())
-        vr = {r[0]: r[1] for r in
-              s.query(VerdictRow.employee_id, func.max(VerdictRow.risk_score)).group_by(VerdictRow.employee_id).all()}
-        al = {r[0]: r[1] for r in
-              s.query(AlertRow.employee_id, func.count(AlertRow.id)).group_by(AlertRow.employee_id).all()}
         _today = bj_now().replace(hour=0, minute=0, second=0, microsecond=0)
+        _wk7 = bj_now() - timedelta(days=7)
+        vr = {r[0]: r[1] for r in
+              s.query(VerdictRow.employee_id, func.max(VerdictRow.risk_score))
+              .filter(VerdictRow.window_start >= _wk7).group_by(VerdictRow.employee_id).all()}
+        al = {r[0]: r[1] for r in
+              s.query(AlertRow.employee_id, func.count(AlertRow.id))
+              .filter(AlertRow.window_start >= _wk7).group_by(AlertRow.employee_id).all()}
         et = {r[0]: r[1] for r in
               s.query(EventRow.employee_id, func.count(EventRow.id))
               .filter(EventRow.occurred_at >= _today).group_by(EventRow.employee_id).all()}
