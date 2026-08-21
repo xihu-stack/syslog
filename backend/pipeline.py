@@ -451,6 +451,34 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         except Exception:
             pass
         v = detector.analyze_window(w, summary, dev, exempt, gctx, history=_hist, day_ctx=day_ctx)
+        # ---- 说明后校验(2026-08-21 AI准确性): 数字与窗口实际比对,不匹配自动修正 ----
+        try:
+            if isinstance(v, dict) and v.get("explanation"):
+                import re as _re_v
+                _expl = v["explanation"]
+                # 域名计数校验: 提取说明中"域名×N次"模式,与窗口实际count比对
+                _win_cnt = defaultdict(int)
+                for e in w:
+                    if e.category == "WEB":
+                        d = ((e.raw or {}).get("domain") or "").lower()
+                        if d:
+                            root = ".".join(d.split(".")[-2:])  # 取根域名(含子域)
+                            _win_cnt[root] += (e.count or 1)
+                            _win_cnt[d] += (e.count or 1)
+                for m in _re_v.finditer(r"([a-zA-Z0-9.-]+\.[a-z]{2,6})×(\d+)次", _expl):
+                    dom, claimed = m.group(1).lower(), int(m.group(2))
+                    actual = _win_cnt.get(dom, _win_cnt.get(".".join(dom.split(".")[-2:]), 0))
+                    if actual and claimed != actual:
+                        _expl = _expl.replace(f"{m.group(1)}×{claimed}次", f"{m.group(1)}×{actual}次")
+                # "N次"泛指校验(无域名前缀): 取窗口WEB总数
+                for m in _re_v.finditer(r"(?<![×\d])(\d+)次(?!.*(?:累计|今日))", _expl):
+                    claimed = int(m.group(1))
+                    tot = sum(e.count or 1 for e in w if e.category == "WEB")
+                    if tot and claimed > tot * 1.5:  # 明显超出总量→修正
+                        pass  # 可能含DOC计数,不强行修正,仅域名级修正
+                v["explanation"] = _expl
+        except Exception:
+            pass
         # ---- 锚点接管: 访问即违规类(policy/data)分数统一按客观特征计算 ----
         # 同样的问题必须同分(2026-08-19用户要求);LLM分<30视为遥测等例外,不接管
         _anchored = None

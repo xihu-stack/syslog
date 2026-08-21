@@ -67,6 +67,39 @@ def scan_mass_deletes() -> dict:
             created += 1
             print(f"[massops] {emp} {day} 删除{len(lst)}次/{len(files)}文件 -> {risk}分", flush=True)
         s.commit()
-        return {"checked": len(by_emp), "created": created, "skipped": skipped}
+        # ---- 外发量聚合(蚂蚁搬家检测,2026-08-21): 单日≥15次或≥50MB ----
+        created2 = scan_mass_exfil(s)
+        return {"checked": len(by_emp), "created": created + created2, "skipped": skipped}
     finally:
         s.close()
+
+
+def scan_mass_exfil(s) -> int:
+    """外发量聚合: 单日非白名单SEND/UPLOAD≥15次 或 总量≥50MB → 告警。"""
+    by_emp = defaultdict(list)
+    for e in s.query(EventRow).filter(EventRow.source == "ipguard",
+                                       EventRow.occurred_at >= bj_now() - timedelta(days=1),
+                                       EventRow.action.in_(("SEND", "UPLOAD"))).all():
+        dest = ((e.raw or {}).get("dest_path") or "").split("/")[0].lower()
+        if dest and any(dest == w or dest.endswith("." + w) for w in dicts.get("risk_whitelist_domains") or []):
+            continue
+        by_emp[e.employee_id].append(e)
+    created = 0
+    for emp, lst in by_emp.items():
+        total_mb = sum((e.size_bytes or 0) for e in lst) / 1048576
+        if len(lst) < 15 and total_mb < 50:
+            continue
+        day = lst[0].occurred_at.strftime("%m-%d")
+        key = f"{emp}|mass_exfil|{day}"
+        if s.query(AlertRow).filter_by(dedup_key=key).first():
+            continue
+        sample = "; ".join(f"{(e.target_value or '')[:28]}→{((e.raw or {}).get('dest_path') or '').split('/')[0][:20]}" for e in lst[:5])
+        risk = 85 if len(lst) >= 30 or total_mb >= 100 else 75
+        s.add(AlertRow(employee_id=emp, scenario="mass_exfil",
+                       severity="crit" if risk >= 76 else "high", risk_score=risk,
+                       summary=f"{emp}在{day}累计外发{len(lst)}次(共{total_mb:.1f}MB)到非白名单目的地,如{sample},属批量外发/蚂蚁搬家模式",
+                       dedup_key=key, window_start=lst[-1].occurred_at, created_at=bj_now(), status="NEW"))
+        created += 1
+        print(f"[massops-exfil] {emp} {day} 外发{len(lst)}次/{total_mb:.0f}MB -> {risk}分", flush=True)
+    s.commit()
+    return created

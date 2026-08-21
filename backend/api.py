@@ -637,6 +637,64 @@ def dayreview_run():
     return run_day_review()
 
 
+@app.get("/api/risk-board")
+def risk_board_api():
+    """离职综合风险榜: 多信号组合→单人一分数(程序化,无LLM,秒出)。"""
+    from riskboard import risk_board as _rb
+    return {"board": _rb()}
+
+
+@app.get("/api/employees/{emp}/timeline")
+def employee_timeline_api(emp: str, days: int = 7):
+    """行为时间线: WEB+DOC+SEARCH按时间混排(以人为中心的核心视图)。"""
+    from timeline import employee_timeline
+    return {"timeline": employee_timeline(emp, days=days)}
+
+
+@app.get("/api/search")
+def global_search(q: str = "", limit: int = 20):
+    """全局搜索: 人名/域名/文件名。"""
+    import re as _re_s
+    if not q.strip():
+        return {"results": []}
+    ql = q.strip().lower()
+    s = Session()
+    try:
+        results = []
+        # 搜人
+        emps = {r[0] for r in s.query(EventRow.employee_id).distinct().all() if r[0] and ql in r[0].lower()}
+        for e in sorted(emps)[:limit]:
+            n = s.query(EventRow).filter(EventRow.employee_id == e,
+                                          EventRow.occurred_at >= bj_now() - timedelta(days=7)).count()
+            results.append({"type": "person", "value": e, "label": f"员工 · 近7天{n}条事件"})
+        # 搜域名
+        if "." in ql:
+            doms = s.query(EventRow.raw).filter(
+                EventRow.category == "WEB",
+                EventRow.occurred_at >= bj_now() - timedelta(days=7)).limit(5000).all()
+            dom_set = set()
+            for (raw,) in doms:
+                d = ((raw or {}).get("domain") or "").lower()
+                if d and ql in d:
+                    dom_set.add(d)
+            for d in sorted(dom_set)[:limit]:
+                rc = dicts.risk_class(d)
+                results.append({"type": "domain", "value": d,
+                                "label": f"域名 · {rc or '正常'}"})
+        # 搜文件名
+        if len(ql) >= 3:
+            files = s.query(EventRow).filter(
+                EventRow.category == "DOC",
+                EventRow.occurred_at >= bj_now() - timedelta(days=7),
+                EventRow.target_value.ilike(f"%{q.strip()}%")).limit(limit).all()
+            for e in files[:limit]:
+                results.append({"type": "file", "value": (e.target_value or "")[:60],
+                                "label": f"文件 · {e.employee_id} {e.action} · {e.occurred_at.strftime('%m-%d %H:%M')}"})
+        return {"results": results[:limit * 2]}
+    finally:
+        s.close()
+
+
 @app.get("/api/stories")
 def stories_get():
     """风险故事线(近30天,R1生成)。"""
@@ -1408,7 +1466,13 @@ def ask(body: dict = Body(...)):
              "4. 不需要数据的问题(闲聊/概念解释)直接 final;查不到数据就在 final 里说明并建议问法。\n"
              "5. 告警状态语义: NEW=待处理; CONFIRMED=已知晓(管理员已看到,不代表风险解除,复犯会再提醒);"
              "FP=误报(系统判错,已豁免);CLOSED=已关闭。回答时用这些中文名称,不要说'已确认'。\n"
-             "6. final 回答要求:结论先行,枚举用短列表,口径如实(告警=风险≥50研判;摸鱼=10分钟桶估算上限),"
+             "6. 【数字精度铁律——最高优先级】final回答中的所有数字必须原样引用工具返回的数据:"
+             "工具返回'告警8条'你写'告警 8 条',不得写'约8条'/'多条'/'不少';"
+             "工具返回'日均62分钟'你写'日均 62 分钟'不得四舍五入;"
+             "工具返回'共5人'你写'5 人'不得写'几个人'。"
+             "如果工具数据与你的常识冲突,以工具数据为准并注明'(数据来源:XX工具)'。"
+             "禁止编造工具未返回的数字。\n"
+             "7. final 回答要求:结论先行,枚举用短列表,口径如实(告警=风险≥50研判;摸鱼=10分钟桶估算上限),"
              "结尾可给一句下一步建议,中文,像资深安全运营同事的口吻。")
     msgs = [{"role": "system", "content": sys_p}]
     for h in history:
