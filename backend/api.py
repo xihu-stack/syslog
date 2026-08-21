@@ -533,13 +533,14 @@ def computers():
     """用户视图: 按员工标识聚合事件/告警/风险。IP型标识(DHCP动态分配,同一IP不同时期
     可能是不同的人)不作为用户展示——绝不用IP汇聚员工日志(2026-08-19用户红线)。"""
     import re as _re
+    from datetime import timedelta as _td_c
     _ip = _re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
     s = Session()
     try:
         ev = (s.query(EventRow.employee_id, func.count(EventRow.id), func.max(EventRow.occurred_at))
               .group_by(EventRow.employee_id).all())
         _today = bj_now().replace(hour=0, minute=0, second=0, microsecond=0)
-        _wk7 = bj_now() - timedelta(days=7)
+        _wk7 = bj_now() - _td_c(days=7)
         vr = {r[0]: r[1] for r in
               s.query(VerdictRow.employee_id, func.max(VerdictRow.risk_score))
               .filter(VerdictRow.window_start >= _wk7).group_by(VerdictRow.employee_id).all()}
