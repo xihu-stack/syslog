@@ -251,6 +251,16 @@ def _flush_loop():
 def _listen(host, port):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    # 接收缓冲扩容(2026-08-21实测内核丢包4700个): 深信服/IPG按批次突发推送,
+    # 瞬时数百条超过默认208KB缓冲(~百个报文)即溢出丢弃。请求8MB,实际受
+    # net.core.rmem_max封顶(compose已同步调大)。
+    try:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 8 * 1024 * 1024)
+        _got = s.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
+        if _got < 2 * 1024 * 1024:
+            print(f"[listen] SO_RCVBUF仅 {_got // 1024}KB(rmem_max未放开),仍有突发丢包风险", flush=True)
+    except OSError:
+        pass
     try:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)  # 允许rebind,避免旧socket泄漏时bind失败
     except (AttributeError, OSError):
