@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import timedelta
 
-from db import Session, EventRow, VerdictRow, AlertRow, ProfileRow, bj_now
+from db import Session, EventRow, VerdictRow, AlertRow, ProfileRow, ExceptionRow, bj_now
 import dicts
 import detector
 
@@ -23,18 +23,27 @@ def risk_board(days: int = 7) -> list:
     s = Session()
     try:
         since = bj_now() - timedelta(days=days)
+        # 豁免表: 员工→已豁免的场景(信号来源与豁免场景一致时剔除,2026-08-21产品审计)
+        exempt_map = {}
+        for x in s.query(ExceptionRow).all():
+            exempt_map.setdefault(x.employee_id, set()).add(x.signal_type)
+
         sig = defaultdict(lambda: {"job": 0, "exfil": 0, "delete": 0, "search": 0, "night": 0, "detail": {}})
 
-        # 1) 招聘信号
+        # 1) 招聘信号(跳过job_seeking已豁免的人)
         for v in s.query(VerdictRow).filter(
                 VerdictRow.window_start >= since, VerdictRow.intent == "job_seeking",
                 VerdictRow.risk_score >= 50).all():
+            if "job_seeking" in exempt_map.get(v.employee_id, set()):
+                continue  # HR豁免: 招聘访问是其正常工作
             sig[v.employee_id]["job"] = max(sig[v.employee_id]["job"], v.risk_score)
             sig[v.employee_id]["detail"]["job"] = f"招聘研判{v.risk_score}分"
 
-        # 2) 外发信号
+        # 2) 外发信号(跳过data_exfiltration已豁免的人)
         for a in s.query(AlertRow).filter(
                 AlertRow.created_at >= since, AlertRow.scenario == "data_exfiltration").all():
+            if "data_exfiltration" in exempt_map.get(a.employee_id, set()):
+                continue
             sig[a.employee_id]["exfil"] = max(sig[a.employee_id]["exfil"], a.risk_score or 0)
             sig[a.employee_id]["detail"]["exfil"] = f"外发告警{a.risk_score}分"
         # 也看原始事件(无告警但有SEND)
