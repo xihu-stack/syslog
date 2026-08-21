@@ -695,6 +695,7 @@ def employee_timeline_api(emp: str, days: int = 7):
 def global_search(q: str = "", limit: int = 20):
     """全局搜索: 人名/域名/文件名。"""
     import re as _re_s
+    from datetime import timedelta
     if not q.strip():
         return {"results": []}
     ql = q.strip().lower()
