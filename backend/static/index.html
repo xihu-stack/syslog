@@ -287,8 +287,10 @@ function StatusTag({s}){ const v=STATUS_MAP[s]||{c:'#999',t:s}; return <span cla
 const FROM_TITLE={computers:'用户视图',alerts:'告警管理',verdicts:'研判记录',efficiency:'效率监控',dashboard:'监控大屏'};
 function ProfilePage({user, goBack, from}){
   const [data,setData]=useState(null);
+  const [story,setStory]=useState(null);  // 风险故事线(Hook必须顶层,条件IIFE内调用会致#310)
   const trendRef=useRef(), hoursRef=useRef(), actRef=useRef();
   useEffect(()=>{ if(user) GET('/api/employees/'+encodeURIComponent(user)).then(setData); },[user]);
+  useEffect(()=>{ if(user) fetch('/api/stories',{headers:_authHdr()}).then(r=>r.json()).then(r=>setStory((r.stories||{})[user])).catch(()=>{}); },[user]);
   useEffect(()=>{
     if(!data) return;
     const vs=data.verdicts||[];
@@ -439,10 +441,7 @@ function ProfilePage({user, goBack, from}){
     </Card>
       </Col>
     </Row>
-    {(()=>{ const [story,setStory]=useState(null);
-      useEffect(()=>{ fetch('/api/stories',{headers:_authHdr()}).then(r=>r.json()).then(r=>setStory((r.stories||{})[user])).catch(()=>{}); },[user]);
-      if(!story) return null;
-      const sc={高危:'#ef4444',预警:'#f97316',关注:'#f59e0b',观察:'#94a3b8'}[story.stage]||'#94a3b8';
+    {story&&(()=>{ const sc={高危:'#ef4444',预警:'#f97316',关注:'#f59e0b',观察:'#94a3b8'}[story.stage]||'#94a3b8';
       return <Card className="card" size="small" style={{marginTop:16}} title={<span><span className="brand-bar"></span>风险故事线(近30天·AI串联)</span>}
         extra={<Tag style={{background:sc+'1a',color:sc,border:'1px solid '+sc+'55',fontWeight:700}}>{story.stage}</Tag>}>
         <div style={{fontSize:12.5,color:'var(--ink2)',lineHeight:1.8}}>{story.story}</div>
@@ -752,36 +751,27 @@ function Dashboard({go, goProfile}){
     {key:'risk', label:<span><i className="fa-solid fa-shield-halved" style={{marginRight:6}}></i>风险概览</span>, children:<div>
     <Row gutter={[16,16]}>
       {KPIS.map(c=>(
-        <Col span={8} key={c.k}>
-          <div className={'tile'+(c.danger?' alert':'')} onClick={c.go} title={c.tip}>
+        <Col span={c.k==='alert'?10:7} key={c.k}>
+          <div className={'tile'+(c.danger&&sysAl.today_critical>0?' alert':'')} onClick={c.go} title={c.tip}>
             <div className="ic"><i className={'fa-solid '+c.icon}></i></div>
-            <div className="v num">{c.loaded?(c.v==null?'—':c.v):<Ske/>}</div>
-            <div className="l">{c.l}</div>
+            <div className="v num" style={c.k==='alert'?{fontSize:36,fontWeight:800}:{fontSize:27}}>{c.loaded?(c.v==null?'—':c.v):<Ske/>}</div>
+            <div className="l" style={c.k==='alert'?{fontSize:13,fontWeight:700}:{}}>{c.l}</div>
             <div className="sub">{c.sub}</div>
-            <div className="arr">查看 ›</div>
+            {c.k==='alert'&&<div className="arr">查看 ›</div>}
           </div>
         </Col>
       ))}
     </Row>
-    {(()=>{const sl=sys.syslog||{};const det=sys.detect||{};const crit=(sysAl.list||[]).filter(a=>(a.risk_score||0)>=76&&a.status==='NEW').length;
-      const hr=((k)=>k?'#22c55e':'#94a3b8')(sl.last_recv);const crit2=crit;
-      return (<div style={{display:'flex',gap:8,marginBottom:12}}>
-        <div onClick={()=>go('rawlogs')} style={{flex:1,background:'var(--card,#fff)',borderRadius:10,padding:'10px 14px',cursor:'pointer',boxShadow:'0 1px 3px rgba(0,0,0,.06)'}}>
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
-            <span style={{width:8,height:8,borderRadius:'50%',background:'#22c55e',boxShadow:'0 0 6px #22c55e',display:'inline-block'}}></span>
-            <b style={{fontSize:13}}>实时监控在线</b>
-            <span style={{fontSize:11,color:'var(--ink3)'}}>双源接收中 · 点击看原始日志</span>
-          </div>
-        </div>
-        {crit2>0&&<div onClick={()=>go('alerts',{today:true,lvl:'crit'})} style={{flex:1,background:'linear-gradient(135deg,#fef2f2,#fff1f2)',border:'1px solid #fecaca',borderRadius:10,padding:'10px 14px',cursor:'pointer'}}>
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
-            <i className="fa-solid fa-triangle-exclamation" style={{color:'#ef4444'}}></i>
-            <b style={{fontSize:13,color:'#ef4444'}}>{crit2} 条高危未处理</b>
-            <span style={{fontSize:11,color:'#b91c1c'}}>76分+ · 立即处置 ›</span>
-          </div>
-        </div>}
+    {(()=>{const crit=(sysAl.list||[]).filter(a=>(a.risk_score||0)>=76&&a.status==='NEW').length;
+      return (<div style={{display:'flex',alignItems:'center',gap:12,margin:'2px 2px 14px',padding:'8px 14px',borderRadius:10,background:'var(--card,#fff)',boxShadow:'0 1px 3px rgba(0,0,0,.05)'}}>
+        <span style={{width:9,height:9,borderRadius:'50%',background:'#22c55e',boxShadow:'0 0 8px #22c55e',display:'inline-block'}}></span>
+        <b style={{fontSize:12.5}}>双源实时接收中</b>
+        <span style={{fontSize:11,color:'var(--ink3)'}}>深信服 + IP-Guard · 事件分钟级入库研判</span>
+        <div style={{flex:1}}></div>
+        {crit>0
+          ? <a onClick={()=>go('alerts',{today:true,lvl:'crit'})} style={{display:'flex',alignItems:'center',gap:6,padding:'5px 14px',borderRadius:8,background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'#fff',fontWeight:700,fontSize:12.5,boxShadow:'0 2px 8px rgba(239,68,68,.35)'}}><i className="fa-solid fa-triangle-exclamation"></i>{crit} 条高危未处理 · 立即处置</a>
+          : <span style={{fontSize:11.5,color:'#16a34a',display:'flex',alignItems:'center',gap:5}}><i className="fa-solid fa-circle-check"></i>无高危待处理</span>}
       </div>);})()}
-    {(sysAl.today_critical>0)&&<div title="点击查看今日严重告警明细" onClick={()=>go('alerts',{today:true,lvl:'crit'})} style={{cursor:'pointer'}}><Alert type="error" message={<span>⚠️ 今日严重告警(76+) <b>{sysAl.today_critical}</b> 条需立即关注 · 点击查看 ›</span>} style={{marginBottom:12}} showIcon/></div>}
     <Row gutter={[16,16]} style={{marginTop:16}} align="stretch">
       <Col span={17}>
         <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警日趋势</b><span style={{color:'var(--ink3)',fontSize:11,marginLeft:10}}>近7天每日告警数 · 点击查看明细</span></div>
@@ -790,31 +780,28 @@ function Dashboard({go, goProfile}){
       // TOP活跃风险: 后端聚合(近7天最高研判分,已确认/误报/关闭不参与,2026-08-19口径)
       const ga=(sys.top_active||[]).map(x=>({key:x.employee,employee:x.employee,scenario:INTENT[x.scenario]||x.scenario,scenarios:[INTENT[x.scenario]||x.scenario],maxRisk:x.risk_score,status:x.status,latest:x.latest,summary:x.summary}));
       return <Card className="card" title={<span><span className="brand-bar"></span>高风险告警 TOP5</span>} size="small" extra={<a onClick={()=>go('alerts')}>全部 →</a>}>
-        {ga.length? <Table size="small" rowKey="key" pagination={false} dataSource={ga.slice(0,5)} onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
+        {ga.length? <Table size="small" rowKey="key" pagination={false} dataSource={ga.slice(0,5)} onRow={r=>({onClick:()=>goProfile(r.employee),title:r.summary,style:{cursor:'pointer'}})}
           columns={[{title:'用户',dataIndex:'employee',width:96,render:v=><span className="uname" style={{cursor:'inherit'}}>{v}</span>},
             {title:'风险场景',dataIndex:'scenario',width:96,render:(v,r)=>{const L=LVL(r.maxRisk);return <Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40'}}>{v}</Tag>}},
             {title:'风险',dataIndex:'maxRisk',width:96,render:v=><RiskBadge s={v}/>},
-            {title:'状态',dataIndex:'status',width:84,render:v=><StatusTag s={v}/>},
-            {title:'最近活动',dataIndex:'latest',width:96,render:v=><span style={{fontSize:11,color:'var(--ink3)'}}>{(v||'').slice(5,16).replace('T',' ')}</span>},
-            {title:'说明',dataIndex:'summary',render:v=><span style={{color:'var(--ink2)',fontSize:12,lineHeight:1.65,display:'-webkit-box',WebkitLineClamp:3,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>}]}/> : <Empty description="暂无告警" style={{padding:20}}/>}
+            {title:'状态',dataIndex:'status',width:84,render:v=><StatusTag s={v}/>},            {title:'状态',dataIndex:'status',width:84,render:v=><StatusTag s={v}/>},
+            {title:'最近活动',dataIndex:'latest',width:110,render:v=><span style={{fontSize:11,color:'var(--ink3)'}}>{(v||'').slice(5,16).replace('T',' ')}</span>}]}/> : <Empty description="暂无告警" style={{padding:20}}/>}
       </Card>;
     })()}
       </Col>
-      <Col span={7} style={{display:'flex',flexDirection:'column'}}>
-        <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警分布</b><span style={{color:'var(--ink3)',fontSize:11,marginLeft:10}}>按场景</span></div>
-        <Card className="card" size="small" style={{marginBottom:16,flex:1,display:'flex',flexDirection:'column'}} bodyStyle={{padding:'14px 18px',flex:1,display:'flex',flexDirection:'column',justifyContent:'center'}}>
+      <Col span={7}>
+        <Card className="card" size="small" title={<span><span className="brand-bar"></span>告警构成</span>} style={{height:'100%'}} bodyStyle={{padding:'16px 18px'}}>
+        <div style={{fontSize:11,color:'var(--ink3)',marginBottom:4}}>按场景</div>
           {(()=>{const cnt={};(sysAl.list||[]).forEach(a=>{const s=a.scenario||'unknown';cnt[s]=(cnt[s]||0)+1;});const tot=Object.values(cnt).reduce((a,b)=>a+b,0)||1;const rows=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,5);
           return rows.length?<div>{rows.map(([k,v])=>{const L=LVL(k==='policy_violation'?80:k==='data_exfiltration'?70:50);const pct=Math.round(v/tot*100);return <div key={k} title={'点击查看「'+(INTENT[k]||k)+'」告警明细'} onClick={()=>go('alerts',{scenario:k})} style={{display:'flex',alignItems:'center',gap:10,padding:'11px 0',cursor:'pointer'}}>
             <span style={{width:72,fontSize:12,color:'var(--ink2)',fontWeight:500}}>{INTENT[k]||k}</span>
             <div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:LVL(k==='policy_violation'?80:70).c,borderRadius:4}}></div></div>
             <span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{v}</span></div>})}</div>:<Empty description="暂无告警" style={{padding:16}}/>;})()}
-        </Card>
-        <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警状态</b></div>
-        <Card className="card" size="small" style={{flex:1,display:'flex',flexDirection:'column'}} bodyStyle={{padding:'12px 18px',flex:1,display:'flex',flexDirection:'column',justifyContent:'center'}}>
+        <Divider style={{margin:'12px 0 8px'}}/>
+        <div style={{fontSize:11,color:'var(--ink3)',marginBottom:4}}>按状态</div>
           {(()=>{const st_map={NEW:['#ef4444','待处理'],CONFIRMED:['#6366f1','已知晓'],FP:['#94a3b8','误报'],CLOSED:['#22c55e','已关闭']};const sc=sysAl.status||{};const tot=Object.values(sc).reduce((a,b)=>a+b,0)||1;const rows=Object.keys(st_map).filter(k=>sc[k]);if(!rows.length) return <Empty description="暂无" style={{padding:16}}/>;return <div>{rows.map(k=>{const pct=Math.round((sc[k]||0)/tot*100);const cc=st_map[k][0];return <div key={k} title={'点击查看「'+st_map[k][1]+'」告警'} onClick={()=>go('alerts',{status:k==='NEW'?'NEW':'handled'})} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 0',cursor:'pointer'}}><span style={{width:60,fontSize:12,color:'var(--ink2)'}}>{st_map[k][1]}</span><div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:cc,borderRadius:4}}></div></div><span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{sc[k]||0}</span></div>})}</div>;})()}
-        </Card>
-        <div style={{marginBottom:10,marginTop:16}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警级别</b></div>
-        <Card className="card" size="small" style={{flex:1,display:'flex',flexDirection:'column'}} bodyStyle={{padding:'12px 18px',flex:1,display:'flex',flexDirection:'column',justifyContent:'center'}}>
+        <Divider style={{margin:'12px 0 8px'}}/>
+        <div style={{fontSize:11,color:'var(--ink3)',marginBottom:4}}>按级别</div>
           {(()=>{const lv=[['crit',s=>s>=76,'严重76+','#ef4444'],['high',s=>s>=56&&s<76,'高危56-75','#f59e0b'],['mid',s=>s>=31&&s<56,'关注31-55','#eab308'],['low',s=>s<31,'正常0-30','#94a3b8']];const tot=(sysAl.list||[]).length||1;const rows=lv.map(([k,fn,label,c])=>[k,label,c,(sysAl.list||[]).filter(a=>fn(a.risk_score||0)).length]).filter(r=>r[3]>0);if(!rows.length) return <Empty description="暂无" style={{padding:16}}/>;return <div>{rows.map(([k,label,c,v])=>{const pct=Math.round(v/tot*100);return <div key={k} title={'点击查看「'+label+'」告警'} onClick={()=>go('alerts',{lvl:k==='low'?'all':k})} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 0',cursor:'pointer'}}><span style={{width:72,fontSize:12,color:'var(--ink2)'}}>{label}</span><div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:c,borderRadius:4}}></div></div><span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{v}</span></div>})}</div>;})()}
         </Card>
       </Col>
@@ -834,11 +821,13 @@ function Dashboard({go, goProfile}){
         {title:'合计',dataIndex:'total',width:80,render:v=><span className="num" style={{fontWeight:600}}>{v}</span>},
       ]}/>
     </Card>
-    <Row gutter={20} style={{marginBottom:16}}>
-      <Col span={8}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title="AI研判(今日)" value={vd.today||0} valueStyle={{fontSize:18}}/><div style={{fontSize:11,color:'#94a3b8',marginTop:2}}>累计 {vd.total||0}</div></Card></Col>
-      <Col span={8}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title="AI成功" value={vd.ai||0} valueStyle={{fontSize:18}}/><div style={{fontSize:11,color:'#94a3b8',marginTop:2}}>兜底 {vd.fallback||0}</div></Card></Col>
-      <Col span={8}><Card className="card" size="small" style={{padding:'10px 14px'}}><Statistic title="今日人均事件" value={perUser} valueStyle={{fontSize:18}}/><div style={{fontSize:11,color:'#94a3b8',marginTop:2}}>今日 {ev.today||0} / 累计 {ev.total||0}</div></Card></Col>
-    </Row>
+<div style={{display:'flex',alignItems:'center',marginBottom:16,padding:'12px 20px',borderRadius:10,background:'var(--card,#fff)',boxShadow:'0 1px 3px rgba(0,0,0,.05)'}}>
+      <div style={{flex:1,textAlign:'center'}}><div className="num" style={{fontSize:20,fontWeight:700}}>{vd.today||0}</div><div style={{fontSize:11,color:'var(--ink3)'}}>今日研判 · 累计{vd.total||0}</div></div>
+      <div style={{width:1,height:28,background:'var(--line)'}}></div>
+      <div style={{flex:1,textAlign:'center'}}><div className="num" style={{fontSize:20,fontWeight:700,color:(vd.fallback||0)>0?'var(--danger)':'inherit'}}>{vd.ai||0}</div><div style={{fontSize:11,color:'var(--ink3)'}}>AI成功 · 兜底{vd.fallback||0}</div></div>
+      <div style={{width:1,height:28,background:'var(--line)'}}></div>
+      <div style={{flex:1,textAlign:'center'}}><div className="num" style={{fontSize:20,fontWeight:700}}>{perUser}</div><div style={{fontSize:11,color:'var(--ink3)'}}>今日人均事件</div></div>
+    </div>
     {(sys.health&&(sys.health.disk||sys.health.ai))&&<Row gutter={16} style={{marginBottom:16}}>
       <Col span={12}><Card className="card" title="资源与空间" size="small" extra={<span style={{fontSize:11,color:'var(--ink3)'}}>每日02:00自动备份</span>}>
         {sys.health.disk&&<div style={{marginBottom:8}} title="数据所在磁盘的用量(容器视角=宿主挂载盘)">
@@ -862,43 +851,35 @@ function Dashboard({go, goProfile}){
         </div>);})()}
       </Card></Col>
     </Row>}
-    <Row gutter={16} style={{marginBottom:16}}>
-      <Col span={12}><Card className="card" title="Syslog 接收" size="small">
-        <Row gutter={8}>
-          <Col span={8}><div style={{textAlign:'center',paddingTop:6}}><Badge status={sl.enabled?'success':'default'} text={sl.enabled?'监听中':'停止'}/></div></Col>
-          <Col span={8}><Statistic title="已接收" value={sl.count||0}/></Col>
-          <Col span={8}><Statistic title="已入库" value={sl.ingested||0}/></Col>
-        </Row>
-        {sl.last_recv&&<div style={{fontSize:11,color:'var(--ink3)',marginTop:6}} title='数据流心跳:最近一次收到深信服报文的时间(工作时间超过2小时无报文会自动推送告警)'>最近报文 <b className='num'>{sl.last_recv}</b>{sl.error?' · ':''}</div>}
-        {sl.error&&<div style={{color:'var(--danger)',fontSize:12,marginTop:4}}>{sl.error}</div>}
-        {sl.recent&&sl.recent.length>0&&<div style={{marginTop:8,fontSize:11,maxHeight:64,overflow:'auto',borderTop:'1px solid var(--line)',paddingTop:6}}>
-          {sl.recent.slice(0,5).map((m,i)=><div key={i} style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><b>{m.t}</b> {m.msg.slice(20,70)}</div>)}
-        </div>}
-      </Card></Col>
-      <Col span={12}><Card className="card" title="AI 研判引擎" size="small" extra={!det.running&&<Button size="small" type="primary" ghost onClick={async()=>{message.loading({content:'已启动增量研判…',key:'det',duration:2});await POST('/api/run');loadSys();}}>增量研判</Button>}>
-        {det.running ? (<div>
-          <Progress percent={pct} status="active" format={()=>det.done+'/'+det.total}/>
-          <div style={{marginTop:4,color:'var(--ink2)',fontSize:12}}>4线程并发 · 已研判 {det.done}/{det.total} 窗口{det.total?(' · '+pct+'%'):''}</div>
-        </div>) : det.error ? (
-          <div style={{padding:'4px 0'}}>
-            <Badge status="error" text={<span style={{color:'var(--danger)',fontSize:13,fontWeight:700}}>上次研判失败（未跑完）</span>}/>
-            <div style={{marginTop:6,fontSize:11,color:'var(--danger)',background:'var(--bg)',padding:'6px 8px',borderRadius:6,fontFamily:'Consolas,monospace'}}>{String(det.error).split('\n')[0]}</div>
+    <Card className="card" size="small" title={<span><span className="brand-bar"></span>服务状态</span>}>
+      <Row gutter={24}>
+        <Col span={8}>
+          <div style={{fontSize:11,color:'var(--ink3)',marginBottom:6}}>Syslog 接收</div>
+          <Badge status={sl.enabled?'success':'default'} text={sl.enabled?'监听中':'停止'}/> <span className="num" style={{fontSize:12}}>收 {sl.count||0} · 入库 {sl.ingested||0}</span>
+          {sl.last_recv&&<div style={{fontSize:11,color:'var(--ink3)',marginTop:4}} title='最近一次收到报文的时间(工作时间超2小时无报文自动告警)'>最近报文 <b className="num">{sl.last_recv}</b></div>}
+          {sl.error&&<div style={{color:'var(--danger)',fontSize:11,marginTop:2}}>{sl.error}</div>}
+        </Col>
+        <Col span={9}>
+          <div style={{fontSize:11,color:'var(--ink3)',marginBottom:6}}>AI 研判引擎 {!det.running&&<a style={{fontSize:11}} onClick={async()=>{message.loading({content:'已启动增量研判…',key:'det',duration:2});await POST('/api/run');loadSys();}}>[增量研判]</a>}</div>
+          {det.running ? (<div>
+            <Progress percent={pct} size="small" status="active" format={()=>det.done+'/'+det.total}/>
+            <div style={{marginTop:2,color:'var(--ink2)',fontSize:11}}>4线程并发 · {pct}%</div>
+          </div>) : det.error ? (
+            <div><Badge status="error" text={<span style={{color:'var(--danger)',fontSize:12,fontWeight:700}}>上次研判失败</span>}/>
+            <div style={{marginTop:4,fontSize:10.5,color:'var(--danger)',background:'var(--bg)',padding:'4px 6px',borderRadius:6,fontFamily:'Consolas,monospace'}}>{String(det.error).split('\n')[0]}</div></div>
+          ) : (
+            <div><Badge status="success" text={<span style={{color:'#22c55e',fontSize:12}}>就绪 · 空闲</span>}/>
+            {det.last_finished&&<div style={{marginTop:4,fontSize:11,color:'var(--ink3)'}}>上次 {det.last_judged||0}窗口/{det.last_alerts||0}告警 · {String(det.last_finished).replace('T',' ').slice(5,16)}</div>}</div>
+          )}
+        </Col>
+        <Col span={7}>
+          <div style={{fontSize:11,color:'var(--ink3)',marginBottom:6}}>用户与系统</div>
+          <div style={{fontSize:12,lineHeight:2,color:'var(--ink2)'}}>
+            监控 <b className="num">{sys.employees_total||0}</b> 人 · 豁免 <b className="num">{sys.exceptions||0}</b> 条<br/>
+            数据库 <b className="num">{sys.db_size_mb||0} MB</b> · 保留 <b className="num">{sys.retention_days||90}</b> 天
           </div>
-        ) : (
-          <div style={{padding:'6px 0'}}>
-            <Badge status="success" text={<span style={{color:'#22c55e',fontSize:13}}>引擎就绪 · 空闲</span>}/>
-            {det.last_finished&&<div style={{marginTop:4,fontSize:12,color:'var(--ink3)'}}>上次：{det.last_judged||0}窗口 / {det.last_alerts||0}告警 · {String(det.last_finished).replace('T',' ').slice(0,16)}</div>}
-          </div>
-        )}
-      </Card></Col>
-    </Row>
-    <Card className="card" title="用户与系统" size="small">
-      <Descriptions column={2} size="small">
-        <Descriptions.Item label="监控用户">{sys.employees_total||0} 人</Descriptions.Item>
-        <Descriptions.Item label="有效豁免">{sys.exceptions||0} 条</Descriptions.Item>
-        <Descriptions.Item label="数据库大小">{sys.db_size_mb||0} MB</Descriptions.Item>
-        <Descriptions.Item label="自动清理">{sys.retention_days||90}天 / 每小时</Descriptions.Item>
-      </Descriptions>
+        </Col>
+      </Row>
     </Card>
     </div>},
   ]}/>);
@@ -1129,7 +1110,7 @@ function Verdicts({goProfile,filter}){
         </Select>
       </Space>
       <Table size="small" rowKey={merged?'key':'id'} pagination={{pageSize:14,showTotal:t=>`共 ${t} ${merged?'组':'条'}${!merged&&t>=500?' (仅显示最近500条)':''}`}} loading={loading} dataSource={viewData}
-        onRow={r=>({onClick:()=>goProfile(r.employee),style:{cursor:'pointer'}})}
+        onRow={r=>({onClick:()=>goProfile(r.employee),title:r.summary,style:{cursor:'pointer'}})}
         columns={merged?[
           {title:<TH t="用户" />,dataIndex:'employee',width:110,render:v=><span className="uname" style={{cursor:'inherit'}}>{v}</span>},
           {title:<TH t="意图" tip="AI判定的行为意图。数据外发/求职离职/行为偏离/违规/正常。" />,dataIndex:'intent',width:110,render:v=><Tag style={{background:'var(--brand-soft)',color:'var(--brand)',border:'1px solid var(--brand)'+'33'}}>{INTENT[v]||v}</Tag>},
