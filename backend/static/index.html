@@ -465,6 +465,25 @@ function ProfilePage({user, goBack, from}){
           {title:<TH t="说明" />,dataIndex:'summary',render:v=><span style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>},
         ]}/>
     </Card>}
+    {(()=>{ const [tl,setTl]=useState(null); const [tlLoading,setTlLoading]=useState(false);
+      useEffect(()=>{ if(!user) return; setTlLoading(true);
+        fetch('/api/employees/'+encodeURIComponent(user)+'/timeline?days=7',{headers:_authHdr()})
+          .then(r=>r.json()).then(r=>setTl(r.timeline||[])).catch(()=>setTl([])).finally(()=>setTlLoading(false));
+      },[user]);
+      return <Card className="card" size="small" style={{marginTop:16}} title={<span><span className="brand-bar"></span>行为时间线（近7天 · 双源混排）</span>}
+        extra={<span style={{fontSize:11,color:'var(--ink3)'}}>{tlLoading?'加载中...':(tl?tl.length+'条':'')}</span>}>
+        {tlLoading ? <div style={{padding:30,textAlign:'center',color:'var(--ink3)'}}>加载时间线...</div> :
+         (tl&&tl.length>0) ? <div style={{maxHeight:400,overflowY:'auto',padding:'4px 0'}}>
+          {tl.slice(-80).reverse().map((x,i)=>{ const isRisk=x.type==='web_risk'||String(x.type).includes('send')||String(x.type).includes('upload')||String(x.type).includes('delete');
+            return (<div key={i} style={{display:'flex',alignItems:'flex-start',gap:10,padding:'5px 8px',
+              borderLeft:isRisk?'3px solid #f97316':'3px solid transparent',borderRadius:4,marginBottom:2,
+              background:isRisk?'#fff7ed':'transparent'}}>
+              <span style={{fontSize:11,color:'var(--ink3)',width:85,flexShrink:0}}>{x.t}</span>
+              <span style={{fontSize:14,flexShrink:0}}>{x.icon}</span>
+              <span style={{fontSize:12,color:isRisk?'#c2410c':'var(--ink2)',lineHeight:1.5}}>{x.text}</span>
+            </div>);})}
+         </div> : <div style={{padding:20,textAlign:'center',color:'var(--ink3)',fontSize:12}}>近7天无行为记录</div>}
+      </Card>; })()}
     <Card className="card" title={<span><span className="brand-bar"></span>研判历史（{data.verdict_count!=null?data.verdict_count:vs.length} 次研判 · 风险≥50 升级为告警）</span>} size="small" style={{marginTop:16}}>
       <Table size="small" rowKey="window_start" pagination={{pageSize:8}} dataSource={vs}
         columns={[{title:'时间',dataIndex:'window_start',width:150,render:v=>(v||'').replace('T',' ').slice(0,16)},
@@ -780,6 +799,27 @@ function Dashboard({go, goProfile}){
           ? <a onClick={()=>go('alerts',{today:true,lvl:'crit'})} style={{display:'flex',alignItems:'center',gap:6,padding:'5px 14px',borderRadius:8,background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'#fff',fontWeight:700,fontSize:12.5,boxShadow:'0 2px 8px rgba(239,68,68,.35)'}}><i className="fa-solid fa-triangle-exclamation"></i>{crit} 条高危未处理 · 立即处置</a>
           : <span style={{fontSize:11.5,color:'#16a34a',display:'flex',alignItems:'center',gap:5}}><i className="fa-solid fa-circle-check"></i>无高危待处理</span>}
       </div>);})()}
+    {(()=>{ const [board,setBoard]=useState(null);
+      useEffect(()=>{ fetch('/api/risk-board',{headers:_authHdr()}).then(r=>r.json()).then(r=>setBoard(r.board||[])).catch(()=>{}); },[]);
+      if(!board||board.length===0) return null;
+      const stageC={高危:'#ef4444',预警:'#f97316',关注:'#f59e0b',观察:'#94a3b8'};
+      return <Card className="card" size="small" style={{marginBottom:16}} title={<span><span className="brand-bar"></span>离职风险榜 <span style={{fontSize:11,color:'var(--ink3)',fontWeight:400}}>(多信号组合 · 30秒刷新)</span></span>}>
+        <div style={{display:'flex',gap:0,overflowX:'auto'}}>
+          {board.slice(0,8).map(x=>{ const c=stageC[x.stage]||'#94a3b8';
+            return (<div key={x.employee} onClick={()=>goProfile(x.employee)}
+              style={{flex:'0 0 135px',padding:'10px 12px',cursor:'pointer',borderRadius:8,marginRight:8,
+                background:c+'08',border:'1px solid '+c+'22',transition:'all .15s'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <b style={{fontSize:13,color:'var(--ink)'}}>{x.employee}</b>
+                <span className="num" style={{fontSize:18,fontWeight:800,color:c}}>{x.score}</span>
+              </div>
+              <div style={{fontSize:10.5,color:c,marginTop:2}}>{x.stage} · {x.signals}类信号</div>
+              <div style={{fontSize:10,color:'var(--ink3)',marginTop:4,lineHeight:1.5}}>
+                {Object.entries(x.breakdown).map(([k,v])=>(k==='job'?'招聘':k==='exfil'?'外发':k==='delete'?'删除':k==='search'?'搜索':'深夜')+':'+v).join(' · ')}
+              </div>
+            </div>);})}
+        </div>
+      </Card>; })()}
     <Row gutter={[16,16]} style={{marginTop:16}} align="stretch">
       <Col span={17}>
         <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警日趋势</b><span style={{color:'var(--ink3)',fontSize:11,marginLeft:10}}>近7天每日告警数 · 点击查看明细</span></div>
