@@ -119,6 +119,23 @@ def _digest(s, emp, d0, d1, day):
 def _writeback(emp, r, d0, d1):
     direction = r.get("direction") or "keep"
     if direction == "keep":
+        # 维持原判也标注(2026-08-21用户口径: 今日前的告警都应是复核过的,
+        # 不能全挂'实时'标签)——轻量前缀,不带理由长文
+        s = Session()
+        try:
+            for a in s.query(AlertRow).filter(AlertRow.employee_id == emp).all():
+                if a.status in ("FP", "CLOSED"):
+                    continue
+                if not (a.window_start and d0 <= a.window_start < d1):
+                    continue
+                sm = (a.summary or "")
+                if not sm.startswith("[次日复核"):
+                    a.summary = f"[次日复核:维持] {sm}"
+            s.commit()
+        except Exception:
+            s.rollback()
+        finally:
+            s.close()
         return
     sug = int(r.get("suggested_score") or 0)
     reason = (r.get("reason") or "")[:80]
