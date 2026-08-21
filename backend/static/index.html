@@ -406,6 +406,16 @@ function ProfilePage({user, goBack, from}){
             <span>0点</span><span>6</span><span>12</span><span>18</span><span>23点</span>
           </div>
         </div>
+        {(()=>{const dt=Object.entries(p.doc_types||{}).slice(0,6);const pc=Object.entries(p.project_codes||{}).slice(0,6);const sc=Object.entries(p.send_channels||{}).slice(0,4);const rh=p.rhythm||{};const st=p.search_topics||[];
+          if(!dt.length&&!pc.length&&!sc.length&&!st.length) return null;
+          return (<div style={{marginTop:10,padding:'8px 10px',background:'var(--bg)',borderRadius:8}}>
+            <div style={{fontSize:11,color:'var(--ink3)',marginBottom:6}}>文档与行为画像（IPG多源）</div>
+            {dt.length>0&&<div style={{fontSize:11,color:'var(--ink2)',marginBottom:3}}>📄 常处理文件：{dt.map(([k,v])=><Tag key={k} style={{fontSize:10,margin:1}}>{k}×{v}</Tag>)}</div>}
+            {pc.length>0&&<div style={{fontSize:11,color:'var(--ink2)',marginBottom:3}}>🗂 项目编号：{pc.map(([k,v])=><Tag key={k} style={{fontSize:10,margin:1}} color="blue">{k}</Tag>)}</div>}
+            {sc.length>0&&<div style={{fontSize:11,color:'var(--ink2)',marginBottom:3}}>📤 外发习惯：{sc.map(([k,v])=><Tag key={k} style={{fontSize:10,margin:1}} color="orange">{k.split(':')[0]}·{(k.split(':')[1]||'').slice(0,18)}×{v}</Tag>)}</div>}
+            {rh.start_median!=null&&<div style={{fontSize:11,color:'var(--ink2)',marginBottom:3}}>⏰ 节律：约{rh.start_median}点开始 · {rh.end_median}点结束 · 深夜活跃{rh.late_night_days||0}天</div>}
+            {st.length>0&&<div style={{fontSize:11,color:'var(--ink2)'}}>🔍 近期搜索：{st.slice(0,5).map((k,i)=><Tag key={i} style={{fontSize:10,margin:1}}>{k}</Tag>)}</div>}
+          </div>);})()}
         {(()=>{const wc=Object.entries(p.web_classes||{}).sort((a,b)=>b[1]-a[1]).slice(0,5);const tot=Object.values(p.web_classes||{}).reduce((a,b)=>a+b,0)||1;
           return wc.length?(<div style={{marginTop:10}}>
             <div style={{fontSize:11,color:'var(--ink3)',marginBottom:5}}>常访问类别（历史占比）</div>
@@ -753,6 +763,24 @@ function Dashboard({go, goProfile}){
         </Col>
       ))}
     </Row>
+    {(()=>{const sl=sys.syslog||{};const det=sys.detect||{};const crit=(sysAl.list||[]).filter(a=>(a.risk_score||0)>=76&&a.status==='NEW').length;
+      const hr=((k)=>k?'#22c55e':'#94a3b8')(sl.last_recv);const crit2=crit;
+      return (<div style={{display:'flex',gap:8,marginBottom:12}}>
+        <div onClick={()=>go('rawlogs')} style={{flex:1,background:'var(--card,#fff)',borderRadius:10,padding:'10px 14px',cursor:'pointer',boxShadow:'0 1px 3px rgba(0,0,0,.06)'}}>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <span style={{width:8,height:8,borderRadius:'50%',background:'#22c55e',boxShadow:'0 0 6px #22c55e',display:'inline-block'}}></span>
+            <b style={{fontSize:13}}>实时监控在线</b>
+            <span style={{fontSize:11,color:'var(--ink3)'}}>双源接收中 · 点击看原始日志</span>
+          </div>
+        </div>
+        {crit2>0&&<div onClick={()=>go('alerts',{today:true,lvl:'crit'})} style={{flex:1,background:'linear-gradient(135deg,#fef2f2,#fff1f2)',border:'1px solid #fecaca',borderRadius:10,padding:'10px 14px',cursor:'pointer'}}>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <i className="fa-solid fa-triangle-exclamation" style={{color:'#ef4444'}}></i>
+            <b style={{fontSize:13,color:'#ef4444'}}>{crit2} 条高危未处理</b>
+            <span style={{fontSize:11,color:'#b91c1c'}}>76分+ · 立即处置 ›</span>
+          </div>
+        </div>}
+      </div>);})()}
     {(sysAl.today_critical>0)&&<div title="点击查看今日严重告警明细" onClick={()=>go('alerts',{today:true,lvl:'crit'})} style={{cursor:'pointer'}}><Alert type="error" message={<span>⚠️ 今日严重告警(76+) <b>{sysAl.today_critical}</b> 条需立即关注 · 点击查看 ›</span>} style={{marginBottom:12}} showIcon/></div>}
     <Row gutter={[16,16]} style={{marginTop:16}} align="stretch">
       <Col span={17}>

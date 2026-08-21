@@ -198,6 +198,13 @@ def _flush_loop():
     # 不变量自检自愈: 每10分钟独立跑一次(20×30s),不等小时级维护——
     # 用户要求循环检测加密(2026-08-20),纯程序检查零LLM成本
     if _flush_count % 20 == 0:
+        try:  # 行为聚合(10分钟): 大量删除=离职前兆,实时化(2026-08-21用户要求)
+            from massops import scan_mass_deletes
+            _md = scan_mass_deletes()
+            if _md.get("created"):
+                print(f"[massops] 新增聚合告警{_md['created']}条", flush=True)
+        except Exception as _me:
+            print(f"[massops] 失败: {_me}", flush=True)
         try:
             from selfheal import selfcheck
             _r = selfcheck()
@@ -220,13 +227,6 @@ def _flush_loop():
                 _alias_discover()  # 用户名映射自动发现(拼音级自动,推测级进候选)
             except Exception:
                 pass
-            try:  # 行为聚合告警(每小时): 大量删除=离职前兆(2026-08-20用户要求)
-                from massops import scan_mass_deletes
-                _md = scan_mass_deletes()
-                if _md.get("created"):
-                    print(f"[massops] 新增聚合告警{_md['created']}条", flush=True)
-            except Exception as _me:
-                print(f"[massops] 失败: {_me}", flush=True)
             try:  # N+1日复核(每天凌晨,回看昨天全天): 修正实时结论(2026-08-21)
                 from db import bj_now as _bj8
                 _d8 = _bj8()
