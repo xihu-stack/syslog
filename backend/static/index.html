@@ -292,7 +292,7 @@ const DEL=(u)=>fetch(u,{method:'DELETE',headers:_authHdr()}).then(_handle401).th
 function TH({t, tip}){ const sp={whiteSpace:'nowrap'}; return tip ? <Tooltip title={tip}><span style={{...sp,cursor:'help',borderBottom:'1px dotted var(--ink3)'}}>{t} <i className="fa-solid fa-circle-info" style={{fontSize:10,color:'var(--ink3)',marginLeft:2}}/></span></Tooltip> : <span style={sp}>{t}</span>; }
 function RiskBadge({s}){ const v=LVL(s); return <span className="risk" style={{background:v.c+'1a',color:v.c,border:'1px solid '+v.c+'66'}}><i className="fa-solid fa-shield-halved" style={{marginRight:4,fontSize:11}}></i>{s==null?'-':s} {v.l}</span>; }
 function StatusTag({s}){ const v=STATUS_MAP[s]||{c:'#999',t:s}; return <span className="st-tag" style={{background:v.c+'1a',color:v.c}}>{v.i&&<i className={'fa-solid '+v.i} style={{marginRight:4,fontSize:11}}></i>}{v.t}</span>; }
-const FROM_TITLE={computers:'用户视图',alerts:'告警管理',verdicts:'研判记录',efficiency:'效率监控',dashboard:'监控大屏'};
+const FROM_TITLE={computers:'用户视图',alerts:'告警工作台',verdicts:'研判记录',efficiency:'效率监控',dashboard:'安全总览'};
 function ProfilePage({user, goBack, from}){
   const [data,setData]=useState(null);
   const [story,setStory]=useState(null);  // 风险故事线(Hook必须顶层,条件IIFE内调用会致#310)
@@ -680,21 +680,16 @@ function App(){
         <div className="logo"><img src="/logo.png" alt="HELIXON 华深智药"/><s>员工行为分析系统</s></div>
         <Menu mode="inline" theme="dark" selectedKeys={[key==='profile'?(profileFrom||'alerts'):key]} onClick={e=>navigate(e.key)} style={{background:'transparent',borderRight:'none',paddingTop:6}}
           items={[
-            {type:'group',label:<span className="sb-group">概览</span>,children:[
-              {key:'dashboard',label:<span><i className="fa-solid fa-gauge-high"></i><span>监控大屏</span></span>},
-              {key:'computers',label:<span><i className="fa-solid fa-users"></i><span>用户视图</span></span>},
-            ]},
-            {type:'group',label:<span className="sb-group">风险</span>,children:[
-              {key:'alerts',label:<span><i className="fa-solid fa-bell"></i><span>告警管理</span></span>},
-              {key:'verdicts',label:<span><i className="fa-solid fa-scale-balanced"></i><span>研判记录</span></span>},
-              {key:'rawlogs',label:<span><i className="fa-solid fa-file-lines"></i><span>原始日志</span></span>},
+            {type:'group',label:<span className="sb-group">核心</span>,children:[
+              {key:'dashboard',label:<span><i className="fa-solid fa-gauge-high"></i><span>安全总览</span></span>},
+              {key:'alerts',label:<span><i className="fa-solid fa-bell"></i><span>告警工作台</span></span>},
             ]},
             {type:'group',label:<span className="sb-group">分析</span>,children:[
               {key:'efficiency',label:<span><i className="fa-solid fa-chart-column"></i><span>效率监控</span></span>},
-              {key:'ask',label:<span><i className="fa-solid fa-robot"></i><span>AI 问答</span></span>},
+              {key:'ask',label:<span><i className="fa-solid fa-robot"></i><span>AI 助手</span></span>},
             ]},
-            {type:'group',label:<span className="sb-group">系统</span>,children:[
-              {key:'handbook',label:<span><i className="fa-solid fa-book-open"></i><span>使用手册</span></span>},
+            {type:'group',label:<span className="sb-group">工具</span>,children:[
+              {key:'rawlogs',label:<span><i className="fa-solid fa-file-lines"></i><span>原始日志</span></span>},
               {key:'config',label:<span><i className="fa-solid fa-gear"></i><span>系统设置</span></span>},
             ]},
           ]}/>
@@ -712,9 +707,27 @@ function App(){
               <span onClick={()=>{navigate(profileFrom||'alerts');setProfileUser(null);}} style={{color:'var(--ink3)',cursor:'pointer'}}>{FROM_TITLE[profileFrom]||'告警管理'}</span>
               <span style={{color:'var(--ink4)'}}>/</span>
               <span style={{fontWeight:700,color:'var(--ink)',fontSize:15}}>{profileUser}</span>
-            </>) : (<span style={{fontWeight:700,color:'var(--ink)',fontSize:15}}>{({dashboard:'监控大屏',computers:'用户视图',alerts:'告警管理',verdicts:'研判记录',efficiency:'效率监控',ask:'AI 问答',rawlogs:'原始日志',config:'系统设置',handbook:'使用手册'})[key]}</span>)}
+            </>) : (<span style={{fontWeight:700,color:'var(--ink)',fontSize:15}}>{({dashboard:'安全总览',computers:'用户视图',alerts:'告警工作台',verdicts:'研判记录',efficiency:'效率监控',ask:'AI 助手',rawlogs:'原始日志',config:'系统设置',handbook:'使用手册'})[key]}</span>)}
           </div>
           <Space size={8}>
+            {(()=>{ // 全局搜索(2026-08-21 UI重构): 人名/域名/文件名
+              const [sq,setSq]=useState(''); const [sres,setSres]=useState(null); const [sopen,setSopen]=useState(false);
+              const doSearch=(v)=>{ setSq(v); if(v.trim().length<2){setSres(null);setSopen(false);return;}
+                fetch('/api/search?q='+encodeURIComponent(v.trim()),{headers:_authHdr()})
+                  .then(r=>r.json()).then(r=>{setSres(r.results||[]);setSopen(true);}).catch(()=>{}); };
+              return (<div style={{position:'relative'}}>
+                <Input size="small" prefix={<i className="fa-solid fa-magnifying-glass" style={{color:'var(--ink3)',fontSize:11}}></i>}
+                  placeholder="搜索人名/域名/文件..." style={{width:200}} value={sq} onChange={e=>doSearch(e.target.value)} allowClear
+                  onFocus={()=>sq.length>=2&&setSopen(true)} onBlur={()=>setTimeout(()=>setSopen(false),200)} />
+                {sopen&&sres&&sres.length>0&&(<div style={{position:'absolute',top:34,left:0,right:0,zIndex:1000,background:'var(--card,#fff)',borderRadius:8,boxShadow:'0 4px 16px rgba(0,0,0,.12)',maxHeight:280,overflowY:'auto',padding:4}}>
+                  {sres.map((r,i)=>(<div key={i} style={{padding:'6px 10px',cursor:'pointer',borderRadius:6,fontSize:12,
+                    display:'flex',gap:8,alignItems:'center'}} hoverable
+                    onMouseDown={()=>{ if(r.type==='person'){setProfileFrom('dashboard');setProfileUser(r.value);setKey('profile');setSopen(false);} else if(r.type==='domain'){setKey('rawlogs');setSopen(false);} else {setKey('rawlogs');setSopen(false);} }}>
+                    <i className={r.type==='person'?'fa-solid fa-user':r.type==='domain'?'fa-solid fa-globe':'fa-solid fa-file'} style={{color:'var(--brand)',fontSize:11}}></i>
+                    <div><div style={{fontWeight:600,color:'var(--ink)'}}>{r.value}</div><div style={{fontSize:10,color:'var(--ink3)'}}>{r.label}</div></div>
+                  </div>))}
+                </div>)}
+              </div>); })()}
             <Upload showUploadList={false} beforeUpload={uploadLog}><Button type="primary"><i className="fa-solid fa-upload" style={{marginRight:6}}></i>导入日志</Button></Upload>
             <Button onClick={()=>{ Modal.confirm({title:'全量重新研判', content:'用当前规则对全部历史窗口重判(约几分钟,LLM调用量较大)。已知晓/误报的处置状态保留,告警分数与说明会按新规则刷新。', okText:'开始重判', cancelText:'取消', onOk:()=>{ POST('/api/rejudge'); pollDetect(); }}); }}><i className="fa-solid fa-rotate" style={{marginRight:6}}></i>重新研判</Button>
             <Button href="/api/export/alerts" target="_blank"><i className="fa-solid fa-download" style={{marginRight:6}}></i>导出</Button>
