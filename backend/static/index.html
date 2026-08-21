@@ -1196,13 +1196,16 @@ function RawLogs(){
   };
   useEffect(()=>{load();},[]);
   return (<div>
-    <div className="sec-title">原始日志 · 深信服推送的报文原文（共 {total} 条） · <span style={{fontSize:11,color:'#94a3b8'}}>url=网站访问 other_log=APP/DNS</span></div>
+    <div className="sec-title">原始日志 · 深信服 + IP-Guard 双源报文（共 {total} 条）</div>
     <Card className="card" size="small">
       <Space style={{marginBottom:8}} wrap>
         <DatePicker.RangePicker value={dr} onChange={v=>setDr(v)} placeholder={['开始日期','结束日期']} />
         <Select value={logType||undefined} style={{width:160}} allowClear placeholder="日志类型" onChange={v=>setLogType(v||'')}>
-          <Select.Option value="url">url (URL访问)</Select.Option>
-          <Select.Option value="other_log">other_log (APP/DNS)</Select.Option>
+          <Select.Option value="url">url (深信服·URL)</Select.Option>
+          <Select.Option value="other_log">other_log (深信服·APP/DNS)</Select.Option>
+          <Select.Option value="IPG-web">IPG-web (网页)</Select.Option>
+          <Select.Option value="IPG-doc">IPG-doc (文档)</Select.Option>
+          <Select.Option value="IPG-search">IPG-search (搜索)</Select.Option>
         </Select>
         <Input placeholder="搜用户" allowClear style={{width:120}} value={uq} onChange={e=>setUq(e.target.value)} onPressEnter={load} />
         <Input placeholder="关键词(报文内容)" allowClear style={{width:160}} value={kw} onChange={e=>setKw(e.target.value)} onPressEnter={load} />
@@ -1218,7 +1221,7 @@ function RawLogs(){
         </div>)}}
         columns={[
           {title:'接收时间',dataIndex:'received_at',width:150,render:v=><span style={{fontSize:11,color:'#475569'}}>{(v||'').replace('T',' ').slice(0,19)}</span>},
-          {title:'类型',dataIndex:'log_type',width:80,render:v=><Tag color={v==='url'?'blue':'default'}>{v||'?'}</Tag>},
+          {title:'类型',dataIndex:'log_type',width:90,render:v=><Tag color={v==='url'?'blue':v==='IPG-web'?'cyan':v==='IPG-doc'?'geekblue':v==='IPG-search'?'purple':'default'}>{v||'?'}</Tag>},
           {title:'用户',dataIndex:'user',width:100},
           {title:'应用',dataIndex:'app',width:110,render:v=><span style={{fontSize:11}}>{v||'-'}</span>},
           {title:'报文原文',dataIndex:'msg',render:v=><span title={v} style={{fontFamily:'Consolas,monospace',fontSize:11,color:'#475569',display:'block',maxWidth:640,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{v}</span>},
