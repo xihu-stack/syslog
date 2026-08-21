@@ -39,6 +39,20 @@ def _verdict_sig(s, v):
 
 
 def selfcheck() -> dict:
+    """带重试的外壳(2026-08-21): 长事务撞锁/autoflush失败时回滚重试,
+    单轮部分修复不丢失——已提交语义由幂等检查保证(下轮自然收敛)。"""
+    import time as _t
+    last_err = None
+    for _i in range(3):
+        try:
+            return _selfcheck_once()
+        except Exception as ex:
+            last_err = str(ex)[:200]
+            _t.sleep(3)
+    return {"error": f"重试3次仍失败: {last_err}"}
+
+
+def _selfcheck_once() -> dict:
     fixes = []
     s = Session()
     try:
