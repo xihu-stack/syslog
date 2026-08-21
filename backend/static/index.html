@@ -264,10 +264,12 @@ const _askClear=async()=>{ await fetch('/api/ask/history',{method:'DELETE',heade
 const LVL = s => (s==null)?{c:'#94a3b8',l:'-'} : s>=76?{c:'#ef4444',l:'严重'} : s>=56?{c:'#f97316',l:'高危'} : s>=31?{c:'#3b82f6',l:'关注'} : {c:'#22c55e',l:'正常'};
 const INTENT = {data_exfiltration:'数据外发', job_seeking:'求职离职', baseline_deviation:'行为偏离', policy_violation:'违规', normal_work:'正常', unknown:'未知', mass_delete:'大量删除'};
 // 告警来源标签(2026-08-21): 实时(事件触发) / N+1复核(次日全天视野修正) / 聚合(行为聚合如大量删除)
-const SRCTAG=(summary,scenario)=>{
+const SRCTAG=(summary,scenario,ts)=>{
   if((summary||'').startsWith('[次日复核')) return {t:'N+1复核',c:'#6366f1',tip:'次日复核: R1用全天视野重新评估后的修正结论'};
   if(scenario==='mass_delete') return {t:'聚合',c:'#a855f7',tip:'行为聚合告警: 跨窗口聚合检测(如单日大量删除),10分钟级扫描'};
-  return {t:'实时',c:'#22c55e',tip:'实时研判: 事件窗口触发,N+0层'};
+  const _td=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});
+  if(ts&&String(ts).slice(0,10)<_td) return {t:'复核',c:'#3b82f6',tip:'今日前的历史告警: 已经过全量重判与复核流程,与今日实时分层查看'};
+  return {t:'实时',c:'#22c55e',tip:'实时研判: 今日事件窗口触发,N+0层'};
 };
 const DEV = {none:'无', minor:'轻微', major:'重大', severe:'严重', unknown:'未知'};
 const STATUS_MAP = {NEW:{c:'#ef4444',t:'待处理',i:'fa-clock'}, TRIAGING:{c:'#f59e0b',t:'处理中',i:'fa-spinner'}, CONFIRMED:{c:'#6366f1',t:'已知晓',i:'fa-circle-exclamation'}, FP:{c:'#94a3b8',t:'误报',i:'fa-xmark'}, CLOSED:{c:'#22c55e',t:'已关闭',i:'fa-circle-check'}};
@@ -456,7 +458,7 @@ function ProfilePage({user, goBack, from}){
     {(data.alerts||[]).length>0 && <Card className="card" title={<span><span className="brand-bar"></span>告警明细（{(data.alert_count||0)} 条 · 与用户视图同源）</span>} size="small" style={{marginTop:16}}>
       <Table size="small" rowKey="window_start" pagination={false} dataSource={data.alerts||[]}
         columns={[
-          {title:<TH t="场景" />,dataIndex:'scenario',width:130,render:(v,r)=>{const L=INTENT[v]||v;const st=SRCTAG(r.summary,v);return <Space size={3}><Tooltip title={st.tip}><Tag style={{background:st.c+'14',color:st.c,border:'1px solid '+st.c+'44',fontSize:10}}>{st.t}</Tag></Tooltip><Tag style={{background:'var(--brand-soft)',color:'var(--brand)',border:'1px solid var(--brand)'+'33'}}>{L}</Tag></Space>}},
+          {title:<TH t="场景" />,dataIndex:'scenario',width:130,render:(v,r)=>{const L=INTENT[v]||v;const st=SRCTAG(r.summary,v,r.window_start);return <Space size={3}><Tooltip title={st.tip}><Tag style={{background:st.c+'14',color:st.c,border:'1px solid '+st.c+'44',fontSize:10}}>{st.t}</Tag></Tooltip><Tag style={{background:'var(--brand-soft)',color:'var(--brand)',border:'1px solid var(--brand)'+'33'}}>{L}</Tag></Space>}},
           {title:<TH t="风险" />,dataIndex:'risk_score',width:100,render:v=><RiskBadge s={v}/>},
           {title:<TH t="状态" />,dataIndex:'status',width:80,render:v=><StatusTag s={v}/>},
           {title:<TH t="时间" />,dataIndex:'window_start',width:130,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,10)}</span>},
@@ -788,7 +790,7 @@ function Dashboard({go, goProfile}){
       return <Card className="card" title={<span><span className="brand-bar"></span>高风险告警 TOP5</span>} size="small" extra={<a onClick={()=>go('alerts')}>全部 →</a>}>
         {ga.length? <Table size="small" rowKey="key" pagination={false} dataSource={ga.slice(0,5)} onRow={r=>({onClick:()=>goProfile(r.employee),title:r.summary,style:{cursor:'pointer'}})}
           columns={[{title:'用户',dataIndex:'employee',width:96,render:v=><span className="uname" style={{cursor:'inherit'}}>{v}</span>},
-            {title:'风险场景',dataIndex:'scenario',width:130,render:(v,r)=>{const L=LVL(r.maxRisk);const st=SRCTAG(r.summary,r.scenario);return <Space size={3}><Tooltip title={st.tip}><Tag style={{background:st.c+'14',color:st.c,border:'1px solid '+st.c+'44',fontSize:10}}>{st.t}</Tag></Tooltip><Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40'}}>{v}</Tag></Space>}},
+            {title:'风险场景',dataIndex:'scenario',width:130,render:(v,r)=>{const L=LVL(r.maxRisk);const st=SRCTAG(r.summary,r.scenario,r.latest);return <Space size={3}><Tooltip title={st.tip}><Tag style={{background:st.c+'14',color:st.c,border:'1px solid '+st.c+'44',fontSize:10}}>{st.t}</Tag></Tooltip><Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40'}}>{v}</Tag></Space>}},
             {title:'风险',dataIndex:'maxRisk',width:96,render:v=><RiskBadge s={v}/>},
             {title:'状态',dataIndex:'status',width:84,render:v=><StatusTag s={v}/>},            {title:'状态',dataIndex:'status',width:84,render:v=><StatusTag s={v}/>},
             {title:'最近活动',dataIndex:'latest',width:110,render:v=><span style={{fontSize:11,color:'var(--ink3)'}}>{(v||'').slice(5,16).replace('T',' ')}</span>}]}/> : <Empty description="暂无告警" style={{padding:20}}/>}
@@ -1026,7 +1028,7 @@ function Alerts({goProfile,filter}){
       <Table size="small" rowKey="key" pagination={{pageSize:14,showTotal:t=>`共 ${alertN} 条告警 / ${t} 人（按用户合并）`}} loading={loading} dataSource={agData}
         columns={[
           {title:<TH t="用户" />,dataIndex:'employee',width:100,render:v=><a className="uname" onClick={(e)=>{e.stopPropagation();goProfile(v);}}>{v}</a>},
-          {title:<TH t="风险场景" tip="该员工当前最高分告警的场景(主场景,加粗)。+N 表示还涉及N个其他场景,鼠标移上查看。" />,dataIndex:'scenarios',width:170,render:(v,r)=>{const mainL=INTENT[r.intent]||r.intent;const L=LVL(r.maxRisk);const subs=v.filter(s=>s.label!==mainL);const st=SRCTAG(r.summary,r.intent);return <Space wrap size={[4,3]}><Tooltip title={st.tip}><Tag style={{background:st.c+'14',color:st.c,border:'1px solid '+st.c+'44',fontSize:10}}>{st.t}</Tag></Tooltip><Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40',fontWeight:600}}>{mainL} {r.maxRisk}</Tag>{subs.length>0&&<Tooltip title={'另涉及：'+subs.map(s=>s.label).join('、')}><Tag style={{fontSize:11,color:'var(--ink3)',background:'var(--bg)',border:'1px solid var(--ink4)'}}>+{subs.length}</Tag></Tooltip>}</Space>}},
+          {title:<TH t="风险场景" tip="该员工当前最高分告警的场景(主场景,加粗)。+N 表示还涉及N个其他场景,鼠标移上查看。" />,dataIndex:'scenarios',width:170,render:(v,r)=>{const mainL=INTENT[r.intent]||r.intent;const L=LVL(r.maxRisk);const subs=v.filter(s=>s.label!==mainL);const st=SRCTAG(r.summary,r.intent,r.latest);return <Space wrap size={[4,3]}><Tooltip title={st.tip}><Tag style={{background:st.c+'14',color:st.c,border:'1px solid '+st.c+'44',fontSize:10}}>{st.t}</Tag></Tooltip><Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40',fontWeight:600}}>{mainL} {r.maxRisk}</Tag>{subs.length>0&&<Tooltip title={'另涉及：'+subs.map(s=>s.label).join('、')}><Tag style={{fontSize:11,color:'var(--ink3)',background:'var(--bg)',border:'1px solid var(--ink4)'}}>+{subs.length}</Tag></Tooltip>}</Space>}},
           {title:<TH t="告警数" tip="该员工在当前筛选范围内的告警条数(合并前)。同一员工同意图会合并展示。" />,dataIndex:'count',width:80,render:v=><span className="num" style={{color:'var(--ink2)',fontWeight:600}}>{v}</span>},
           {title:<TH t="最近告警" tip="该员工最近一次告警的行为发生时间。" />,dataIndex:'latest',width:135,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
           {title:<TH t="风险" tip="该员工告警中的最高风险分(0-100)。76+严重/56+高危/31+关注。" />,dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
