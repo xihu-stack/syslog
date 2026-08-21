@@ -56,6 +56,9 @@ DEFAULTS = {
         # 同步流量域storage.live.com曾漏判审查被误加禁止字典,已纠正;张雪凌晨OneDrive告警属误判
         "storage.live.com", "onedrive.live.com", "my.microsoftpersonalcontent.com",
         "xft.cmbchina.com",  # 公司OA/费控平台(2026-08-21用户确认): 发票/报销文件发送属正常业务
+        # Teams/M365企业通道(2026-08-21用户确认Teams是公司办公软件): 企业邮箱发附件/Teams共享不算外发
+        "teams.cloud.microsoft", "teams.microsoft.com", "outlook.cloud.microsoft",
+        "smtp.office365.com", "outlook.office365.com",
     ],
     "slack_sdk_domains": [],         # 心跳/埋点排除域名:客户端挂后台的规律上报,不算摸鱼(AI扫描建议+人工采纳维护)
     "slack_domains": {
@@ -361,6 +364,10 @@ def slack_category(domain: str, label: str = None):
     if d.split(".")[0] in _SLACK_INFRA_HINT or any(k in d for k in _SLACK_INFRA_HINT):
         return None
     lab = (label or "").strip()
+    # 企业通讯排除(2026-08-21): 深信服把Teams/Skype/会议标成'网上聊天'——公司办公
+    # 沟通不是摸鱼,在标签规则命中前排除(teams.cloud.microsoft 1295次/天误算案例)
+    if lab and any(k in lab for k in ("Teams", "Skype", "会议", "企业微信")):
+        return None
     if lab and lab != "-":
         rules = get("slack_class_rules") or DEFAULT_SLACK_CLASS_RULES
         if isinstance(rules, dict) and any(k in lab for k in rules.get("pos", [])) \

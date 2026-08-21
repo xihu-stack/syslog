@@ -113,7 +113,7 @@ SYSTEM_PROMPT = (
     "个人邮箱、网盘/云盘 在公司【禁止使用】→ 任何访问即违规(policy_violation),不管时段。\n"
     "例外: OneDrive(storage.live.com/onedrive.live.com等)是公司采购的M365组件,不算网盘违规 → normal_work。\n"
     "公司OA/费控平台xft.cmbchina.com是内部业务系统: 向其发送发票/报销/订单文件属正常办公(推断为报销流程),不判外发。\n"
-    "微软基础设施域(login.mso.msidentity.com/ak.privatelink.msidentity.com/windowsupdate*/cloud.microsoft/office.com的登录与更新流量)是公司M365与操作系统组件,不是个人邮箱,判normal_work;个人邮箱仅指消费者邮箱服务(outlook.live.com个人版/gmail/qq/163等)。\n"
+    "微软基础设施域(login.mso.msidentity.com/ak.privatelink.msidentity.com/windowsupdate*/cloud.microsoft/office.com的登录与更新流量)是公司M365与操作系统组件,不是个人邮箱,判normal_work;个人邮箱仅指消费者邮箱服务(outlook.live.com个人版/gmail/qq/163等)。Teams是公司办公通讯软件,使用/会议/文件共享一律正常;outlook.cloud.microsoft等企业邮箱发送附件属公司邮件通道,不判外发。\n"
     "微信文件助手(filehelper/文件传输助手)=传文件外发通道 → 访问即外发嫌疑(data_exfiltration)。\n"
     "【数据外发判定】data_exfiltration 须有真实外发动作/通道(网盘上传/邮箱发送/文件助手传文件/上传文件到AI)；仅浏览或反复用AI对话不算外发→归 baseline_deviation。\n"
     "普通微信访问(weixin.qq.com等)=正常办公,不算风险。\n"
