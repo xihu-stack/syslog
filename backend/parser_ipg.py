@@ -48,6 +48,10 @@ _last_persist = 0.0
 
 def _clean_account(a: str) -> str:
     a = (a or "").strip().lower()
+    # 剥离域后缀+Windows配置文件编号(如 lingjiayi.huashen.000 → lingjiayi;
+    # Windows域用户配置文件冲突时自动加.000/.001等后缀)
+    import re as _re2
+    a = _re2.sub(r"\.(huashen|helixon)\.\d+$", "", a)
     for suf in _CORP_SUFFIX:
         if a.endswith(suf):
             a = a[: -len(suf)]
