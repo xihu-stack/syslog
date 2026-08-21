@@ -66,10 +66,15 @@ def anchor_score(intent, window, day_total=None) -> int | None:
     # 证据前置(2026-08-21): 窗口须含本场景真实证据(禁止类域名/文件助手/非本地
     # DOC通道),锚点才接管——否则AI把微软登录/未识别应用的夜间流量误标policy时,
     # 锚点会把错误意图锁进75+档(潘利锋凌晨案例,selfheal连续多轮对齐暴露)
+    def _wl_dest(e):
+        """DOC外发目的地在公司豁免白名单(OA/费控等内部业务平台)→不算外发风险。"""
+        d = ((e.raw or {}).get("dest_path") or "").split("/")[0].lower()
+        return any(d == w or d.endswith("." + w) for w in dicts.get("risk_whitelist_domains") or [])
     _has_evidence = any(dicts.risk_class(d) in ("网盘/云盘", "个人邮箱", "微信文件助手")
                         for d in doms) or any(
-        e.category == "DOC" and ((e.raw or {}).get("channel") not in (None, "", "LOCAL")
-                                 or e.action in ("SEND", "UPLOAD", "PRINT", "BURN"))
+        e.category == "DOC" and not _wl_dest(e)
+        and ((e.raw or {}).get("channel") not in (None, "", "LOCAL")
+             or e.action in ("SEND", "UPLOAD", "PRINT", "BURN"))
         for e in window)
     if not _has_evidence:
         return None
@@ -91,7 +96,8 @@ def anchor_score(intent, window, day_total=None) -> int | None:
     # 文件名是否敏感不在此判断——AI在说明里定性,锚点只管动作+通道的客观强度
     _send_dests = [((e.raw or {}).get("dest_path") or "").lower() for e in window
                    if e.category == "DOC" and e.action in ("SEND", "UPLOAD")
-                   and (e.raw or {}).get("channel") not in (None, "", "LOCAL")]
+                   and (e.raw or {}).get("channel") not in (None, "", "LOCAL")
+                   and not _wl_dest(e)]
     if _send_dests:
         _rare = any(dicts.risk_class(d) in ("网盘/云盘", "个人邮箱") for d in _send_dests)
         score = max(score, 85 if _rare else 80)
@@ -106,6 +112,7 @@ SYSTEM_PROMPT = (
     "【公司策略——重要前提】\n"
     "个人邮箱、网盘/云盘 在公司【禁止使用】→ 任何访问即违规(policy_violation),不管时段。\n"
     "例外: OneDrive(storage.live.com/onedrive.live.com等)是公司采购的M365组件,不算网盘违规 → normal_work。\n"
+    "公司OA/费控平台xft.cmbchina.com是内部业务系统: 向其发送发票/报销/订单文件属正常办公(推断为报销流程),不判外发。\n"
     "微软基础设施域(login.mso.msidentity.com/ak.privatelink.msidentity.com/windowsupdate*/cloud.microsoft/office.com的登录与更新流量)是公司M365与操作系统组件,不是个人邮箱,判normal_work;个人邮箱仅指消费者邮箱服务(outlook.live.com个人版/gmail/qq/163等)。\n"
     "微信文件助手(filehelper/文件传输助手)=传文件外发通道 → 访问即外发嫌疑(data_exfiltration)。\n"
     "【数据外发判定】data_exfiltration 须有真实外发动作/通道(网盘上传/邮箱发送/文件助手传文件/上传文件到AI)；仅浏览或反复用AI对话不算外发→归 baseline_deviation。\n"

@@ -55,6 +55,7 @@ DEFAULTS = {
         # OneDrive全家=M365公司组件(2026-08-19用户确认"OneDrive是公司的"):
         # 同步流量域storage.live.com曾漏判审查被误加禁止字典,已纠正;张雪凌晨OneDrive告警属误判
         "storage.live.com", "onedrive.live.com", "my.microsoftpersonalcontent.com",
+        "xft.cmbchina.com",  # 公司OA/费控平台(2026-08-21用户确认): 发票/报销文件发送属正常业务
     ],
     "slack_sdk_domains": [],         # 心跳/埋点排除域名:客户端挂后台的规律上报,不算摸鱼(AI扫描建议+人工采纳维护)
     "slack_domains": {
