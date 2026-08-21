@@ -997,7 +997,7 @@ function Computers({goProfile,filter}){
   });
   const evtTotal=filtered.reduce((s,r)=>s+(isToday?(r.event_count_today||0):(r.event_count||0)),0);
   return (<div>
-    <div className="sec-title">{isToday?'用户视图 · 仅今日活跃':'用户视图'} · 点击行查看画像 · <span style={{fontSize:11,color:'var(--ink3)'}}>每15秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()}</span></div>
+    <div className="sec-title">{isToday?'用户视图 · 仅今日活跃':'用户视图'} · 点击行查看画像 · <span style={{fontSize:11,color:'var(--ink3)'}}>中文员工+待匹配标识 · 每15秒刷新{lastUpd&&' · '+lastUpd.toLocaleTimeString()}</span></div>
     <Row gutter={16} style={{marginBottom:16}}>
       {CARDS.map(c=>{const active=riskFilter===c.k; return (
         <Col span={6} key={c.k}>

@@ -11,17 +11,27 @@ from db import Session, EventRow, bj_now
 import dicts
 
 
-def employee_timeline(emp: str, days: int = 7, limit: int = 500) -> list:
+def employee_timeline(emp: str, days: int = 7, limit: int = 2000) -> list:
     s = Session()
     try:
         since = bj_now() - timedelta(days=days)
         evs = (s.query(EventRow)
                .filter(EventRow.employee_id == emp,
                        EventRow.occurred_at >= since)
-               .order_by(EventRow.occurred_at.desc())
+               .order_by(EventRow.occurred.desc())
                .limit(limit).all())
-        out = []
+        # 按天采样: 每天最多取80条,保证7天都有数据(不是只取最近500条全是今天的)
+        from collections import defaultdict
+        by_day = defaultdict(list)
         for e in evs:
+            if e.occurred_at:  # None occurred_at的跳过
+                by_day[e.occurred_at.date()].append(e)
+        sampled = []
+        for day_evs in by_day.values():
+            sampled.extend(day_evs[:80])
+        sampled.sort(key=lambda e: e.occurred_at, reverse=True)
+        out = []
+        for e in sampled:
             t = e.occurred_at.strftime("%m-%d %H:%M")
             raw = e.raw or {}
             if e.category == "WEB":

@@ -1172,7 +1172,9 @@ def _slack_segments(stamps):
       - 连续观看: 跨度≈桶数×10 → 取跨度
       - 碎片闪现(2次隔28min): 被桶数封顶为 2×10=20min,不再按跨度虚高
       - 单次访问(跨度0): 保底5min,不再算0分钟
-    同天内 gap≤30min 连段;跨天独立。"""
+    同天内 gap≤15min 连段;跨天独立。
+    日封顶: 每天摸鱼总时长不超过420分钟(7小时工作制的物理上限,
+    2026-08-21审计发现夏玮日均774分钟=184%占比,明显不可能)。"""
     from collections import defaultdict as _dd
 
     def _mk(s, e, ts):
@@ -1187,18 +1189,23 @@ def _slack_segments(stamps):
         ts.sort()
         s = e = None
         bucket = []
+        day_segs = []
         for t in ts:
-            # 连段gap=15分钟: 真实摸鱼(连刷/换视频)间隔通常<15min;
-            # 20-30min规律间隔是客户端挂后台心跳,不应连成整段(2026-08-17张云案例:3.8h实为淘宝心跳)
             if e is not None and (t - e).total_seconds() <= 900:
                 e = t
                 bucket.append(t)
             else:
                 if e is not None:
-                    segs.append(_mk(s, e, bucket))
+                    day_segs.append(_mk(s, e, bucket))
                 s, e, bucket = t, t, [t]
         if e is not None:
-            segs.append(_mk(s, e, bucket))
+            day_segs.append(_mk(s, e, bucket))
+        # 日封顶: 每天摸鱼≤420分钟(7小时),超出截断
+        day_total = sum(x[2] for x in day_segs)
+        if day_total > 25200:  # 420min = 25200s
+            ratio = 25200 / day_total
+            day_segs = [(s2, e2, int(sec * ratio), ts2) for s2, e2, sec, ts2 in day_segs]
+        segs.extend(day_segs)
     return segs
 
 
