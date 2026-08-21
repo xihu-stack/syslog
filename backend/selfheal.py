@@ -111,11 +111,39 @@ def _selfcheck_once() -> dict:
                             sig[rc] += (e.count or 1)
                 hit = {k: v2 for k, v2 in sig.items() if k in need and v2 > 0}
                 if hit:
-                    txt = ",".join(f"{k}{v2}次" for k, v2 in hit.items())
                     if (a.summary or "").startswith("近7天"):
                         continue  # 已恢复过,不重复处理
-                    a.summary = f"近7天持续访问风险域名({txt});原研判窗口事件已过保留期"
-                    fixes.append(f"I5 恢复: {a.employee_id}/{a.scenario}({txt})")
+                    # 优先重建事实说明: 事件90天保留,窗口数据仍在——按告警窗口
+                    # 前后取该员工风险行为,给出5W式模板(2026-08-21用户反馈模板句
+                    # "已过保留期"误导且信息量低)
+                    fact = ""
+                    if a.window_start:
+                        w0 = a.window_start - timedelta(minutes=30)
+                        w1 = a.window_start + timedelta(minutes=120)
+                        wcnt = Counter()
+                        wdoc = []
+                        for e in s.query(EventRow).filter(
+                                EventRow.employee_id == a.employee_id,
+                                EventRow.occurred_at >= w0, EventRow.occurred_at < w1).all():
+                            if e.category == "WEB":
+                                d = ((e.raw or {}).get("domain") or "").lower()
+                                rc = dicts.risk_class(d)
+                                if rc:
+                                    wcnt[f"{rc}:{d}"] += (e.count or 1)
+                            elif e.category == "DOC" and e.action in ("SEND", "UPLOAD", "PRINT"):
+                                dest = ((e.raw or {}).get("dest_path") or "").split("/")[0][:30]
+                                wdoc.append(f"{(e.target_value or '')[:28]}→{dest}")
+                        if wcnt:
+                            fact = "、".join(f"{k}×{v2}" for k, v2 in wcnt.most_common(3))
+                        elif wdoc:
+                            fact = "外发:" + ";".join(wdoc[:2])
+                    if fact:
+                        a.summary = (f"[重判后复核] {a.employee_id}在{str(a.window_start)[:10]} "
+                                     f"窗口行为:{fact};近7天持续存在同类访问("
+                                     + ",".join(f"{k}{v2}次" for k, v2 in hit.items()) + ")")
+                    else:
+                        a.summary = f"[重判后复核] 近7天持续访问风险域名({','.join(f'{k}{v2}次' for k, v2 in hit.items())});原窗口无留存明细"
+                    fixes.append(f"I5 恢复: {a.employee_id}/{a.scenario}({','.join(f'{k}{v2}' for k, v2 in hit.items())})")
                 else:
                     a.status = "CLOSED"
                     fixes.append(f"I5 关闭无据: {a.employee_id}/{a.scenario}")
