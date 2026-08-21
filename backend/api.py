@@ -621,6 +621,22 @@ def delete_exception(eid: int):
         s.close()
 
 
+@app.get("/api/dayreview")
+def dayreview_get():
+    """N+1日复核结果(最近一轮)。"""
+    import json as _js
+    try:
+        return {"reviews": _js.loads(dicts.get_setting("day_reviews") or "{}")}
+    except Exception:
+        return {"reviews": {}}
+
+
+@app.post("/api/dayreview/run")
+def dayreview_run():
+    from dayreview import run_day_review
+    return run_day_review()
+
+
 @app.get("/api/stories")
 def stories_get():
     """风险故事线(近30天,R1生成)。"""

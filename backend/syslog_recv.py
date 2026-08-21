@@ -227,6 +227,17 @@ def _flush_loop():
                     print(f"[massops] 新增聚合告警{_md['created']}条", flush=True)
             except Exception as _me:
                 print(f"[massops] 失败: {_me}", flush=True)
+            try:  # N+1日复核(每天凌晨,回看昨天全天): 修正实时结论(2026-08-21)
+                from db import bj_now as _bj8
+                _d8 = _bj8()
+                if _d8.hour >= 1 and dicts.get_setting("day_review_last", "") != _d8.strftime("%Y%m%d"):
+                    dicts.set_setting("day_review_last", _d8.strftime("%Y%m%d"))
+                    from dayreview import run_day_review
+                    _r8 = run_day_review()
+                    print(f"[dayreview] N+1完成(回看{_r8.get('day')}): 候选{_r8.get('candidates')} "
+                          f"升{_r8.get('upgraded')}降{_r8.get('downgraded')}", flush=True)
+            except Exception as _de8:
+                print(f"[dayreview] 失败: {_de8}", flush=True)
             try:  # 风险故事线(每周,R1): 离职信号串成时间叙事(2026-08-21)
                 from datetime import timedelta as _td7
                 from db import bj_now as _bj7
