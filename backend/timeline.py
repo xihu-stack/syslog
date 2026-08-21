@@ -18,7 +18,7 @@ def employee_timeline(emp: str, days: int = 7, limit: int = 2000) -> list:
         evs = (s.query(EventRow)
                .filter(EventRow.employee_id == emp,
                        EventRow.occurred_at >= since)
-               .order_by(EventRow.occurred.desc())
+               .order_by(EventRow.occurred_at.desc())
                .limit(limit).all())
         # 按天采样: 每天最多取80条,保证7天都有数据(不是只取最近500条全是今天的)
         from collections import defaultdict
