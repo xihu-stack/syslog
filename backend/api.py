@@ -621,6 +621,22 @@ def delete_exception(eid: int):
         s.close()
 
 
+@app.get("/api/stories")
+def stories_get():
+    """风险故事线(近30天,R1生成)。"""
+    import json as _js
+    try:
+        return {"stories": _js.loads(dicts.get_setting("risk_stories") or "{}")}
+    except Exception:
+        return {"stories": {}}
+
+
+@app.post("/api/stories/run")
+def stories_run():
+    from storyline import build_stories
+    return build_stories()
+
+
 @app.post("/api/massops")
 def massops_run():
     """行为聚合扫描(大量删除=离职前兆),手动触发。"""

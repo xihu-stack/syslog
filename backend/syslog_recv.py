@@ -227,6 +227,19 @@ def _flush_loop():
                     print(f"[massops] 新增聚合告警{_md['created']}条", flush=True)
             except Exception as _me:
                 print(f"[massops] 失败: {_me}", flush=True)
+            try:  # 风险故事线(每周,R1): 离职信号串成时间叙事(2026-08-21)
+                from datetime import timedelta as _td7
+                from db import bj_now as _bj7
+                _last7 = dicts.get_setting("risk_story_last", "")
+                _today7 = _bj7().strftime("%Y%m%d")
+                if _last7 != _today7 and (_last7 == "" or
+                        _bj7() - datetime.datetime.strptime(_last7, "%Y%m%d") >= _td7(days=7)):
+                    dicts.set_setting("risk_story_last", _today7)
+                    from storyline import build_stories
+                    _r7 = build_stories()
+                    print(f"[storyline] 周更完成: {_r7.get('stories')}条", flush=True)
+            except Exception as _se7:
+                print(f"[storyline] 失败: {_se7}", flush=True)
             try:  # IPG文档AI深扫(每周,R1): 外发模式/敏感文件特征/建议(2026-08-20)
                 from datetime import timedelta as _td6
                 from db import bj_now as _bj6

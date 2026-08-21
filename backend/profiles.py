@@ -50,9 +50,23 @@ def compute_profile(rows) -> dict:
     domains = Counter()
     channels, actions, keywords = set(), set(), set()
     _rc = {}  # risk_class按域名缓存(域名仅数千个,逐行全模式匹配太慢)
+    # ---- 画像四维(2026-08-21 IPG数据完善后加强) ----
+    import re as _re
+    doc_types = Counter()        # ①文档行为: 文件类型
+    project_codes = Counter()    # ①文档行为: 项目编号(业务版图)
+    send_ch = Counter()          # ①④外发通道偏好
+    sends_by_day = Counter()     # ④外发趋势(按天)
+    search_topics = Counter()    # ③搜索关注点
+    day_first, day_last = {}, {}  # ②节律: 每日首末事件小时
     for r in rows:
         hours[r.occurred_at.hour] += 1
-        per_day[r.occurred_at.date()] += 1
+        d0 = r.occurred_at.date()
+        per_day[d0] += 1
+        h = r.occurred_at.hour
+        if d0 not in day_first or h < day_first[d0]:
+            day_first[d0] = h
+        if d0 not in day_last or h > day_last[d0]:
+            day_last[d0] = h
         ch = (r.raw or {}).get("channel")
         if ch:
             channels.add(ch)
@@ -69,11 +83,27 @@ def compute_profile(rows) -> dict:
             dc = (r.raw or {}).get("domain_class")
             if dc and dc != "other":
                 web_classes[dc] += 1
+        elif r.category == "DOC":
+            tv = r.target_value or ""
+            mext = _re.search(r"\.([A-Za-z0-9]{1,6})$", tv)
+            if mext:
+                doc_types[mext.group(1).lower()] += 1
+            for code in _re.findall(r"[A-Z]{2,6}[-_]\d{2,6}", tv)[:3]:
+                project_codes[code] += 1
+            if r.action in ("SEND", "UPLOAD", "PRINT", "BURN"):
+                dest = ((r.raw or {}).get("dest_path") or "").split("/")[0][:40]
+                send_ch[f"{r.action}:{dest or (r.raw or {}).get('channel') or 'LOCAL'}"] += 1
+                sends_by_day[d0.isoformat()] += 1
+        elif r.category == "SEARCH" and r.target_value:
+            search_topics[r.target_value.strip()[:24]] += 1
         actions.add(r.action)
         for k in dicts.get("sensitive_keywords"):
             if k in (r.target_value or ""):
                 keywords.add(k)
     daily = list(per_day.values())
+    starts = sorted(day_first.values())
+    ends = sorted(day_last.values())
+    late_days = sum(1 for d, h in day_first.items() if h < 7)
     return {
         "active_days": len(per_day),
         "active_hours_top": [h for h, _ in hours.most_common(8)],
@@ -85,6 +115,15 @@ def compute_profile(rows) -> dict:
         "actions_seen": sorted(actions),
         "usual_keywords": sorted(keywords),
         "sample_count": len(rows),
+        # 四维新画像(旧数据无此键时消费方用get兜底)
+        "doc_types": dict(doc_types.most_common(8)),
+        "project_codes": dict(project_codes.most_common(8)),
+        "send_channels": dict(send_ch.most_common(6)),
+        "sends_by_day": dict(sorted(sends_by_day.items())[-14:]),
+        "search_topics": [k for k, _ in search_topics.most_common(10)],
+        "rhythm": {"start_median": starts[len(starts) // 2] if starts else None,
+                   "end_median": ends[len(ends) // 2] if ends else None,
+                   "late_night_days": late_days},
     }
 
 
@@ -110,10 +149,34 @@ def summarize_for_llm(p: dict):
     doms = p.get("common_domains", [])[:8]
     dom_txt = "、".join(doms) if doms else "无明显常用域名"
     ch = "/".join(p.get("channels_used", [])) or "未记录"
+    # 四维新画像压缩(2026-08-21): 让AI看到文档版图/节律/外发偏好/搜索关注
+    dt = p.get("doc_types") or {}
+    pc = p.get("project_codes") or {}
+    sc = p.get("send_channels") or {}
+    rh = p.get("rhythm") or {}
+    st = p.get("search_topics") or []
+    sd = p.get("sends_by_day") or {}
+    extra = []
+    if dt:
+        extra.append(f"常处理文件类型: {'、'.join(f'{k}×{v}' for k, v in list(dt.items())[:5])}")
+    if pc:
+        extra.append(f"常接触项目编号: {'、'.join(list(pc)[:6])}")
+    if sc:
+        extra.append(f"外发习惯: {'、'.join(f'{k}×{v}' for k, v in list(sc.items())[:4])}")
+    if sd:
+        vals = list(sd.values())
+        extra.append(f"外发趋势(近{len(vals)}天,最多{max(vals)}次/天)")
+    if rh.get("start_median") is not None:
+        extra.append(f"节律: 约{rh['start_median']}点开始/{rh['end_median']}点结束,深夜活跃{rh.get('late_night_days', 0)}天")
+    if st:
+        extra.append(f"近期搜索关注: {'、'.join(st[:5])}")
+    extra_txt = ("；".join(extra)) if extra else ""
     return (f"【个人基线·{tier}(样本{n})】常规活跃时段 {hrange}；"
             f"日均事件量~{p.get('daily_doc_op_median', 0)}(峰值{p.get('daily_doc_op_max', 0)})；"
             f"常用通道 {ch}；常用域名：{dom_txt}。"
-            f"判断要点：当前窗口出现【不在常用集内】的【高危类别】域名=异常；仅域名多不异常。")
+            + (f"{extra_txt}。" if extra_txt else "")
+            + "判断要点：当前窗口出现【不在常用集内】的【高危类别】域名=异常；仅域名多不异常。"
+            + ("外发/文档行为相对上述习惯的突变=重点。" if extra else ""))
 
 
 def global_summary(session) -> str:
