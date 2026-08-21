@@ -296,9 +296,12 @@ const FROM_TITLE={computers:'用户视图',alerts:'告警工作台',verdicts:'�
 function ProfilePage({user, goBack, from}){
   const [data,setData]=useState(null);
   const [story,setStory]=useState(null);  // 风险故事线(Hook必须顶层,条件IIFE内调用会致#310)
+  const [tl,setTl]=useState(null);        // 行为时间线(同上,Hook必须在顶层)
+  const [tlLoading,setTlLoading]=useState(false);
   const trendRef=useRef(), hoursRef=useRef(), actRef=useRef();
   useEffect(()=>{ if(user) GET('/api/employees/'+encodeURIComponent(user)).then(setData); },[user]);
   useEffect(()=>{ if(user) fetch('/api/stories',{headers:_authHdr()}).then(r=>r.json()).then(r=>setStory((r.stories||{})[user])).catch(()=>{}); },[user]);
+  useEffect(()=>{ if(user){ setTlLoading(true); fetch('/api/employees/'+encodeURIComponent(user)+'/timeline?days=7',{headers:_authHdr()}).then(r=>r.json()).then(r=>setTl(r.timeline||[])).catch(()=>setTl([])).finally(()=>setTlLoading(false)); } },[user]);
   useEffect(()=>{
     if(!data) return;
     const vs=data.verdicts||[];
@@ -465,12 +468,7 @@ function ProfilePage({user, goBack, from}){
           {title:<TH t="说明" />,dataIndex:'summary',render:v=><span style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>},
         ]}/>
     </Card>}
-    {(()=>{ const [tl,setTl]=useState(null); const [tlLoading,setTlLoading]=useState(false);
-      useEffect(()=>{ if(!user) return; setTlLoading(true);
-        fetch('/api/employees/'+encodeURIComponent(user)+'/timeline?days=7',{headers:_authHdr()})
-          .then(r=>r.json()).then(r=>setTl(r.timeline||[])).catch(()=>setTl([])).finally(()=>setTlLoading(false));
-      },[user]);
-      return <Card className="card" size="small" style={{marginTop:16}} title={<span><span className="brand-bar"></span>行为时间线（近7天 · 双源混排 · 仅显示风险相关行为）</span>}
+    <Card className="card" size="small" style={{marginTop:16}} title={<span><span className="brand-bar"></span>行为时间线（近7天 · 双源混排 · 仅显示风险相关行为）</span>}
         extra={<span style={{fontSize:11,color:'var(--ink3)'}}>{tlLoading?'加载中...':(tl?tl.length+'条':'')}</span>}>
         {tlLoading ? <div style={{padding:30,textAlign:'center',color:'var(--ink3)'}}>加载时间线...</div> :
          (tl&&tl.length>0) ? <div style={{maxHeight:400,overflowY:'auto',padding:'4px 0'}}>
@@ -483,7 +481,7 @@ function ProfilePage({user, goBack, from}){
               <span style={{fontSize:12,color:isRisk?'#c2410c':'var(--ink2)',lineHeight:1.5}}>{x.text}</span>
             </div>);})}
          </div> : <div style={{padding:20,textAlign:'center',color:'var(--ink3)',fontSize:12}}>近7天无行为记录</div>}
-      </Card>; })()}
+      </Card>
     <Card className="card" title={<span><span className="brand-bar"></span>研判历史（{data.verdict_count!=null?data.verdict_count:vs.length} 次研判 · 风险≥50 升级为告警）</span>} size="small" style={{marginTop:16}}>
       <Table size="small" rowKey="window_start" pagination={{pageSize:8}} dataSource={vs}
         columns={[{title:'时间',dataIndex:'window_start',width:150,render:v=>(v||'').replace('T',' ').slice(0,16)},
