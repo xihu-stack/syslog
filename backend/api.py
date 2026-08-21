@@ -637,6 +637,42 @@ def dayreview_run():
     return run_day_review()
 
 
+@app.post("/api/weekly/gen")
+def weekly_gen():
+    from weekly import gen_weekly
+    return gen_weekly()
+
+
+@app.get("/api/weekly")
+def weekly_get():
+    import json as _js
+    try:
+        return {"report": _js.loads(dicts.get_setting("weekly_report") or "{}")}
+    except Exception:
+        return {"report": {}}
+
+
+@app.get("/api/employees/{emp}/export")
+def profile_export(emp: str):
+    from weekly import export_profile_csv
+    from fastapi.responses import Response
+    csv_data = export_profile_csv(emp)
+    return Response(content=csv_data, media_type="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename=profile_{emp}.csv"})
+
+
+@app.get("/api/night-workers")
+def night_workers_api():
+    from weekly import night_worker_list
+    return {"workers": night_worker_list()}
+
+
+@app.get("/api/cross-files")
+def cross_files_api():
+    from weekly import cross_person_files
+    return {"files": cross_person_files()}
+
+
 @app.get("/api/risk-board")
 def risk_board_api():
     """离职综合风险榜: 多信号组合→单人一分数(程序化,无LLM,秒出)。"""

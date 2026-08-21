@@ -198,6 +198,13 @@ def _flush_loop():
     # 不变量自检自愈: 每10分钟独立跑一次(20×30s),不等小时级维护——
     # 用户要求循环检测加密(2026-08-20),纯程序检查零LLM成本
     if _flush_count % 20 == 0:
+        try:  # 行为模式(10分钟): 压缩外发/改名掩盖/环比突增(2026-08-21)
+            from patterns import run_all_patterns
+            _pat = run_all_patterns()
+            if any(_pat.values()):
+                print(f"[patterns] {_pat}", flush=True)
+        except Exception as _pe:
+            print(f"[patterns] 失败: {_pe}", flush=True)
         try:  # 行为聚合(10分钟): 大量删除=离职前兆,实时化(2026-08-21用户要求)
             from massops import scan_mass_deletes
             _md = scan_mass_deletes()
@@ -227,6 +234,17 @@ def _flush_loop():
                 _alias_discover()  # 用户名映射自动发现(拼音级自动,推测级进候选)
             except Exception:
                 pass
+            try:  # 周报(每周五17点,R1): 风险综述+webhook(2026-08-21)
+                from db import bj_now as _bj9
+                _now9 = _bj9()
+                if _now9.weekday() == 4 and _now9.hour >= 17 and \
+                        dicts.get_setting("weekly_last", "") != _now9.strftime("%Y%m%d"):
+                    dicts.set_setting("weekly_last", _now9.strftime("%Y%m%d"))
+                    from weekly import gen_weekly
+                    _wk = gen_weekly()
+                    print(f"[weekly] 周报: {_wk.get('headline', '')[:40]}", flush=True)
+            except Exception as _we:
+                print(f"[weekly] 失败: {_we}", flush=True)
             try:  # N+1日复核(每天凌晨,回看昨天全天): 修正实时结论(2026-08-21)
                 from db import bj_now as _bj8
                 _d8 = _bj8()

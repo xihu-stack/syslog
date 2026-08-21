@@ -942,6 +942,28 @@ function Dashboard({go, goProfile}){
         </Col>
       </Row>
     </Card>
+    <Row gutter={16} style={{marginTop:16}}>
+      <Col span={12}><Card className="card" size="small" title={<span><span className="brand-bar"></span>深夜活跃人员</span>} extra={<span style={{fontSize:10,color:'var(--ink3)'}}>近7天22-7点</span>}>
+        {(()=>{ const [nw,setNw]=useState(null);
+          useEffect(()=>{ fetch('/api/night-workers',{headers:_authHdr()}).then(r=>r.json()).then(r=>setNw(r.workers||[])).catch(()=>{}); },[]);
+          if(!nw) return <div style={{padding:16,textAlign:'center',color:'var(--ink3)',fontSize:12}}>加载中...</div>;
+          if(!nw.length) return <div style={{padding:16,textAlign:'center',color:'var(--ink3)',fontSize:12}}>无人深夜高频活跃</div>;
+          return <div>{nw.slice(0,8).map(x=><div key={x.employee} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',fontSize:12,borderBottom:'1px solid var(--line)'}}>
+            <span style={{fontWeight:600}}>{x.employee}</span>
+            <span style={{color:'var(--ink3)'}}>{x.night_events}条 · {(x.top_domains||[]).slice(0,2).join(', ')}</span>
+          </div>)}</div>; })()}
+      </Card></Col>
+      <Col span={12}><Card className="card" size="small" title={<span><span className="brand-bar"></span>跨人共享文件</span>} extra={<span style={{fontSize:10,color:'var(--ink3)'}}>近7天≥2人</span>}>
+        {(()=>{ const [cf,setCf]=useState(null);
+          useEffect(()=>{ fetch('/api/cross-files',{headers:_authHdr()}).then(r=>r.json()).then(r=>setCf(r.files||[])).catch(()=>{}); },[]);
+          if(!cf) return <div style={{padding:16,textAlign:'center',color:'var(--ink3)',fontSize:12}}>加载中...</div>;
+          if(!cf.length) return <div style={{padding:16,textAlign:'center',color:'var(--ink3)',fontSize:12}}>无跨人共享文件</div>;
+          return <div>{cf.slice(0,8).map((x,i)=><div key={i} style={{padding:'6px 0',fontSize:12,borderBottom:'1px solid var(--line)'}}>
+            <div style={{fontWeight:600,marginBottom:2}}>{x.file}</div>
+            <div style={{color:'var(--ink3)',fontSize:11}}>{x.people.join(' / ')} ({x.count}人)</div>
+          </div>)}</div>; })()}
+      </Card></Col>
+    </Row>
     </div>},
   ]}/>);
 }

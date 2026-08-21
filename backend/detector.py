@@ -250,7 +250,9 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
                           if e.category == "WEB" and d in ((e.raw or {}).get("domain") or "") and (e.target_value or "").count("/") >= 2})[:3]
             if paths:
                 path_hint = " 路径样本:" + " | ".join(paths)
-        lines.append(f"[⚠{rc}] {d} {_cnt_tag(d, info['count'])} {cat_tag}{title_tag}{path_hint}")
+        _app_name = ((window[0].raw or {}).get("app") or "").lower() if window else ""
+        _app_src = " [微信内]" if "weixin" in _app_name or "wechat" in _app_name else (" [Office内]" if any(k in _app_name for k in ("word", "excel", "powerpnt")) else "")
+        lines.append(f"[⚠{rc}] {d} {_cnt_tag(d, info['count'])} {cat_tag}{title_tag}{_app_src}{path_hint}")
     # 低信号(个人邮箱/微信)：标注但明确"访问≠外发"，避免被当高危
     for d, info in low_sig[:8]:
         rc = dicts.risk_class(d)
