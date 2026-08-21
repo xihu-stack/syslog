@@ -127,7 +127,17 @@ def parse_ipg_syslog(text: str):
         d = json.loads(text[i:].lstrip("﻿"))
     except Exception:
         return None
-    pre = kind.split("_")[0].upper()  # URL / DOC / KS
+    # 字段前缀映射(2026-08-21修复: keyword_search_log切分首段是keyword,
+    # 拼KEYWORD_AGT_ID取不到→被无ID规则全量误杀,当天179条搜索词零入库)
+    _PRE = {"url_log": "URL", "doc_log": "DOC", "keyword_search_log": "KS"}
+    pre = _PRE.get(kind)
+    if not pre:  # 未知类型: 按TIME字段探测前缀,探测不到才放弃
+        for p in ("URL", "DOC", "KS", "APP", "PRINT", "USB", "MAIL", "PROC"):
+            if f"{p}_TIME" in d or f"{p}_CLT_TIME" in d:
+                pre = p
+                break
+    if not pre:
+        return None
     tstr = d.get(f"{pre}_TIME") or d.get(f"{pre}_CLT_TIME")
     try:
         occ = datetime.strptime(tstr, "%Y-%m-%d %H:%M:%S")
