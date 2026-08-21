@@ -365,6 +365,9 @@ def stats():
             "alerts": s.query(AlertRow).count(),
             "alerts_open": s.query(AlertRow).filter(AlertRow.status != "CLOSED").count(),
             "employees": s.query(EventRow.employee_id).filter(EventRow.occurred_at >= today_start).distinct().count(),
+            "employees_cn": s.query(EventRow.employee_id).filter(
+                EventRow.occurred_at >= today_start,
+                EventRow.employee_id.op("REGEXP")("[一-鿿]")).distinct().count(),
         }
     finally:
         s.close()
@@ -1098,7 +1101,7 @@ def system_stats():
                 _agg[k] = {'employee': k, 'scenario': _a.scenario, 'risk_score': _a.risk_score,
                            'status': _a.status, 'latest': _ws, 'summary': _a.summary or ''}
         top_active = sorted(_agg.values(),
-                            key=lambda x: (-(x['risk_score'] or 0), _PRIO.get(x['scenario'], 2)))[:10]
+                            key=lambda x: (-(x['risk_score'] or 0), -len(x.get('signals') or set()), _PRIO.get(x['scenario'], 2)))[:10]
         return {
             "events": {
                 "today": ev_today, "yesterday": ev_yesterday, "week": ev_week, "total": ev_total,
@@ -1116,7 +1119,17 @@ def system_stats():
             },
             "alerts": {
                 "today": al_today, "yesterday": al_yesterday, "total": al_total,
-                "today_people": al_today_people, "today_critical": al_today_critical,
+                "today_people": al_today_people,
+            "today_new": s.query(AlertRow).filter(AlertRow.window_start >= today_start,
+                                                    AlertRow.status == "NEW").count(),
+            "today_by_scenario": {r[0] or "未识别": r[1] for r in
+                s.query(AlertRow.scenario, _f.count(AlertRow.id))
+                .filter(AlertRow.window_start >= today_start)
+                .group_by(AlertRow.scenario).all()},
+            "today_status": {r[0]: r[1] for r in
+                s.query(AlertRow.status, _f.count(AlertRow.id))
+                .filter(AlertRow.window_start >= today_start)
+                .group_by(AlertRow.status).all()}, "today_critical": al_today_critical,
                 "by_scenario": al_by_scenario, "status": alert_status,
                 "list": [{
                     "employee": r.employee_id, "scenario": r.scenario,
@@ -1128,6 +1141,9 @@ def system_stats():
             "db_size_mb": round(db_size / 1024 / 1024, 1),
             "health": health,
             "employees": s.query(EventRow.employee_id).filter(EventRow.occurred_at >= today_start).distinct().count(),
+            "employees_cn": s.query(EventRow.employee_id).filter(
+                EventRow.occurred_at >= today_start,
+                EventRow.employee_id.op("REGEXP")("[一-鿿]")).distinct().count(),
             "employees_total": s.query(EventRow.employee_id).distinct().count(),
             "retention_days": retention_days,
             "detect": pipeline.detection_status(),
