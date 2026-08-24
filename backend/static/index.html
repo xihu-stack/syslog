@@ -266,7 +266,7 @@ const INTENT = {data_exfiltration:'数据外发', job_seeking:'求职离职', ba
 // 告警来源标签(2026-08-21): 实时(事件触发) / N+1复核(次日全天视野修正) / 聚合(行为聚合如大量删除)
 const SRCTAG=(summary,scenario,ts)=>{
   if((summary||'').startsWith('[次日复核')) return {t:'N+1复核',c:'#6366f1',tip:'次日复核: R1用全天视野重新评估后的修正结论'};
-  if(scenario==='mass_delete') return {t:'聚合',c:'#a855f7',tip:'行为聚合告警: 跨窗口聚合检测(如单日大量删除),10分钟级扫描'};
+  if(['mass_delete','mass_exfil','archive_exfil','rename_exfil','trend_spike'].includes(scenario)) return {t:'聚合',c:'#a855f7',tip:'行为聚合告警: 跨窗口聚合检测(大量删除/蚂蚁搬家/压缩外发/改名掩盖/环比突增),10分钟级扫描'};
   const _td=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});
   if(ts&&String(ts).slice(0,10)<_td) return {t:'复核',c:'#3b82f6',tip:'今日前的历史告警: 已经过全量重判与复核流程,与今日实时分层查看'};
   return {t:'实时',c:'#22c55e',tip:'实时研判: 今日事件窗口触发,N+0层'};
