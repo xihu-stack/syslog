@@ -827,7 +827,7 @@ function Dashboard({go, goProfile}){
       useEffect(()=>{ fetch('/api/risk-board',{headers:_authHdr()}).then(r=>r.json()).then(r=>setBoard(r.board||[])).catch(()=>{}); },[]);
       if(!board||board.length===0) return null;
       const stageC={高危:'#ef4444',预警:'#f97316',关注:'#f59e0b',观察:'#94a3b8'};
-      return <Card className="card" size="small" style={{marginBottom:16}} title={<span><span className="brand-bar"></span><TH t="离职风险榜" tip="综合离职风险=多信号加权: 求职30%+外发25%+删除20%+求职搜索15%+深夜10%;每多一类信号+8分,封顶100。档位: 4类信号或≥80分=高危 / 3类或≥65=预警 / 2类或≥45=关注 / 其余观察。已豁免信号不计入(如HR岗位求职豁免)。" /> <span style={{fontSize:11,color:'var(--ink3)',fontWeight:400}}>(多信号加权 · 30秒刷新)</span></span>}>
+      return <Card className="card" size="small" style={{marginBottom:16}} title={<span><span className="brand-bar"></span><TH t="离职风险榜" tip="综合离职风险=多信号加权: 求职30%+外发25%+删除20%+求职搜索15%+深夜10%;每多一类信号+8分,封顶100。档位: 4类信号或≥80分=高危 / 3类或≥65=预警 / 2类或≥45=关注 / 其余观察。已豁免信号不计入(如HR岗位求职豁免)。求职信号非必需: 未访问招聘站≠安全(求职可在手机完成),删数据+外发+改名掩盖等前兆组合同样上榜,卡片会标注'无求职信号'。" /> <span style={{fontSize:11,color:'var(--ink3)',fontWeight:400}}>(多信号加权 · 30秒刷新)</span></span>}>
         <div style={{display:'flex',gap:0,overflowX:'auto'}}>
           {board.slice(0,8).map(x=>{ const c=stageC[x.stage]||'#94a3b8';
             return (<div key={x.employee} onClick={()=>goProfile(x.employee)}
@@ -837,7 +837,7 @@ function Dashboard({go, goProfile}){
                 <b style={{fontSize:13,color:'var(--ink)'}}>{x.employee}</b>
                 <Tooltip title={'综合风险分 '+x.score+' = '+Object.entries(x.breakdown).map(([k,v])=>((k==='job'?'求职':k==='exfil'?'外发':k==='delete'?'删除':k==='search'?'搜索':'深夜')+'信号'+v+'分')).join(' + 加权 ')+(x.signals>1?' + 叠加'+((x.signals-1)*8)+'分':'')+';明细: '+Object.values(x.detail||{}).join('; ')}><span className="num" style={{fontSize:18,fontWeight:800,color:c}}>{x.score}</span></Tooltip>
               </div>
-              <div style={{fontSize:10.5,color:c,marginTop:2}}>{x.stage} · {x.signals}类信号</div>
+              <div style={{fontSize:10.5,color:c,marginTop:2}}>{x.stage} · {x.signals}类信号{!x.breakdown.job&&<span style={{color:'var(--ink3)'}}> · 无求职信号(前兆组合)</span>}</div>
               <div style={{fontSize:10,color:'var(--ink3)',marginTop:4,lineHeight:1.5}}>
                 {Object.entries(x.breakdown).map(([k,v])=>(k==='job'?'求职':k==='exfil'?'外发':k==='delete'?'删除':k==='search'?'搜索':'深夜')+':'+v).join(' · ')}
               </div>
