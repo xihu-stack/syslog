@@ -76,13 +76,50 @@ def scan_mass_deletes() -> dict:
 
 def scan_mass_exfil(s) -> int:
     """外发量聚合: 单日非白名单SEND/UPLOAD≥15次 或 总量≥50MB → 告警。"""
+    # 邻近白名单推断(2026-08-24鄢荣梅案例): IPG对网页上传(msedgewebview2.exe等)
+    # 不记录目标域名只标NETWORK,空目的地被当"非白名单"误计入蚂蚁搬家——
+    # 按同时刻(±3分钟)浏览的公司白名单域名判定为Teams/M365等公司通道
+    _wl = [w.lower() for w in dicts.get("risk_whitelist_domains") or []]
+    webs = defaultdict(list)
+    for w in s.query(EventRow).filter(EventRow.category == "WEB",
+                                       EventRow.occurred_at >= bj_now() - timedelta(days=1)).all():
+        d = ((w.raw or {}).get("domain") or "").lower()
+        if d:
+            webs[w.employee_id].append((w.occurred_at, d))
+    for k in webs:
+        webs[k].sort()
+
+    def _nearby(emp, ts):
+        """±3分钟浏览域名: 返回(白名单命中, 非白名单域名样例)"""
+        wl_hit, doms = False, []
+        for t, d in webs.get(emp, ()):
+            if abs((t - ts).total_seconds()) > 180:
+                continue
+            if any(d == x or d.endswith("." + x) for x in _wl):
+                wl_hit = True
+            elif d not in doms:
+                doms.append(d)
+        return wl_hit, doms
+
     by_emp = defaultdict(list)
+    _inferred = {}
     for e in s.query(EventRow).filter(EventRow.source == "ipguard",
                                        EventRow.occurred_at >= bj_now() - timedelta(days=1),
                                        EventRow.action.in_(("SEND", "UPLOAD"))).all():
-        dest = ((e.raw or {}).get("dest_path") or "").split("/")[0].lower()
-        if dest and any(dest == w or dest.endswith("." + w) for w in dicts.get("risk_whitelist_domains") or []):
+        dest = ((e.raw or {}).get("dest_path") or "").strip().lower()
+        if dest.startswith(("http:", "https:")):
+            _p = dest.split("/")
+            dest = _p[2] if len(_p) > 2 else dest
+        else:
+            dest = dest.split("/")[0]
+        if dest and any(dest == w or dest.endswith("." + w) for w in _wl):
             continue
+        if not dest:  # 空目的地: 邻近推断
+            wl_hit, doms = _nearby(e.employee_id, e.occurred_at)
+            if wl_hit:
+                continue  # 公司通道(Teams/M365传附件),不计入外发
+            if doms:
+                _inferred[(e.employee_id, e.id)] = doms[0][:36]
         by_emp[e.employee_id].append(e)
     created = 0
     for emp, lst in by_emp.items():
@@ -96,11 +133,19 @@ def scan_mass_exfil(s) -> int:
         # 样例文件名放宽到48字符(2026-08-24用户反馈: HXN-9004...zip被截成.zi);
         # 目的地为空时回退到通道名,不再留悬空箭头
         def _dest(e):
-            d = ((e.raw or {}).get("dest_path") or "").split("/")[0]
+            d = ((e.raw or {}).get("dest_path") or "").strip()
+            if d.startswith(("http:", "https:")):
+                _p = d.split("/")
+                d = _p[2] if len(_p) > 2 else d
+            else:
+                d = d.split("/")[0]
             if d:
                 return d[:36]
+            inf = _inferred.get((e.employee_id, e.id))
+            if inf:
+                return inf + "(同期浏览)"
             ch = (e.raw or {}).get("channel") or ""
-            return ch if ch and ch != "LOCAL" else "网络通道"
+            return (ch + "·未识别目的地") if ch and ch != "LOCAL" else "网络通道·未识别目的地"
         sample = "; ".join(f"『{(e.target_value or '未命名文件')[:48]}』→{_dest(e)}" for e in lst[:4])
         # 触发模式区分(2026-08-24用户反馈: 单次1.78GB也叫"蚂蚁搬家"矛盾)——
         # ≥15次=高频小批量(蚂蚁搬家), 少量但体量大=单次/少量大体量外发

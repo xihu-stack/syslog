@@ -68,8 +68,30 @@ def anchor_score(intent, window, day_total=None) -> int | None:
     # 锚点会把错误意图锁进75+档(潘利锋凌晨案例,selfheal连续多轮对齐暴露)
     def _wl_dest(e):
         """DOC外发目的地在公司豁免白名单(OA/费控等内部业务平台)→不算外发风险。"""
-        d = ((e.raw or {}).get("dest_path") or "").split("/")[0].lower()
-        return any(d == w or d.endswith("." + w) for w in dicts.get("risk_whitelist_domains") or [])
+        d = ((e.raw or {}).get("dest_path") or "").strip().lower()
+        if d.startswith(("http:", "https:")):  # URL型目的地(https://eln...): 取主机名
+            _p = d.split("/")
+            d = _p[2] if len(_p) > 2 else d
+        else:
+            d = d.split("/")[0]
+        if d:
+            return any(d == w or d.endswith("." + w) for w in dicts.get("risk_whitelist_domains") or [])
+        # 网页上传无目标域名(2026-08-24鄢荣梅案例): msedgewebview2.exe上传IPG不记
+        # 目的地,只标NETWORK——按±3分钟内浏览的公司白名单域名推断(Teams/M365/
+        # SharePoint传附件),同期只有公司平台流量则视为公司通道
+        _wl = [w.lower() for w in dicts.get("risk_whitelist_domains") or []]
+        ts = getattr(e, "occurred_at", None)
+        if ts is None:
+            return False
+        from datetime import timedelta as _td
+        for w in window:
+            if w.category != "WEB" or w.occurred_at is None:
+                continue
+            if abs((w.occurred_at - ts).total_seconds()) <= 180:
+                d2 = ((w.raw or {}).get("domain") or "").lower()
+                if d2 and any(d2 == x or d2.endswith("." + x) for x in _wl):
+                    return True
+        return False
     _has_evidence = any(dicts.risk_class(d) in ("网盘/云盘", "个人邮箱", "微信文件助手")
                         for d in doms) or any(
         e.category == "DOC" and not _wl_dest(e)

@@ -62,6 +62,9 @@ DEFAULTS = {
         # 公司内部平台(2026-08-24): ELN电子实验记录本/Certara仿真租户/公司M365租户SharePoint
         "eln.huashen.bio", "huashen.certara.net",
         "helixoncn.sharepoint.com", "helixoncn-my.sharepoint.com",
+        # M365基础设施域(2026-08-24鄢荣梅案例): *.sharepoint.net=微软后端遥测/AAD,
+        # cloud.microsoft=M365全家(teams./m365./*.svc.)——网页上传邻近推断依赖
+        "sharepoint.net", "cloud.microsoft",
     ],
     "slack_sdk_domains": [],         # 心跳/埋点排除域名:客户端挂后台的规律上报,不算摸鱼(AI扫描建议+人工采纳维护)
     "slack_domains": {
