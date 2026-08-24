@@ -74,8 +74,10 @@ for attempt in range(30):
                 kept.append((e, raw))
             total_mb = sum((e["size_bytes"] or 0) for e, _ in kept) / 1048576
             if len(kept) < 15 and total_mb < 50:
-                db.execute("UPDATE alerts SET status='CLOSED', risk_score=15, severity='LOW', "
-                           "summary='[白名单更正: 原计入的外发实为Teams/M365等公司通道传附件(邻近浏览域名推断),重算后低于聚合阈值] '||substr(summary,1,200) WHERE id=?", (a["id"],))
+                old_sm = db.execute("SELECT summary FROM alerts WHERE id=?", (a["id"],)).fetchone()["summary"] or ""
+                if not old_sm.startswith("[白名单更正"):
+                    db.execute("UPDATE alerts SET status='CLOSED', risk_score=15, severity='LOW', "
+                               "summary='[白名单更正: 原计入的外发实为Teams/M365等公司通道传附件(邻近浏览域名推断),重算后低于聚合阈值] '||substr(summary,1,200) WHERE id=?", (a["id"],))
                 out["closed"].append((a["id"], a["employee_id"][:10], len(kept), round(total_mb, 1)))
                 continue
             mode = "高频小批量·蚂蚁搬家模式" if len(kept) >= 15 else "少量大体量外发"
