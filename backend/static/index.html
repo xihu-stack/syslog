@@ -614,6 +614,17 @@ function LoginPage({onOk}){
   </div>);
 }
 
+// 员工标识显示映射(2026-08-24): 非中文标识→中文名(账号) 或 账号·计算机NNN
+let EMPMAP={};
+const EMP_D=v=>{
+  if(!v) return '';
+  if(/[一-鿿]/.test(v)) return v;
+  if(String(v).startsWith('IPG:')) return v+'(待匹配)';
+  const m=EMPMAP[v]||{};
+  if(m.alias) return m.alias+'('+v+')';
+  if(m.agt) return v+' · 计算机'+m.agt;
+  return v;
+};
 function App(){
   // ---- 登录门:有 token 先探测 /api/me,无效/无 token 渲染登录页 ----
   const [authed,setAuthed]=useState(localStorage.getItem(TOKEN_KEY)?null:false);
@@ -637,7 +648,8 @@ function App(){
       else { localStorage.removeItem(TOKEN_KEY); setAuthed(false); }
     }).catch(()=>setAuthed(false));
   },[]);
-  const [key,setKey]=useState('dashboard'); const [profileUser,setProfileUser]=useState(null); const [profileFrom,setProfileFrom]=useState('alerts');
+  const [key,setKey]=useState('dashboard'); const [profileUser,setProfileUser]=useState(null); const [profileFrom,setProfileFrom]=useState('alerts'); const [,setEmVer]=useState(0);
+  useEffect(()=>{ if(authed) fetch('/api/emp-map',{headers:_authHdr()}).then(r=>r.json()).then(m=>{EMPMAP=m||{};setEmVer(v=>v+1);}).catch(()=>{}); },[authed]);
   const [filter,setFilter]=useState({}); const navigate=(k,f={})=>{setFilter(f);setKey(k);};
   // 效率总结状态提升到 App：跨页保留上次结果 + 后台生成不随切页中断
   const [effItems,setEffItems]=useState(null); const [effLoading,setEffLoading]=useState(false); const [effMsg,setEffMsg]=useState('');
@@ -710,7 +722,7 @@ function App(){
             {key==='profile' ? (<>
               <span onClick={()=>{navigate(profileFrom||'alerts');setProfileUser(null);}} style={{color:'var(--ink3)',cursor:'pointer'}}>{FROM_TITLE[profileFrom]||'告警管理'}</span>
               <span style={{color:'var(--ink4)'}}>/</span>
-              <span style={{fontWeight:700,color:'var(--ink)',fontSize:15}}>{profileUser}</span>
+              <span style={{fontWeight:700,color:'var(--ink)',fontSize:15}}>{EMP_D(profileUser)}</span>
             </>) : (<span style={{fontWeight:700,color:'var(--ink)',fontSize:15}}>{({dashboard:'安全总览',computers:'用户视图',alerts:'告警工作台',verdicts:'研判记录',efficiency:'效率监控',ask:'AI 助手',rawlogs:'原始日志',config:'系统设置',handbook:'使用手册'})[key]}</span>)}
           </div>
           <Space size={8}>
@@ -841,7 +853,7 @@ function Dashboard({go, goProfile}){
       const ga=(sys.top_active||[]).map(x=>({key:x.employee,employee:x.employee,scenario:INTENT[x.scenario]||x.scenario,scenarios:[INTENT[x.scenario]||x.scenario],maxRisk:x.risk_score,status:x.status,latest:x.latest,summary:x.summary}));
       return <Card className="card" title={<span><span className="brand-bar"></span>高风险告警 TOP5</span>} size="small" extra={<a onClick={()=>go('alerts')}>全部 →</a>}>
         {ga.length? <Table size="small" rowKey="key" pagination={false} dataSource={ga.slice(0,5)} onRow={r=>({onClick:()=>goProfile(r.employee),title:r.summary,style:{cursor:'pointer'}})}
-          columns={[{title:'用户',dataIndex:'employee',width:96,render:v=><span className="uname" style={{cursor:'inherit'}}>{v&&v.startsWith('IPG:')?v+'(待匹配)':v}</span>},
+          columns={[{title:'用户',dataIndex:'employee',width:96,render:v=><span className="uname" style={{cursor:'inherit'}}>{EMP_D(v)}</span>},
             {title:'风险场景',dataIndex:'scenario',width:130,render:(v,r)=>{const L=LVL(r.maxRisk);const st=SRCTAG(r.summary,r.scenario,r.latest);return <Space size={3}><Tooltip title={st.tip}><Tag style={{background:st.c+'14',color:st.c,border:'1px solid '+st.c+'44',fontSize:10}}>{st.t}</Tag></Tooltip><Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40'}}>{v}</Tag></Space>}},
             {title:'风险',dataIndex:'maxRisk',width:96,render:v=><RiskBadge s={v}/>},
             {title:'状态',dataIndex:'status',width:84,render:v=><StatusTag s={v}/>},            {title:'状态',dataIndex:'status',width:84,render:v=><StatusTag s={v}/>},
@@ -1029,7 +1041,7 @@ function Computers({goProfile,filter}){
         onRow={r=>({onClick:()=>goProfile(r.computer),style:{cursor:'pointer'}})}
         columns={[
           {title:<TH t="用户" />,dataIndex:'computer',width:170,
-            render:(v,r)=>{const rk=r.max_risk||0;const ex=exMap[v];return (<span><a className="uname">{String(v).startsWith('IPG:')?v+'(待匹配)':v}</a>{ex&&<Tooltip title={'已豁免：'+ex.join('、')}><Tag color="default" style={{marginLeft:6,fontSize:11,lineHeight:'16px'}}>豁免</Tag></Tooltip>}</span>);}},
+            render:(v,r)=>{const rk=r.max_risk||0;const ex=exMap[v];return (<span><a className="uname">{EMP_D(v)}</a>{ex&&<Tooltip title={'已豁免：'+ex.join('、')}><Tag color="default" style={{marginLeft:6,fontSize:11,lineHeight:'16px'}}>豁免</Tag></Tooltip>}</span>);}},
           {title:<TH t="风险" tip="当前风险:近7天未处理/已知晓告警的最高分(经N+1复核修正)。误报与复核关闭不计入。76+严重/56+高危/31+关注/0-30正常。" />,dataIndex:'max_risk',width:95,render:v=><RiskBadge s={v}/>},
           {title:<TH t="告警" tip="合并后的告警条数(同员工同意图合并为1条,取最高分)。非研判次数。" />,dataIndex:'alert_count',width:64,render:v=>v>0?<Tag color="red">{v}条</Tag>:<span style={{color:'var(--ink4)'}}>—</span>},
           {title:<TH t={isToday?'今日事件':'事件'} tip="降噪聚合后的事件条数(同域名10分钟内合并),非原始上网次数。今日=北京时间当日0点起。" />,width:80,render:(_,r)=><span className="num" style={{color:'var(--ink2)'}}>{isToday?(r.event_count_today||0):(r.event_count||0)}</span>},
@@ -1101,7 +1113,7 @@ function Alerts({goProfile,filter}){
       </Space>
       <Table size="small" rowKey="key" pagination={{pageSize:14,showTotal:t=>`共 ${alertN} 条告警 / ${t} 人（按用户合并）`}} loading={loading} dataSource={agData}
         columns={[
-          {title:<TH t="用户" />,dataIndex:'employee',width:100,render:v=><a className="uname" onClick={(e)=>{e.stopPropagation();goProfile(v);}}>{v}</a>},
+          {title:<TH t="用户" />,dataIndex:'employee',width:120,render:v=><a className="uname" onClick={(e)=>{e.stopPropagation();goProfile(v);}}>{EMP_D(v)}</a>},
           {title:<TH t="风险场景" tip="该员工当前最高分告警的场景(主场景,加粗)。+N 表示还涉及N个其他场景,鼠标移上查看。" />,dataIndex:'scenarios',width:170,render:(v,r)=>{const mainL=INTENT[r.intent]||r.intent;const L=LVL(r.maxRisk);const subs=v.filter(s=>s.label!==mainL);const st=SRCTAG(r.summary,r.intent,r.latest);return <Space wrap size={[4,3]}><Tooltip title={st.tip}><Tag style={{background:st.c+'14',color:st.c,border:'1px solid '+st.c+'44',fontSize:10}}>{st.t}</Tag></Tooltip><Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40',fontWeight:600}}>{mainL} {r.maxRisk}</Tag>{subs.length>0&&<Tooltip title={'另涉及：'+subs.map(s=>s.label).join('、')}><Tag style={{fontSize:11,color:'var(--ink3)',background:'var(--bg)',border:'1px solid var(--ink4)'}}>+{subs.length}</Tag></Tooltip>}</Space>}},
           {title:<TH t="告警数" tip="该员工在当前筛选范围内的告警条数(合并前)。同一员工同意图会合并展示。" />,dataIndex:'count',width:80,render:v=><span className="num" style={{color:'var(--ink2)',fontWeight:600}}>{v}</span>},
           {title:<TH t="最近告警" tip="该员工最近一次告警的行为发生时间。" />,dataIndex:'latest',width:135,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
@@ -1198,14 +1210,14 @@ function Verdicts({goProfile,filter}){
       <Table size="small" rowKey={merged?'key':'id'} pagination={{pageSize:14,showTotal:t=>`共 ${t} ${merged?'组':'条'}${!merged&&t>=500?' (仅显示最近500条)':''}`}} loading={loading} dataSource={viewData}
         onRow={r=>({onClick:()=>goProfile(r.employee),title:r.summary,style:{cursor:'pointer'}})}
         columns={merged?[
-          {title:<TH t="用户" />,dataIndex:'employee',width:110,render:v=><span className="uname" style={{cursor:'inherit'}}>{v&&v.startsWith('IPG:')?v+'(待匹配)':v}</span>},
+          {title:<TH t="用户" />,dataIndex:'employee',width:130,render:v=><span className="uname" style={{cursor:'inherit'}}>{EMP_D(v)}</span>},
           {title:<TH t="意图" tip="AI判定的行为意图。数据外发/求职离职/行为偏离/违规/正常。" />,dataIndex:'intent',width:110,render:v=><Tag style={{background:'var(--brand-soft)',color:'var(--brand)',border:'1px solid var(--brand)'+'33'}}>{INTENT[v]||v}</Tag>},
           {title:<TH t="研判次数" tip="该员工+该意图被AI研判的总次数(合并前)。≥10次标橙,提示重复性风险。" />,dataIndex:'count',width:90,render:v=><span className="num" style={{fontWeight:700,color:v>=10?'var(--orange)':'var(--ink)'}}>{v}</span>},
           {title:<TH t="最高风险" tip="这些研判中的最高风险分(0-100)。76+严重/56+高危/31+关注。" />,dataIndex:'maxRisk',width:100,render:v=><RiskBadge s={v}/>},
           {title:<TH t="最近" tip="最近一次研判的时间(行为发生时间)。" />,dataIndex:'latest',width:140,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
           {title:<TH t="最近一次说明" />,dataIndex:'explanation',render:v=><span title={v} style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>},
         ]:[
-          {title:<TH t="用户" />,dataIndex:'employee',width:110,render:v=><span className="uname" style={{cursor:'inherit'}}>{v&&v.startsWith('IPG:')?v+'(待匹配)':v}</span>},
+          {title:<TH t="用户" />,dataIndex:'employee',width:130,render:v=><span className="uname" style={{cursor:'inherit'}}>{EMP_D(v)}</span>},
           {title:<TH t="时间" tip="研判窗口的起始时间(行为发生时间)。" />,dataIndex:'window_start',width:140,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
           {title:<TH t="意图" tip="AI判定的行为意图。" />,dataIndex:'intent',width:110,render:v=><Tag style={{background:'var(--brand-soft)',color:'var(--brand)',border:'1px solid var(--brand)'+'33'}}>{INTENT[v]||v}</Tag>},
           {title:<TH t="风险" tip="AI对该行为窗口的打分(0-100)。" />,dataIndex:'risk_score',width:90,render:v=><RiskBadge s={v}/>},
@@ -1232,7 +1244,7 @@ function Efficiency({items,loading,gen,msg,goProfile,filter}){
         dataSource={filtered}
         onRow={r=>({onClick:()=>goProfile&&goProfile(r.employee),style:{cursor:'pointer'}})}
         columns={[
-          {title:<TH t="员工" />,dataIndex:'employee',width:110,render:v=><span className="uname" style={{cursor:'inherit'}}>{v&&v.startsWith('IPG:')?v+'(待匹配)':v}</span>},
+          {title:<TH t="员工" />,dataIndex:'employee',width:130,render:v=><span className="uname" style={{cursor:'inherit'}}>{EMP_D(v)}</span>},
           {title:<TH t="日均摸鱼" tip="日均摸鱼时长(分钟)。算法:工作时段娱乐访问按10分钟访问桶估算(连续看=跨度,碎片闪现=桶数×10min封顶,单次保底5min),÷工作日在岗天数。基于访问记录估算,非精确观看。≥60分钟(1小时)才算重度。" />,dataIndex:'slack_avg',width:110,sorter:(a,b)=>(b.slack_avg||0)-(a.slack_avg||0),defaultSortOrder:'ascend',
             render:(v,r)=>{const n=v||0;const c=n>=120?'#ef4444':n>=60?'#f97316':n>=30?'#f59e0b':'#94a3b8';return <span>{r.sparse&&n>0&&<Tooltip title="稀疏上报模式:多数会话为单次访问(碎片闪现/挂后台心跳),时长为保底估算上限,可能虚高。点员工名进画像看会话明细,或到系统设置→AI规则扫描排除心跳域名。"><i className="fa-solid fa-triangle-exclamation" style={{color:'#f59e0b',fontSize:11,marginRight:5}}></i></Tooltip>}<span className="num" style={{color:c,fontWeight:700,fontSize:15}}>{n>=60?Math.floor(n/60)+'h'+(n%60?' '+(n%60)+'m':''):n+(n<60?'min':'')}</span></span>}},
           {title:<TH t="摸鱼占比" tip="摸鱼总时长 ÷ (工作日在岗天数×7小时工时),时长口径。反映上班时间被娱乐占用的比例;开一页挂几小时的视频类也能如实体现。" />,dataIndex:'pct',width:120,render:v=>{const p=v||0;return <div style={{display:'flex',alignItems:'center',gap:8}}><div className="pbar"><i style={{width:Math.min(p,100)+'%',background:p>=30?'#ef4444':p>=10?'#f59e0b':'var(--brand)'}}></i></div><span className="num" style={{color:'var(--ink2)',fontWeight:600,fontSize:12}}>{p}%</span></div>}},
@@ -1599,7 +1611,7 @@ function Config(){
       {key:'exempt', label:'豁免管理', children:<Card className="card" title={"误报复核 / 豁免管理（"+excs.length+"）"} size="small">
         {excs.length ? <Table size="small" rowKey="id" pagination={{pageSize:12}} dataSource={excs}
           columns={[
-            {title:'用户',dataIndex:'employee',width:90},
+            {title:'用户',dataIndex:'employee',width:120,render:v=>EMP_D(v)},
             {title:'豁免场景',dataIndex:'signal_type',width:110,render:v=><Tag color="blue">{INTENT[v]||v}</Tag>},
             {title:'原因',dataIndex:'reason',ellipsis:true},
             {title:'有效期',dataIndex:'expires_at',width:110,render:v=>v?v.replace('T',' ').slice(0,10):'永久'},

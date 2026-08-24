@@ -574,6 +574,43 @@ def computers():
         s.close()
 
 
+@app.get("/api/emp-map")
+def emp_map():
+    """员工标识→可读显示映射(2026-08-24用户要求: 非中文且非IPG占位的标识无法辨认是谁)。
+    拼音账号: 有中文名映射(employee_alias)→返回alias; 否则附其IPG计算机ID(agt_map反查)
+    供前端渲染"中文名(账号)"或"账号·计算机NNNNN"。中文/IPG:xxx标识不需要。"""
+    import json as _json2
+    import re as _re2
+    from collections import defaultdict as _dd
+    s = Session()
+    try:
+        def _jget(key):
+            v = dicts.get_setting(key)
+            if isinstance(v, str):
+                try:
+                    return _json2.loads(v)
+                except Exception:
+                    return {}
+            return v or {}
+        ali = _jget("employee_alias")
+        agt = _jget("ipg_agt_map")
+        rev = _dd(list)
+        for agt_id, person in (agt or {}).items():
+            if person:
+                rev[str(person)].append(str(agt_id))
+        def _norm_alias(e):
+            x = _re2.sub(r"\.(huashen|helixon)(\.\d+)?$", "", (e or "").lower())
+            return ali.get(x) or ali.get(e)
+        out = {}
+        for (e,) in s.query(EventRow.employee_id).distinct().all():
+            if not e or e.startswith("IPG:") or _re2.search(r"[\u4e00-\u9fff]", e):
+                continue
+            out[e] = {"alias": _norm_alias(e), "agt": ",".join(sorted(rev.get(e, []))[:2]) or None}
+        return out
+    finally:
+        s.close()
+
+
 @app.post("/api/ingest")
 def ingest(file: UploadFile = File(...)):
     """上传 xlsx/csv → 批量导入 → 建画像 → 异步启动研判（立即返回，前端轮询进度）。
