@@ -1486,14 +1486,14 @@ function AliasCard(){
   const ignore=async(a)=>{ await POST('/api/alias/ignore',{headers:{'Content-Type':'application/json'},body:JSON.stringify({account:a})}); message.success('已忽略(不再提示)'); load(); };
   const conf=(data&&data.confirmed)||{};
   const pendEntries=Object.entries((data&&data.pending)||{}).map(([a,v])=>{ const o=(typeof v==='string')?{guess:v}:v; return {account:a,guess:o.guess||'',candidates:o.candidates||[],reason:o.reason||'',count:o.count||0,last_seen:o.last_seen||''}; });
-  const ignored=(data&&data.ignored)||[];
+  const ignored=(data&&data.ignored)||[]; const agts=(data&&data.agts)||{}; const ipgHint=(data&&data.ipg_hint)||{};
   return (<div>
     <Alert type='info' showIcon style={{marginBottom:12}} message='所有非中文标识(域账号/拼音)都会被提取到待确认清单: 拼音唯一命中自动生效;拼音撞名给出候选(点击填入);其余请人工填写中文名。确认后立即生效——新数据入库自动转换,历史数据同步清洗。IP型标识因DHCP动态分配无法关联员工,建议忽略。'/>
     <Card className='card' size='small' title={'待确认 ('+pendEntries.length+') · 每小时自动扫描'} style={{marginBottom:16}}>
       {pendEntries.length===0?<Typography.Text type='secondary' style={{fontSize:12}}>暂无待确认标识——当前所有用户标识均为中文或已映射</Typography.Text>:
       <Table size='small' rowKey='account' pagination={{pageSize:10}} dataSource={pendEntries}
         columns={[
-          {title:'非中文标识',dataIndex:'account',render:v=><span className='num' style={{fontSize:12}}>{v}</span>},
+          {title:'非中文标识',dataIndex:'account',render:v=>(<span>{v}{agts[v]&&<Tag color='geekblue' style={{marginLeft:6,fontSize:11}}>计算机 {agts[v]}</Tag>}{ipgHint[v]&&<Tag color='cyan' style={{marginLeft:6,fontSize:11}}>关联账号 {ipgHint[v]}</Tag>}</span>)},
           {title:'线索',dataIndex:'reason',width:170,render:v=><Tag style={{fontSize:11}}>{v||'-'}</Tag>},
           {title:'候选(点击填入)',width:180,render:(_,r)=>r.candidates.length?r.candidates.map(c=><Tag key={c} style={{cursor:'pointer',fontSize:11,marginBottom:2}} onClick={()=>setFix({...fix,[r.account]:c})}>{c}</Tag>):<span style={{color:'var(--ink3)',fontSize:11}}>-</span>},
           {title:'近30天',width:110,render:(_,r)=><span style={{fontSize:11,color:r.count?'var(--ink2)':'var(--ink3)'}}>{r.count?r.count+'条 · '+(r.last_seen||'').slice(5,10):'无活动'}</span>},
@@ -1509,7 +1509,7 @@ function AliasCard(){
       {Object.keys(conf).length===0?<Typography.Text type='secondary' style={{fontSize:12}}>暂无</Typography.Text>:
       <Table size='small' rowKey='account' pagination={{pageSize:10}} dataSource={Object.entries(conf).map(([a,n])=>({account:a,name:n}))}
         columns={[
-          {title:'账号/IP标识',dataIndex:'account',render:v=><span className='num' style={{fontSize:12}}>{v}</span>},
+          {title:'账号/IP标识',dataIndex:'account',render:v=>(<span>{v}{agts[v]&&<Tag color='geekblue' style={{marginLeft:6,fontSize:11}}>计算机 {agts[v]}</Tag>}{ipgHint[v]&&<Tag color='cyan' style={{marginLeft:6,fontSize:11}}>关联账号 {ipgHint[v]}</Tag>}</span>)},
           {title:'中文名',dataIndex:'name',render:v=><b>{v}</b>},
           {title:'',width:60,render:(_,r)=><Button size='small' danger ghost onClick={()=>del(r.account)}>删除</Button>},
         ]}/>}

@@ -2198,9 +2198,31 @@ def _alias_discover():
 
 @app.get("/api/alias")
 def alias_list():
-    return {"confirmed": _alias_load("employee_alias"),
-            "pending": _alias_load("employee_alias_pending"),
-            "ignored": list(_alias_load("employee_alias_ignored").keys())}
+    """用户映射表。agts: 每个非中文标识对应的IPG计算机ID(2026-08-24用户要求:
+    填中文名时需要ID辅助判断——AGT可在IPG控制台定位到使用人)。"""
+    agt_rev = {}
+    for agt_id, person in (_alias_load("ipg_agt_map") or {}).items():
+        if person:
+            agt_rev.setdefault(str(person), []).append(str(agt_id))
+    conf = _alias_load("employee_alias")
+    pend = _alias_load("employee_alias_pending")
+    ign = _alias_load("employee_alias_ignored")
+    agts = {}
+    for a in set(list(conf) + list(pend) + list(ign)):
+        g = sorted(agt_rev.get(a, []))
+        if g:
+            agts[a] = ",".join(g[:2])
+    # IPG:xxx占位符 → 该机器已通过文档路径关联的账号(大概率同一人,填名依据)
+    agt_raw = _alias_load("ipg_agt_map")
+    ipg_hint = {}
+    for a in pend:
+        if a and str(a).startswith("IPG:"):
+            x = str(a)[4:]
+            acct = agt_raw.get(x) or agt_raw.get(x.split(".")[0])
+            if acct:
+                ipg_hint[a] = str(acct)
+    return {"confirmed": conf, "pending": pend,
+            "ignored": list(ign.keys()), "agts": agts, "ipg_hint": ipg_hint}
 
 
 @app.post("/api/alias/ignore")
