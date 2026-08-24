@@ -61,7 +61,7 @@ def scan_mass_deletes() -> dict:
                 summary = f"{emp}在{day}通过本机删除{len(lst)}次/{len(files)}个文件(如{sample}),大量删除属疑似离职前清理,需核查"
             risk = 80 if len(lst) >= 40 else 70
             s.add(AlertRow(employee_id=emp, scenario="mass_delete",
-                           severity="crit" if risk >= 76 else "high", risk_score=risk,
+                           severity="CRITICAL" if risk >= 76 else "HIGH", risk_score=risk,
                            summary=summary, dedup_key=key,
                            window_start=lst[-1].occurred_at, created_at=bj_now(), status="NEW"))
             created += 1
@@ -93,11 +93,24 @@ def scan_mass_exfil(s) -> int:
         key = f"{emp}|mass_exfil|{day}"
         if s.query(AlertRow).filter_by(dedup_key=key).first():
             continue
-        sample = "; ".join(f"{(e.target_value or '')[:28]}→{((e.raw or {}).get('dest_path') or '').split('/')[0][:20]}" for e in lst[:5])
+        # 样例文件名放宽到48字符(2026-08-24用户反馈: HXN-9004...zip被截成.zi);
+        # 目的地为空时回退到通道名,不再留悬空箭头
+        def _dest(e):
+            d = ((e.raw or {}).get("dest_path") or "").split("/")[0]
+            if d:
+                return d[:36]
+            ch = (e.raw or {}).get("channel") or ""
+            return ch if ch and ch != "LOCAL" else "网络通道"
+        sample = "; ".join(f"『{(e.target_value or '未命名文件')[:48]}』→{_dest(e)}" for e in lst[:4])
+        # 触发模式区分(2026-08-24用户反馈: 单次1.78GB也叫"蚂蚁搬家"矛盾)——
+        # ≥15次=高频小批量(蚂蚁搬家), 少量但体量大=单次/少量大体量外发
+        mode = "高频小批量·蚂蚁搬家模式" if len(lst) >= 15 else "少量大体量外发"
+        big = max(((e.size_bytes or 0) for e in lst), default=0)
+        big_txt = f",单文件最大{big / 1048576:.0f}MB" if big > 50 * 1048576 else ""
         risk = 85 if len(lst) >= 30 or total_mb >= 100 else 75
         s.add(AlertRow(employee_id=emp, scenario="mass_exfil",
-                       severity="crit" if risk >= 76 else "high", risk_score=risk,
-                       summary=f"{emp}在{day}累计外发{len(lst)}次(共{total_mb:.1f}MB)到非白名单目的地,如{sample},属批量外发/蚂蚁搬家模式",
+                       severity="CRITICAL" if risk >= 76 else "HIGH", risk_score=risk,
+                       summary=f"{emp}在{day}向非白名单目的地累计外发{len(lst)}次、共{total_mb:.1f}MB{big_txt}({mode})。样例: {sample}",
                        dedup_key=key, window_start=lst[-1].occurred_at, created_at=bj_now(), status="NEW"))
         created += 1
         print(f"[massops-exfil] {emp} {day} 外发{len(lst)}次/{total_mb:.0f}MB -> {risk}分", flush=True)

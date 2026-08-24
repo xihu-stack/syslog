@@ -41,7 +41,7 @@ def scan_archive_then_send(s) -> int:
                     break
                 dest = ((send.raw or {}).get("dest_path") or "").split("/")[0][:30]
                 s.add(AlertRow(employee_id=emp, scenario="archive_exfil",
-                               severity="crit", risk_score=85,
+                               severity="CRITICAL", risk_score=85,
                                summary=(f"{emp}在{day}先压缩『{(archives[0].target_value or '')[:30]}』"
                                         f"再外发『{sn[:30]}』至{dest},属打包后蓄意带走模式"),
                                dedup_key=key,
@@ -83,7 +83,7 @@ def scan_rename_disguise(s) -> int:
                         if s.query(AlertRow).filter_by(dedup_key=key).first():
                             break
                         s.add(AlertRow(employee_id=emp, scenario="rename_exfil",
-                                       severity="crit", risk_score=80,
+                                       severity="CRITICAL", risk_score=80,
                                        summary=(f"{emp}在{day}将『{src[:30]}』改名为『{dest_name[:20]}』后外发,"
                                                 f"属改名掩盖行为"),
                                        dedup_key=key,
@@ -121,7 +121,7 @@ def scan_trend_spike(s) -> int:
             key = f"{emp}|trend_exfil|{day}"
             if not s.query(AlertRow).filter_by(dedup_key=key).first():
                 s.add(AlertRow(employee_id=emp, scenario="trend_spike",
-                               severity="high", risk_score=75,
+                               severity="HIGH", risk_score=75,
                                summary=(f"{emp}本周外发{cur_send}次(上周{prev_send}次),"
                                         f"环比增长{cur_send/max(prev_send,1):.0f}倍,属外发量突增"),
                                dedup_key=key,
