@@ -81,7 +81,13 @@ def anchor_score(intent, window, day_total=None) -> int | None:
     hours = [e.occurred_at.hour for e in window if e.occurred_at]
     night = any(h < 7 or h >= 22 for h in hours)
     cnt = day_total if day_total else sum(e.count or 1 for e in window)
-    has_write = any(e.category == "DOC" and e.action in WRITE_ACTIONS for e in window)
+    # 本地写+10=预谋信号(编辑/生成文档后外发)。但图片类排除(2026-08-24):
+    # 截图发送前必然先落盘保存,系统行为被误当预谋→所有截图外发机械顶到90,
+    # 与敏感文档外发同级,稀释最高档区分度(田纪元1张SendPhotoes.png=90案例)
+    _IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".heic")
+    has_write = any(e.category == "DOC" and e.action in WRITE_ACTIONS
+                    and not str(e.target_value or "").lower().endswith(_IMG_EXT)
+                    for e in window)
     score = 75 if intent == "policy_violation" else 70
     if intent == "data_exfiltration":
         if cnt >= 10:

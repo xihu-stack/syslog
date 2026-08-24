@@ -138,7 +138,10 @@ def _selfcheck_body() -> dict:
                      if any(t[1].get(k, 0) > 0 for k in need)
                      or (t[1].get("DOC写", 0) > 0 and a.scenario == "data_exfiltration")]
             if cands:
-                best = max(cands, key=lambda t: (t[0].risk_score or 0))
+                # 对齐目标=最新窗口的研判(2026-08-24田纪元案例: 08-22的90分研判
+                # 被max选中粘住,当日最新研判80分反而不对齐——与口径"告警分=最新
+                # 告警级研判分"矛盾);同窗口并列时才取高分
+                best = max(cands, key=lambda t: (t[0].window_start, t[0].risk_score or 0))
                 v = best[0]
                 if a.verdict_id != v.id or a.risk_score != v.risk_score:
                     fixes.append(f"I1 对齐: {a.employee_id}/{a.scenario} vid {a.verdict_id}->{v.id} 分 {a.risk_score}->{v.risk_score}")
