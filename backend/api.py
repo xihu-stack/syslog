@@ -497,12 +497,17 @@ def employee(emp: str):
         vd_max = s.query(func.max(VerdictRow.risk_score)).filter(VerdictRow.employee_id == emp).scalar()
         # 该员工的告警明细(与用户视图'告警N条'同源,供画像对齐展示)
         emp_alerts = s.query(AlertRow).filter(AlertRow.employee_id == emp).order_by(desc(AlertRow.risk_score)).all()
+        # 当前风险=未处理/已知晓告警最高分(2026-08-24): 与列表页口径一致;
+        # max_risk保留为历史研判峰值(参考),复核降分/豁免不影响cur_risk
+        _open = [a.risk_score or 0 for a in emp_alerts if a.status in ("NEW", "CONFIRMED")]
+        cur_risk = max(_open) if _open else 0
         return {
             "employee": emp,
             "category_counts": cat_counts,
             "source_counts": src_counts,
             "verdict_count": vd_total,
             "max_risk": vd_max,
+            "cur_risk": cur_risk,
             "alert_count": len(emp_alerts),
             "alerts": [{"scenario": a.scenario, "severity": a.severity, "risk_score": a.risk_score,
                         "status": a.status, "summary": a.summary,
@@ -544,9 +549,15 @@ def computers():
               .group_by(EventRow.employee_id).all())
         _today = bj_now().replace(hour=0, minute=0, second=0, microsecond=0)
         _wk7 = bj_now() - _td_c(days=7)
+        # 当前风险=近7天未处理/已知晓告警的最高分(2026-08-24口径修订):
+        # 原取"研判最高分"——N+1复核降分/误报关闭只落告警不落研判,且豁免人员
+        # (展佳/周珈妍)研判分停留90导致用户视图虚高"严重";告警分经复核回写,
+        # 是唯一的"当前结论"载体。误报(FP)与复核关闭(CLOSED)不计入。
         vr = {r[0]: r[1] for r in
-              s.query(VerdictRow.employee_id, func.max(VerdictRow.risk_score))
-              .filter(VerdictRow.window_start >= _wk7).group_by(VerdictRow.employee_id).all()}
+              s.query(AlertRow.employee_id, func.max(AlertRow.risk_score))
+              .filter(AlertRow.window_start >= _wk7,
+                      AlertRow.status.in_(("NEW", "CONFIRMED")))
+              .group_by(AlertRow.employee_id).all()}
         al = {r[0]: r[1] for r in
               s.query(AlertRow.employee_id, func.count(AlertRow.id))
               .filter(AlertRow.window_start >= _wk7).group_by(AlertRow.employee_id).all()}

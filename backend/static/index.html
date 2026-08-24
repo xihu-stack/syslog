@@ -332,7 +332,7 @@ function ProfilePage({user, goBack, from}){
   if(!data) return <Card className="card"><div style={{padding:40,textAlign:'center',color:'var(--ink3)'}}>加载中...</div></Card>;
   const vs=data.verdicts||[];
   const evs=data.events||[];
-  const maxRisk=data.max_risk!=null?data.max_risk:(vs.length?Math.max(...vs.map(v=>v.risk_score||0)):0);
+  const curRisk=data.cur_risk!=null?data.cur_risk:((data.alerts||[]).filter(a=>a.status==='NEW'||a.status==='CONFIRMED').reduce((m,a)=>Math.max(m,a.risk_score||0),0));const maxRisk=data.max_risk!=null?data.max_risk:(vs.length?Math.max(...vs.map(v=>v.risk_score||0)):0);
   const p=data.profile||{};
   const domains=p.common_domains||[];
   const _cc=data.category_counts||{}; const _sc=data.source_counts||{};
@@ -347,7 +347,7 @@ function ProfilePage({user, goBack, from}){
     <Row gutter={16}>
       <Col span={6}><Card className="card"><Statistic title={<TH t="历史事件" tip="降噪聚合后的全量事件条数(同域名10分钟内合并)。非原始日志行数。" />} value={catTot||p.sample_count||evs.length}/></Card></Col>
       <Col span={6}><Card className="card"><Statistic title={<TH t="研判次数" tip="AI对该员工可疑行为窗口的累计研判次数。风险≥50的会成为告警。" />} value={data.verdict_count!=null?data.verdict_count:vs.length}/></Card></Col>
-      <Col span={6}><Card className="card"><Statistic title={<TH t="最高风险" tip="该员工所有研判中的最高风险分(0-100)。" />} value={maxRisk} valueStyle={{color:LVL(maxRisk).c}}/></Card></Col>
+      <Col span={6}><Card className="card"><Statistic title={<TH t="当前风险" tip="未处理/已知晓告警的最高分——经N+1复核修正后的当前结论;误报与复核关闭不计入。历史研判峰值见风险趋势图。" />} value={curRisk} valueStyle={{color:LVL(curRisk).c}}/><div style={{fontSize:11,color:'var(--ink3)',marginTop:2}}>历史研判峰值 {maxRisk}</div></Card></Col>
       <Col span={6}><Card className="card"><Statistic title={<TH t="观察天数" tip="30天回看窗口内的活跃天数。" />} value={p.active_days||new Set(evs.map(e=>(e.occurred_at||'').slice(0,10))).size}/></Card></Col>
     </Row>
     <Row gutter={16} style={{marginTop:16}}>
@@ -1030,7 +1030,7 @@ function Computers({goProfile,filter}){
         columns={[
           {title:<TH t="用户" />,dataIndex:'computer',width:170,
             render:(v,r)=>{const rk=r.max_risk||0;const ex=exMap[v];return (<span><a className="uname">{String(v).startsWith('IPG:')?v+'(待匹配)':v}</a>{ex&&<Tooltip title={'已豁免：'+ex.join('、')}><Tag color="default" style={{marginLeft:6,fontSize:11,lineHeight:'16px'}}>豁免</Tag></Tooltip>}</span>);}},
-          {title:<TH t="风险" tip="该员工历史最高研判风险分(0-100)。76+严重/56+高危/31+关注/0-30正常。" />,dataIndex:'max_risk',width:95,render:v=><RiskBadge s={v}/>},
+          {title:<TH t="风险" tip="当前风险:近7天未处理/已知晓告警的最高分(经N+1复核修正)。误报与复核关闭不计入。76+严重/56+高危/31+关注/0-30正常。" />,dataIndex:'max_risk',width:95,render:v=><RiskBadge s={v}/>},
           {title:<TH t="告警" tip="合并后的告警条数(同员工同意图合并为1条,取最高分)。非研判次数。" />,dataIndex:'alert_count',width:64,render:v=>v>0?<Tag color="red">{v}条</Tag>:<span style={{color:'var(--ink4)'}}>—</span>},
           {title:<TH t={isToday?'今日事件':'事件'} tip="降噪聚合后的事件条数(同域名10分钟内合并),非原始上网次数。今日=北京时间当日0点起。" />,width:80,render:(_,r)=><span className="num" style={{color:'var(--ink2)'}}>{isToday?(r.event_count_today||0):(r.event_count||0)}</span>},
           {title:<TH t="最近活动" tip="该员工最后一次产生行为的时间。" />,dataIndex:'last_seen',width:130,render:fmt},
