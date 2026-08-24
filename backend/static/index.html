@@ -1474,13 +1474,16 @@ function PwdCard(){
   </Card>);
 }
 function AliasCard(){
-  const [data,setData]=useState(null); const [na,setNa]=useState(''); const [nn,setNn]=useState(''); const [fix,setFix]=useState({});
+  const [data,setData]=useState(null); const [na,setNa]=useState(''); const [nn,setNn]=useState(''); const [fix,setFix]=useState({}); const [busy,setBusy]=useState('');
   const load=async()=>{ setData(await GET('/api/alias')); };
   useEffect(()=>{load();},[]);
   const confirm=async(account,name)=>{
-    const r=await POST('/api/alias/confirm',{headers:{'Content-Type':'application/json'},body:JSON.stringify({account,name})});
-    message.success('已统一: '+account+' → '+name+(r&&r.updated_rows?(' (历史数据更新'+r.updated_rows+'行)'):''));
-    load();
+    setBusy(account);
+    try{
+      await POST('/api/alias/confirm',{headers:{'Content-Type':'application/json'},body:JSON.stringify({account,name})});
+      message.success('已保存: '+account+' → '+name+'(历史数据后台统一中)');
+      load();
+    }finally{ setBusy(''); }
   };
   const del=async(a)=>{ await DEL('/api/alias/'+encodeURIComponent(a)); message.success('已删除'); load(); };
   const ignore=async(a)=>{ await POST('/api/alias/ignore',{headers:{'Content-Type':'application/json'},body:JSON.stringify({account:a})}); message.success('已忽略(不再提示)'); load(); };
@@ -1499,7 +1502,7 @@ function AliasCard(){
           {title:'近30天',width:110,render:(_,r)=><span style={{fontSize:11,color:r.count?'var(--ink2)':'var(--ink3)'}}>{r.count?r.count+'条 · '+(r.last_seen||'').slice(5,10):'无活动'}</span>},
           {title:'确认为中文名',width:230,render:(_,r)=><Space.Compact>
             <Input size='small' style={{width:110}} placeholder='中文名' value={fix[r.account]!==undefined?fix[r.account]:r.guess} onChange={e=>setFix({...fix,[r.account]:e.target.value})} onPressEnter={()=>{ if(fix[r.account]||r.guess){confirm(r.account, fix[r.account]||r.guess); setFix({...fix,[r.account]:undefined});} }}/>
-            <Button size='small' type='primary' disabled={!(fix[r.account]||r.guess)} onClick={()=>{ confirm(r.account, fix[r.account]||r.guess); setFix({...fix,[r.account]:undefined}); }}>确认</Button>
+            <Button size='small' type='primary' loading={busy===r.account} disabled={!(fix[r.account]||r.guess)} onClick={()=>{ confirm(r.account, fix[r.account]||r.guess); setFix({...fix,[r.account]:undefined}); }}>确认</Button>
             <Button size='small' onClick={()=>ignore(r.account)}>忽略</Button>
           </Space.Compact>},
         ]}/>}

@@ -2094,33 +2094,47 @@ def _alias_load(key):
 
 
 def _alias_apply(account: str, name: str) -> int:
-    """把确认的映射应用到历史数据: 各表 employee_id 替换 + 告警dedup_key重建。返回更新行数。"""
+    """把确认的映射应用到历史数据: 各表 employee_id 替换 + 告警dedup_key重建。返回更新行数。
+    2026-08-24: 接入write_lock+锁重试——实测2条事件的账号confirm也要30s+,根因是
+    UPDATE撞上syslog持续入库的写事务,在busy_timeout=30s上干等;现在与入库串行+秒级重试。"""
+    import time as _t
+    from sqlalchemy.exc import OperationalError as _OE
+    from db import write_lock as _wl
     from sqlalchemy import func as _f2
     n = 0
-    s = Session()
-    try:
-        # profiles 每人一行(unique): 账号行与中文名行并存时,丢弃账号行(画像随后台任务重建)
-        pa = s.query(ProfileRow).filter_by(employee_id=account).first()
-        if pa:
-            if s.query(ProfileRow).filter_by(employee_id=name).first():
-                s.delete(pa)
+    with _wl:
+        for _attempt in range(30):
+            s = Session()
+            try:
+                # profiles 每人一行(unique): 账号行与中文名行并存时,丢弃账号行(画像随后台任务重建)
+                pa = s.query(ProfileRow).filter_by(employee_id=account).first()
+                if pa:
+                    if s.query(ProfileRow).filter_by(employee_id=name).first():
+                        s.delete(pa)
+                        s.commit()
+                for tbl in (EventRow, VerdictRow, AlertRow, ProfileRow, ExceptionRow):
+                    r = s.query(tbl).filter(getattr(tbl, "employee_id") == account)                .update({getattr(tbl, "employee_id"): name}, synchronize_session=False)
+                    n += r or 0
+                # alerts.dedup_key = f"{emp}|{intent}" —— 重算
+                for a in s.query(AlertRow).filter(AlertRow.employee_id == name).all():
+                    if a.dedup_key and a.dedup_key.startswith(account + "|"):
+                        a.dedup_key = f"{name}|{a.scenario}"
+                # 同员工同意图的老/新告警可能因映射产生重复行——保留分数高的那条
+                dup = s.query(AlertRow.dedup_key, _f2.count(AlertRow.id)).filter(AlertRow.employee_id == name)            .group_by(AlertRow.dedup_key).having(_f2.count(AlertRow.id) > 1).all()
+                for key, _cnt in dup:
+                    rows = s.query(AlertRow).filter(AlertRow.dedup_key == key).order_by(desc(AlertRow.risk_score)).all()
+                    for extra in rows[1:]:
+                        s.delete(extra)
                 s.commit()
-        for tbl in (EventRow, VerdictRow, AlertRow, ProfileRow, ExceptionRow):
-            r = s.query(tbl).filter(getattr(tbl, "employee_id") == account)                .update({getattr(tbl, "employee_id"): name}, synchronize_session=False)
-            n += r or 0
-        # alerts.dedup_key = f"{emp}|{intent}" —— 重算
-        for a in s.query(AlertRow).filter(AlertRow.employee_id == name).all():
-            if a.dedup_key and a.dedup_key.startswith(account + "|"):
-                a.dedup_key = f"{name}|{a.scenario}"
-        # 同员工同意图的老/新告警可能因映射产生重复行——保留分数高的那条
-        dup = s.query(AlertRow.dedup_key, _f2.count(AlertRow.id)).filter(AlertRow.employee_id == name)            .group_by(AlertRow.dedup_key).having(_f2.count(AlertRow.id) > 1).all()
-        for key, _cnt in dup:
-            rows = s.query(AlertRow).filter(AlertRow.dedup_key == key).order_by(desc(AlertRow.risk_score)).all()
-            for extra in rows[1:]:
-                s.delete(extra)
-        s.commit()
-    finally:
-        s.close()
+                break
+            except _OE as e:
+                s.rollback()
+                if "locked" in str(e).lower() and _attempt < 29:
+                    _t.sleep(1)
+                    continue
+                raise
+            finally:
+                s.close()
     return n
 
 
@@ -2234,6 +2248,7 @@ def alias_list():
 def alias_ignore(body: dict = Body(...)):
     """忽略待确认标识(数字访客ID等不需要映射的) / undo=1 恢复。"""
     import json as _j
+    from db import write_lock as _wl
     account = (body.get("account") or "").strip()
     if not account:
         raise HTTPException(400, "account 不能为空")
@@ -2244,15 +2259,19 @@ def alias_ignore(body: dict = Body(...)):
     else:
         ign[account] = 1
         pend.pop(account, None)
-    dicts.set_setting("employee_alias_ignored", _j.dumps(ign, ensure_ascii=False))
-    dicts.set_setting("employee_alias_pending", _j.dumps(pend, ensure_ascii=False))
+    with _wl:  # 后台改名清洗持锁期间排队,而非busy_timeout干等
+        dicts.set_setting("employee_alias_ignored", _j.dumps(ign, ensure_ascii=False))
+        dicts.set_setting("employee_alias_pending", _j.dumps(pend, ensure_ascii=False))
     return {"ok": True}
 
 
 @app.post("/api/alias/confirm")
 def alias_confirm(body: dict = Body(...)):
-    """确认候选映射(或直接添加): 立即写入生效映射并清洗该账号历史数据。"""
+    """确认候选映射(或直接添加): 立即写入生效映射并清洗该账号历史数据。
+    2026-08-24: 历史清洗移后台线程——同步等清洗时撞锁30s+导致前端"确认卡住",
+    现在映射保存(新数据立即按新名入库)秒回,历史行随后台统一。"""
     import json as _j
+    import threading as _th
     account = (body.get("account") or "").strip()
     name = (body.get("name") or "").strip()
     if not account or not name:
@@ -2262,21 +2281,30 @@ def alias_confirm(body: dict = Body(...)):
     old = conf.get(account)
     conf[account] = name
     pend.pop(account, None)
-    dicts.set_setting("employee_alias", _j.dumps(conf, ensure_ascii=False))
-    dicts.set_setting("employee_alias_pending", _j.dumps(pend, ensure_ascii=False))
-    n = 0
+    from db import write_lock as _wl2
+    with _wl2:  # 小写也串行,防极端撞锁等满busy_timeout
+        dicts.set_setting("employee_alias", _j.dumps(conf, ensure_ascii=False))
+        dicts.set_setting("employee_alias_pending", _j.dumps(pend, ensure_ascii=False))
     if old != name:
-        n = _alias_apply(account, name)
-    return {"ok": True, "updated_rows": n}
+        def _bg():
+            try:
+                n = _alias_apply(account, name)
+                print(f"[alias] 后台清洗完成 {account}->{name} ({n}行)", flush=True)
+            except Exception as ex:
+                print(f"[alias] 后台清洗失败 {account}->{name}: {str(ex)[:120]}", flush=True)
+        _th.Thread(target=_bg, daemon=True).start()
+    return {"ok": True, "bg": True}
 
 
 @app.delete("/api/alias/{account}")
 def alias_delete(account: str):
     import json as _j
+    from db import write_lock as _wl
     conf = _alias_load("employee_alias")
     if account in conf:
         del conf[account]
-        dicts.set_setting("employee_alias", _j.dumps(conf, ensure_ascii=False))
+        with _wl:  # 与后台清洗/入库串行,防busy_timeout干等
+            dicts.set_setting("employee_alias", _j.dumps(conf, ensure_ascii=False))
     return {"ok": True}
 
 
