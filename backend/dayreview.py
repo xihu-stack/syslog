@@ -171,6 +171,10 @@ def _writeback(emp, r, d0, d1):
                     # 分数仍>=50: 对齐但不关闭(保留人工决策权)
                     a.risk_score = min(a.risk_score or 0, sug)
                     a.severity = severity_of(a.risk_score)
+            else:
+                # upgrade但建议分未超过当前分/非锚点场景: 也标注已复核,
+                # 否则"复核过但无痕迹"(2026-08-24潘利锋/高聪案例)
+                a.summary = f"[次日复核:维持] {sm}"
         s.commit()
     except Exception:
         s.rollback()
