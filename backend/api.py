@@ -365,9 +365,9 @@ def stats():
             "alerts": s.query(AlertRow).count(),
             "alerts_open": s.query(AlertRow).filter(AlertRow.status != "CLOSED").count(),
             "employees": s.query(EventRow.employee_id).filter(EventRow.occurred_at >= today_start).distinct().count(),
-            "employees_cn": s.query(EventRow.employee_id).filter(
-                EventRow.occurred_at >= today_start,
-                EventRow.employee_id.op("REGEXP")("[一-鿿]")).distinct().count(),
+            "employees_cn": sum(1 for r in s.query(EventRow.employee_id)
+                                 .filter(EventRow.occurred_at >= today_start).distinct().all()
+                                 if r[0] and any('\u4e00' <= c <= '\u9fff' for c in r[0])),
         }
     finally:
         s.close()
@@ -1141,9 +1141,9 @@ def system_stats():
             "db_size_mb": round(db_size / 1024 / 1024, 1),
             "health": health,
             "employees": s.query(EventRow.employee_id).filter(EventRow.occurred_at >= today_start).distinct().count(),
-            "employees_cn": s.query(EventRow.employee_id).filter(
-                EventRow.occurred_at >= today_start,
-                EventRow.employee_id.op("REGEXP")("[一-鿿]")).distinct().count(),
+            "employees_cn": sum(1 for r in s.query(EventRow.employee_id)
+                                 .filter(EventRow.occurred_at >= today_start).distinct().all()
+                                 if r[0] and any('\u4e00' <= c <= '\u9fff' for c in r[0])),
             "employees_total": s.query(EventRow.employee_id).distinct().count(),
             "retention_days": retention_days,
             "detect": pipeline.detection_status(),
