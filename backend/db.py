@@ -42,6 +42,23 @@ Base = declarative_base()
 # 用这把锁让所有写串行（各写各的、毫秒~秒级），从根上消除写锁互等。
 write_lock = threading.RLock()
 
+
+def retry_write(fn, attempts=30, wait=0.5):
+    """UI小写入口统一通道(2026-08-24): write_lock串行 + database is locked重试。
+    背景: 后台改名清洗/研判flush持锁期间,小写入在busy_timeout=30s上干等,
+    前端按钮卡住30秒(告警状态/映射确认两起实测)。走本通道=排队毫秒级完成。"""
+    import time as _t
+    from sqlalchemy.exc import OperationalError as _OE
+    with write_lock:
+        for _i in range(attempts):
+            try:
+                return fn()
+            except _OE as e:
+                if "locked" in str(e).lower() and _i < attempts - 1:
+                    _t.sleep(wait)
+                    continue
+                raise
+
 # SQLite 并发优化：WAL 模式（读不阻塞写）+ 锁等待 30s，避免研判期间并发写(刷新verdicts/前端写)互相等不到锁报 database is locked
 if DB_URL.startswith("sqlite"):
     @event.listens_for(engine, "connect")

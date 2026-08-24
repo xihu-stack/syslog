@@ -186,16 +186,11 @@ def set_dict(name: str, vals) -> None:
 
 
 def all_dicts() -> dict:
+    """字典页展示口径(2026-08-24修复): 返回DEFAULTS+DB合并后的生效视图。
+    旧版只回DB原始行——白名单实际生效15+个域名,页面只显示用户手动加的3个,
+    严重误导(用户以为白名单几乎是空的)。与get()同源,保存时整体落库不丢默认项。"""
     _ensure()
-    s = Session()
-    try:
-        out = {}
-        for name in DEFAULTS:
-            d = s.query(DictRow).filter_by(name=name).first()
-            out[name] = d.payload if d else DEFAULTS[name]
-        return out
-    finally:
-        s.close()
+    return {name: get(name) for name in DEFAULTS}
 
 
 # ---------------- 应用配置（key-value）----------------

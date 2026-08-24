@@ -20,6 +20,19 @@ import llm_client
 import pipeline
 import profiles
 import dicts
+
+def _ui_write(fn):
+    """UI小写端点装饰器(2026-08-24): write_lock串行+locked重试。
+    后台改名清洗/研判flush持锁时,小写入在busy_timeout=30s干等→按钮卡30s
+    (告警状态/映射确认实测)。整个端体重跑安全:失败发生在commit,无部分提交。"""
+    from functools import wraps
+    from db import retry_write
+
+    @wraps(fn)
+    def wrapper(*a, **kw):
+        return retry_write(lambda: fn(*a, **kw))
+    return wrapper
+
 import syslog_recv
 
 app = FastAPI(title="IP-Guard 员工行为分析")
@@ -663,6 +676,7 @@ def list_exceptions():
 
 
 @app.delete("/api/exceptions/{eid}")
+@_ui_write
 def delete_exception(eid: int):
     """删除豁免（恢复告警）。"""
     s = Session()
@@ -824,6 +838,7 @@ def rejudge():
 
 
 @app.post("/api/feedback")
+@_ui_write
 def feedback(alert_id: int, label: str, reason: str = "", signal_type: str = "", expires_days: int = 0):
     """标记告警 TP/FP。FP 可带原因+信号类型创建豁免（下次同类不再告警）。"""
     if label not in ("TP", "FP"):
@@ -853,19 +868,24 @@ def update_alert_status(alert_id: int, status: str = "TRIAGING"):
     """更新告警状态：NEW/TRIAGING/CONFIRMED/FP/CLOSED。"""
     if status not in ("NEW", "TRIAGING", "CONFIRMED", "FP", "CLOSED"):
         raise HTTPException(400, "无效状态")
-    s = Session()
-    try:
-        a = s.get(AlertRow, alert_id)
-        if not a:
-            raise HTTPException(404, "告警不存在")
-        a.status = status
-        s.commit()
-        return {"ok": True, "status": status}
-    finally:
-        s.close()
+
+    def _do():
+        s = Session()
+        try:
+            a = s.get(AlertRow, alert_id)
+            if not a:
+                raise HTTPException(404, "告警不存在")
+            a.status = status
+            s.commit()
+            return {"ok": True, "status": status}
+        finally:
+            s.close()
+    from db import retry_write
+    return retry_write(_do)  # 2026-08-24: 小写统一通道,防后台持锁时按钮卡30s
 
 
 @app.post("/api/verdicts/{vid}/confirm")
+@_ui_write
 def verdict_confirm(vid: int, reason: str = ""):
     """通过研判ID标记已知晓(自动找到对应alert);reason=备注(可空),留痕到feedback。
     已知晓=纯状态标记:不写豁免、不影响研判和复犯提醒(告警非事故,无需"确认"处置,
@@ -889,6 +909,7 @@ def verdict_confirm(vid: int, reason: str = ""):
 
 
 @app.post("/api/verdicts/{vid}/false_positive")
+@_ui_write
 def verdict_false_positive(vid: int, reason: str = "误报", signal_type: str = "", expires_days: int = 0):
     """通过研判ID标记误报 + 创建豁免。"""
     from datetime import datetime, timedelta
@@ -920,6 +941,7 @@ def get_dicts():
     return dicts.all_dicts()
 
 @app.put("/api/dicts/{name}")
+@_ui_write
 def update_dict(name: str, values: list = Body(...)):
     if name not in dicts.DEFAULTS:
         raise HTTPException(400, f"未知字典: {name}")
@@ -964,6 +986,7 @@ def get_config():
 
 
 @app.put("/api/config")
+@_ui_write
 def set_config(body: dict = Body(...)):
     for k in ("llm_base_url", "llm_active", "llm_qwen_model", "llm_deepseek_model",
               "llm_deepseek_base_url", "syslog_enabled", "syslog_host", "syslog_port", "notify_webhook",
