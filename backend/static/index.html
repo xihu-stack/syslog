@@ -262,7 +262,7 @@ const _askLoad=async()=>{ const r=await GET('/api/ask/history'); if(r&&r.items) 
 const _askClear=async()=>{ await fetch('/api/ask/history',{method:'DELETE',headers:_authHdr()}); _askSet({msgs:[]}); };
 
 const LVL = s => (s==null)?{c:'#94a3b8',l:'-'} : s>=76?{c:'#ef4444',l:'严重'} : s>=56?{c:'#f97316',l:'高危'} : s>=31?{c:'#3b82f6',l:'关注'} : {c:'#22c55e',l:'正常'};
-const INTENT = {data_exfiltration:'数据外发', job_seeking:'求职离职', baseline_deviation:'行为偏离', policy_violation:'违规', normal_work:'正常', unknown:'未知', mass_delete:'大量删除'};
+const INTENT = {data_exfiltration:'数据外发', job_seeking:'求职离职', baseline_deviation:'行为偏离', policy_violation:'违规', normal_work:'正常', unknown:'未知', mass_delete:'大量删除', mass_exfil:'批量外发', archive_exfil:'压缩外发', rename_exfil:'改名掩盖', trend_spike:'外发突增'};
 // 告警来源标签(2026-08-21): 实时(事件触发) / N+1复核(次日全天视野修正) / 聚合(行为聚合如大量删除)
 const SRCTAG=(summary,scenario,ts)=>{
   if((summary||'').startsWith('[次日复核')) return {t:'N+1复核',c:'#6366f1',tip:'次日复核: R1用全天视野重新评估后的修正结论'};
@@ -869,7 +869,7 @@ function Dashboard({go, goProfile}){
           {(()=>{const cnt=sysAl.today_by_scenario||{};const tot=Object.values(cnt).reduce((a,b)=>a+b,0)||1;const rows=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,5);
           return rows.length?<div>{rows.map(([k,v])=>{const L=LVL(k==='policy_violation'?80:k==='data_exfiltration'?70:50);const pct=Math.round(v/tot*100);return <div key={k} title={'点击查看「'+(INTENT[k]||k)+'」告警明细'} onClick={()=>go('alerts',{scenario:k})} style={{display:'flex',alignItems:'center',gap:10,padding:'11px 0',cursor:'pointer'}}>
             <span style={{width:72,fontSize:12,color:'var(--ink2)',fontWeight:500}}>{INTENT[k]||k}</span>
-            <div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:LVL(k==='policy_violation'?80:70).c,borderRadius:4}}></div></div>
+            <div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:L.c,borderRadius:4}}></div></div>
             <span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{v}</span></div>})}</div>:<Empty description="暂无告警" style={{padding:16}}/>;})()}
         <Divider style={{margin:'12px 0 8px'}}/>
         <div style={{fontSize:11,color:'var(--ink3)',marginBottom:4}}>按状态·全时段</div>
