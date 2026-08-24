@@ -7,9 +7,15 @@
   I3 豁免场景无告警行, 豁免研判带[已豁免]前缀(展佳: HR豁免后研判高分可见)
   I4 求职研判窗口必须含招聘域名(纯AI窗口被当日累计裹挟)
   I5 无窗口证据但近7天有真实行为的告警→改写说明保留; 完全无据→关闭
+  I7 verdict_id必须指向本人研判: 全量重判会删旧verdicts重建,行号id被复用,
+     老告警的verdict_id会指到别人的研判(2026-08-24审计99条错位)——错位/悬空
+     时按(同人+同意图+窗口±3h)重连,找不到则置NULL让告警独立存在
+复核标记保护: 带[N+1复核/[次日复核/[研判已降至 前缀的告警,分数是复核结论
+     (N+1降分只写告警不改研判),I1/I6对齐会把它改回研判分造成拉锯——一律跳过。
 """
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from datetime import timedelta
 
@@ -36,6 +42,13 @@ def _verdict_sig(s, v):
             if rc:
                 sig[rc] += (e.count or 1)
     return sig, evs
+
+
+def _reviewed(a):
+    """带复核标记的告警: 分数由N+1复核结论决定(降分只写告警),对齐类不变量跳过。"""
+    sm = a.summary or ""
+    return (sm.startswith(("[次日复核", "[N+1复核"))
+            or "[研判已降至" in sm or "[白名单" in sm or "[巡检" in sm)
 
 
 def selfcheck() -> dict:
@@ -82,12 +95,37 @@ def _selfcheck_once() -> dict:
                 v.risk_score = min(v.risk_score or 30, 45)
                 fixes.append(f"I4 求职无据压回: {v.employee_id}@{str(v.window_start)[:10]}")
 
+        # ---- I7: verdict_id链接完整性(先于I1,保证后续对齐建立在正确链接上) ----
+        for a in s.query(AlertRow).filter(AlertRow.verdict_id.isnot(None)).all():
+            v = s.get(VerdictRow, a.verdict_id)
+            if v is not None and v.employee_id == a.employee_id:
+                continue  # 链接正确
+            cand = None
+            if a.window_start is not None:
+                vs = s.query(VerdictRow).filter(
+                    VerdictRow.employee_id == a.employee_id,
+                    VerdictRow.intent == a.scenario,
+                    VerdictRow.window_start >= a.window_start - timedelta(hours=3),
+                    VerdictRow.window_start <= a.window_start + timedelta(hours=3)
+                ).all()
+                cand = min(vs, key=lambda x: abs((x.window_start - a.window_start).total_seconds())) if vs else None
+            if cand is not None:
+                fixes.append(f"I7 重连: {a.employee_id}/{a.scenario} vid {a.verdict_id}->{cand.id}")
+                a.verdict_id = cand.id
+                if not _reviewed(a):
+                    a.risk_score = cand.risk_score or a.risk_score
+            else:
+                fixes.append(f"I7 断开错链: {a.employee_id}/{a.scenario} vid {a.verdict_id}(指向他人或已删)")
+                a.verdict_id = None
+
         # ---- I1+I2+I5: 告警对齐/关闭/恢复 ----
         ev_map = defaultdict(list)
         for v in s.query(VerdictRow).all():
             sig, evs = _verdict_sig(s, v)
             ev_map[(v.employee_id, v.intent)].append((v, sig, bool(evs)))
         for a in s.query(AlertRow).filter(AlertRow.scenario.in_(_SIG)).all():
+            if a.status == "FP" or _reviewed(a):
+                continue  # 用户误报判定/复核结论优先,不对齐(防与N+1降分拉锯)
             need = _SIG[a.scenario]
             cands = [t for t in ev_map.get((a.employee_id, a.scenario), [])
                      if any(t[1].get(k, 0) > 0 for k in need)
@@ -158,7 +196,7 @@ def _selfcheck_once() -> dict:
                     fixes.append(f"I6 研判档位吸附: {v.employee_id}/{v.intent} {v.risk_score}->{legal[0]}")
                     v.risk_score = legal[0]
         for a in s.query(AlertRow).all():
-            if a.status == "NEW" and a.scenario in _ANCHOR_TIERS and a.risk_score not in _ANCHOR_TIERS[a.scenario]:
+            if a.status == "NEW" and not _reviewed(a) and a.scenario in _ANCHOR_TIERS and a.risk_score not in _ANCHOR_TIERS[a.scenario]:
                 legal = sorted(x for x in _ANCHOR_TIERS[a.scenario] if x >= (a.risk_score or 0))
                 if legal:
                     fixes.append(f"I6 档位吸附: {a.employee_id}/{a.scenario} {a.risk_score}->{legal[0]}")

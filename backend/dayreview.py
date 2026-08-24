@@ -18,7 +18,7 @@ import re
 from collections import Counter
 from datetime import timedelta
 
-from db import Session, EventRow, VerdictRow, AlertRow, bj_now
+from db import Session, EventRow, VerdictRow, AlertRow, bj_now, severity_of
 import dicts
 import detector
 import llm_client
@@ -62,6 +62,12 @@ def _candidates(d0, d1):
                 EventRow.occurred_at >= d0, EventRow.occurred_at < d1,
                 EventRow.source == "ipguard",
                 EventRow.action.in_(("SEND", "UPLOAD", "DELETE"))).all():
+            cands.add(e)
+        # 当日仍有未处理告警的员工也必须复核(2026-08-24): 否则重判后研判缺失的
+        # 老告警永远没有候选触发,卡在NEW成为僵尸积压
+        for (e,) in s.query(AlertRow.employee_id).filter(
+                AlertRow.window_start >= d0, AlertRow.window_start < d1,
+                AlertRow.status == "NEW").all():
             cands.add(e)
         return sorted(cands)[:20]
     finally:
@@ -156,12 +162,15 @@ def _writeback(emp, r, d0, d1):
                 # 行为持续 → 保留告警(keep方向处理)
                 if sug < 50:
                     a.status = "CLOSED"
+                    a.risk_score = sug  # 徽章分同步复核分,否则"75分+已关闭"自相矛盾
+                    a.severity = severity_of(sug)
                     a.summary = f"[N+1复核:误报自动关闭——{reason}] {sm}"
                     print(f"[dayreview] 自动关闭: {emp}/{a.scenario} {a.risk_score}->{sug}分", flush=True)
                 else:
                     a.summary = f"[次日复核:疑误报——{reason}] {sm}"
                     # 分数仍>=50: 对齐但不关闭(保留人工决策权)
                     a.risk_score = min(a.risk_score or 0, sug)
+                    a.severity = severity_of(a.risk_score)
         s.commit()
     except Exception:
         s.rollback()

@@ -265,13 +265,18 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 try:
                     import llm_client as _lc
                     for emp, device, wstart, wend, hashes, v in buf:
+                        # normal_work=系统认定正常业务: 分数钳制≤20,防LLM"结论正常
+                        # 但分数80"的自相矛盾(2026-08-24展佳案例:normal_work 80分
+                        # 生成告警);正常业务永不进告警队列
+                        if v.get("intent") == "normal_work":
+                            v["risk_score"] = min(int(v.get("risk_score", 0) or 0), 20)
                         vr = VerdictRow(employee_id=emp, device=device, window_start=wstart, window_end=wend,
                             intent=v.get("intent"), deviation=v.get("deviation"), risk_score=v.get("risk_score", 0),
                             explanation=v.get("explanation"), channels=v.get("channels"),
                             ai_participated=1 if v.get("ai_participated", True) else 0, event_hashes=hashes,
                             model=(_lc.LAST_MODEL or "unknown") if v.get("ai_participated", True) else "rule-fallback")
                         wsession.add(vr); wsession.flush()
-                        if v.get("risk_score", 0) >= risk_threshold:
+                        if v.get("risk_score", 0) >= risk_threshold and v.get("intent") != "normal_work":
                             _exc = wsession.query(ExceptionRow).filter(
                                 ExceptionRow.employee_id == emp, ExceptionRow.signal_type == v.get("intent"),
                                 (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > datetime.utcnow())

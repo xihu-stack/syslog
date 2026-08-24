@@ -58,7 +58,10 @@ DEFAULTS = {
         "xft.cmbchina.com",  # 公司OA/费控平台(2026-08-21用户确认): 发票/报销文件发送属正常业务
         # Teams/M365企业通道(2026-08-21用户确认Teams是公司办公软件): 企业邮箱发附件/Teams共享不算外发
         "teams.cloud.microsoft", "teams.microsoft.com", "outlook.cloud.microsoft",
-        "smtp.office365.com", "outlook.office365.com",
+        "smtp.office365.com", "outlook.office365.com", "outlook.office.com",
+        # 公司内部平台(2026-08-24): ELN电子实验记录本/Certara仿真租户/公司M365租户SharePoint
+        "eln.huashen.bio", "huashen.certara.net",
+        "helixoncn.sharepoint.com", "helixoncn-my.sharepoint.com",
     ],
     "slack_sdk_domains": [],         # 心跳/埋点排除域名:客户端挂后台的规律上报,不算摸鱼(AI扫描建议+人工采纳维护)
     "slack_domains": {
