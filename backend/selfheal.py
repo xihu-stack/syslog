@@ -66,6 +66,13 @@ def selfcheck() -> dict:
 
 
 def _selfcheck_once() -> dict:
+    from db import write_lock as _wl
+    with _wl:  # 2026-08-24: 全程持统一写锁——与入库flush/画像重建/改名清洗串行,
+    # 否则中途UPDATE撞上它们持锁时在busy_timeout上等满30s报database is locked
+        return _selfcheck_body()
+
+
+def _selfcheck_body() -> dict:
     fixes = []
     s = Session()
     try:
