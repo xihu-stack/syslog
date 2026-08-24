@@ -801,7 +801,7 @@ function Dashboard({go, goProfile}){
         </Col>
       ))}
     </Row>
-    {(()=>{const crit=(sysAl.list||[]).filter(a=>(a.risk_score||0)>=76&&a.status==='NEW').length;
+    {(()=>{const crit=sysAl.crit_new_total||0;
       return (<div style={{display:'flex',alignItems:'center',gap:12,margin:'2px 2px 14px',padding:'8px 14px',borderRadius:10,background:'var(--card,#fff)',boxShadow:'0 1px 3px rgba(0,0,0,.05)'}}>
         <span style={{width:9,height:9,borderRadius:'50%',background:'#22c55e',boxShadow:'0 0 8px #22c55e',display:'inline-block'}}></span>
         <b style={{fontSize:12.5}}>双源实时接收中</b>

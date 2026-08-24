@@ -1120,9 +1120,11 @@ def system_stats():
             "alerts": {
                 "today": al_today, "yesterday": al_yesterday, "total": al_total,
                 "today_people": al_today_people,
-            "today_new": s.query(AlertRow).filter(AlertRow.window_start >= today_start,
-                                                    AlertRow.status == "NEW").count(),
-            "today_by_scenario": {r[0] or "未识别": r[1] for r in
+                "today_new": s.query(AlertRow).filter(AlertRow.window_start >= today_start,
+                                                       AlertRow.status == "NEW").count(),
+                "crit_new_total": s.query(AlertRow).filter(
+                    AlertRow.risk_score >= 76, AlertRow.status == "NEW").count(),
+                "today_by_scenario": {r[0] or "未识别": r[1] for r in
                 s.query(AlertRow.scenario, _f.count(AlertRow.id))
                 .filter(AlertRow.window_start >= today_start)
                 .group_by(AlertRow.scenario).all()},

@@ -152,7 +152,16 @@ def _writeback(emp, r, d0, d1):
                 a.risk_score = _snap(a.scenario, sug)
                 a.summary = f"[次日复核↑{a.risk_score}分: {reason}] {review} | {sm}"
             elif direction == "downgrade":
-                a.summary = f"[次日复核:疑误报——{reason}] {sm}"
+                # 2026-08-24 用户口径: N+1复核发现误报 → 自动关闭(不用人工确认)
+                # 行为持续 → 保留告警(keep方向处理)
+                if sug < 50:
+                    a.status = "CLOSED"
+                    a.summary = f"[N+1复核:误报自动关闭——{reason}] {sm}"
+                    print(f"[dayreview] 自动关闭: {emp}/{a.scenario} {a.risk_score}->{sug}分", flush=True)
+                else:
+                    a.summary = f"[次日复核:疑误报——{reason}] {sm}"
+                    # 分数仍>=50: 对齐但不关闭(保留人工决策权)
+                    a.risk_score = min(a.risk_score or 0, sug)
         s.commit()
     except Exception:
         s.rollback()
