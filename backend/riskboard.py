@@ -37,7 +37,7 @@ def risk_board(days: int = 7) -> list:
             if "job_seeking" in exempt_map.get(v.employee_id, set()):
                 continue  # HR豁免: 招聘访问是其正常工作
             sig[v.employee_id]["job"] = max(sig[v.employee_id]["job"], v.risk_score)
-            sig[v.employee_id]["detail"]["job"] = f"招聘研判{v.risk_score}分"
+            sig[v.employee_id]["detail"]["job"] = f"求职研判{v.risk_score}分"
 
         # 2) 外发信号(跳过data_exfiltration已豁免的人)
         for a in s.query(AlertRow).filter(
