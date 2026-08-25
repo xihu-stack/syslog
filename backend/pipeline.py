@@ -124,6 +124,36 @@ def ingest_events(events) -> int:
         pass
     # 跨源网页去重(2026-08-20 IPG接入): IPG的url_log与深信服重复覆盖同一浏览,
     # 同员工同域名10分钟内已有任一来源事件 → 丢弃IPG副本(避免效率/事件量双计)
+    # 对称化(2026-08-24): 原只查"IPG副本是否与已入库深信服重复"——IPG先到30秒、
+    # 深信服后到时同一浏览双计(实测8对: 夏玮xft/黄春煜italent等),效率与风险次数被抬高
+    _sf_web = [e for e in events if getattr(e, "source", "") != "ipguard" and e.category == "WEB"]
+    if _sf_web:
+        try:
+            from datetime import timedelta as _td3
+            _keys3 = {(e.employee_id, ((e.raw or {}).get("domain") or "").lower()) for e in _sf_web}
+            _emps3 = {k[0] for k in _keys3}
+            _cand3 = set()
+            s3 = Session()
+            try:
+                for _r in s3.query(EventRow.employee_id, EventRow.raw).filter(
+                        EventRow.employee_id.in_(list(_emps3)[:100]),
+                        EventRow.category == "WEB",
+                        EventRow.source == "ipguard",
+                        EventRow.occurred_at >= bj_now() - _td3(minutes=10)).all():
+                    _d = ((_r.raw or {}).get("domain") or "").lower() if isinstance(_r.raw, dict) else ""
+                    if _d:
+                        _cand3.add((_r.employee_id, _d))
+            finally:
+                s3.close()
+            if _cand3:
+                _b3 = len(events)
+                events = [e for e in events if not (
+                    getattr(e, "source", "") != "ipguard" and e.category == "WEB"
+                    and (e.employee_id, ((e.raw or {}).get("domain") or "").lower()) in _cand3)]
+                if _b3 - len(events):
+                    print(f"[ingest] 反向去重: {_b3 - len(events)}条深信服副本跳过(IPG已记录)", flush=True)
+        except Exception:
+            pass
     _ipg_web = [e for e in events if getattr(e, "source", "") == "ipguard" and e.category == "WEB"]
     if _ipg_web:
         try:

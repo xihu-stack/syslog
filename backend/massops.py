@@ -38,7 +38,7 @@ def scan_mass_deletes() -> dict:
             files = sorted({(e.target_value or "").strip() for e in lst if (e.target_value or "").strip()})
             if len(lst) < 15 or len(files) < 8:
                 continue
-            day = lst[0].occurred_at.strftime("%m-%d")
+            day = lst[0].occurred_at.strftime("%Y-%m-%d")
             key = f"{emp}|mass_delete|{day}"
             if s.query(AlertRow).filter_by(dedup_key=key).first():
                 skipped += 1
@@ -126,7 +126,7 @@ def scan_mass_exfil(s) -> int:
         total_mb = sum((e.size_bytes or 0) for e in lst) / 1048576
         if len(lst) < 15 and total_mb < 50:
             continue
-        day = lst[0].occurred_at.strftime("%m-%d")
+        day = lst[0].occurred_at.strftime("%Y-%m-%d")
         key = f"{emp}|mass_exfil|{day}"
         if s.query(AlertRow).filter_by(dedup_key=key).first():
             continue

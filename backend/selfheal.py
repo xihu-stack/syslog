@@ -76,9 +76,13 @@ def _selfcheck_body() -> dict:
     fixes = []
     s = Session()
     try:
-        # 豁免表
+        # 豁免表(2026-08-24: 只认未到期豁免——原全量加载,到期豁免仍会删告警)
+        from datetime import datetime as _dt
+        _now_u = _dt.utcnow()
         exc = defaultdict(dict)
         for x in s.query(ExceptionRow).all():
+            if x.expires_at and x.expires_at <= _now_u:
+                continue  # 已到期:豁免失效,告警恢复正常
             exc[x.employee_id][x.signal_type] = x.reason or "岗位需要"
 
         # ---- I3: 豁免场景的告警行删除 + 研判补标注 ----

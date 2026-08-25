@@ -36,7 +36,7 @@ def scan_archive_then_send(s) -> int:
             sn = (send.target_value or "").lower()
             base = re.sub(r"\.(zip|rar|7z|tar|gz)$", "", sn)
             if any(an in sn or base in an or sn in an for an in arch_names):
-                day = send.occurred_at.strftime("%m-%d")
+                day = send.occurred_at.strftime("%Y-%m-%d")
                 key = f"{emp}|archive_send|{day}"
                 if s.query(AlertRow).filter_by(dedup_key=key).first():
                     break
