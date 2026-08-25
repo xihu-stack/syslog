@@ -93,8 +93,8 @@ def _digest(s, emp, d0, d1, day):
                 web[f"{d}×{e.count or 1}《{t}》" if t else f"{d}×{e.count or 1}"] += 1
         elif e.category == "DOC":
             if e.action in ("SEND", "UPLOAD"):
-                dest = (raw.get("dest_path") or "").split("/")[0][:30]
-                sends.append(f"{(e.target_value or '')[:30]}→{dest or raw.get('channel')}")
+                dest = dicts.dest_host(raw)[:30]
+                sends.append(f"{(e.target_value or '')[:30]}→{dest or '未识别(网页上传)'}")
             elif e.action == "DELETE" and not detector.is_noise_doc(e):
                 dels.append((e.target_value or "")[:30])
             else:
