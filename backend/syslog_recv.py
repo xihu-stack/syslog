@@ -241,6 +241,14 @@ def _flush_loop():
                 _alias_discover()  # 用户名映射自动发现(拼音级自动,推测级进候选)
             except Exception:
                 pass
+            try:
+                from deepaudit import run_deep_audit
+                _da = run_deep_audit()
+                _bad = {k: v for k, v in _da.items() if k.startswith("D") and isinstance(v, int) and v not in (0,)}
+                if _bad:
+                    print(f"[deepaudit] 异常项: {_bad}", flush=True)
+            except Exception as _de:
+                print(f"[deepaudit] 失败: {_de}", flush=True)
             try:  # 周报(每周五17点,R1): 风险综述+webhook(2026-08-21)
                 from db import bj_now as _bj9
                 _now9 = _bj9()
