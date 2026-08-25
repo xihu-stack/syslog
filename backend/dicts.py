@@ -269,6 +269,34 @@ def _match_domain(domain: str, pat: str) -> bool:
     return p in domain
 
 
+def dest_host(raw: dict) -> str:
+    """DOC事件目的地主机名(2026-08-24统一): URL型(https://x/y)取host,
+    普通取首段,空返回''。此前各模块各自split('/')[0],URL只剩'https:'。"""
+    d = ((raw or {}).get("dest_path") or "").strip().lower()
+    if d.startswith(("http:", "https:")):
+        p2 = d.split("/")
+        d = p2[2] if len(p2) > 2 else d
+    else:
+        d = d.split("/")[0]
+    if ":" in d:  # 剥端口(eln.huashen.bio:5083 → eln.huashen.bio,2026-08-24白名单匹配被端口挡)
+        d = d.split(":")[0]
+    return d
+
+
+def whitelisted_dest(raw: dict, webs=None, ts=None) -> bool:
+    """外发目的地在公司白名单。空目的地(网页上传IPG不记域名)时,若给了webs
+    [(时间,域名)]则按±3分钟推断(Teams/M365传附件不算外发)。"""
+    d = dest_host(raw)
+    wl = [w.lower() for w in (get("risk_whitelist_domains") or [])]
+    if d:
+        return any(d == w or d.endswith("." + w) for w in wl)
+    if webs and ts is not None:
+        for t, dm in webs:
+            if abs((t - ts).total_seconds()) <= 180 and                     any(dm == w or dm.endswith("." + w) for w in wl):
+                return True
+    return False
+
+
 def risk_class(domain: str):
     """域名 → 高风险类别中文标签（如"远程控制"/"网盘/云盘"）；非高风险返回 None。
     白名单 risk_whitelist_domains 命中直接豁免(公司采购的正规网盘/企业邮箱等)。"""

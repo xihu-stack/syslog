@@ -33,17 +33,25 @@ def run_doc_scan(days: int = 7) -> dict:
         since = bj_now() - timedelta(days=days)
         evs = s.query(EventRow).filter(EventRow.source == "ipguard",
                                         EventRow.occurred_at >= since).all()
+        # 2026-08-24统一口径: 仅真实外发动作(去掉COPY——本地复制不是外发,混入会误导R1);
+        # 白名单目的地(Teams/M365/ELN等公司通道)排除;URL型目的地取主机名
+        _webs = defaultdict(list)
+        for w in s.query(EventRow).filter(EventRow.category == "WEB",
+                                           EventRow.occurred_at >= since).all():
+            d = ((w.raw or {}).get("domain") or "").lower()
+            if d:
+                _webs[w.employee_id].append((w.occurred_at, d))
         by_emp = defaultdict(list)
         for e in evs:
-            if e.category == "DOC" and e.action in ("SEND", "UPLOAD", "PRINT", "BURN", "COPY"):
+            if e.category == "DOC" and e.action in ("SEND", "UPLOAD", "PRINT", "BURN")                     and not dicts.whitelisted_dest(e.raw or {}, _webs.get(e.employee_id), e.occurred_at):
                 by_emp[e.employee_id].append(e)
         if not by_emp:
-            return {"ok": False, "error": "近7天无IPG文档操作数据"}
-        lines = [f"共{len(by_emp)}人有文档操作,以下为外发/打印类:"]
+            return {"ok": False, "error": "近7天无IPG文档外发数据(公司白名单通道已排除)"}
+        lines = [f"共{len(by_emp)}人有外发/打印行为(已排除Teams/M365等公司白名单通道):"]
         for emp, lst in sorted(by_emp.items(), key=lambda x: -len(x[1]))[:40]:
             acts = defaultdict(list)
             for e in lst:
-                dest = ((e.raw or {}).get("dest_path") or "")[:50] or "-"
+                dest = dicts.dest_host(e.raw or {})[:50] or "未识别目的地"
                 hour = e.occurred_at.hour
                 night = "(夜)" if hour < 7 or hour >= 22 else ""
                 acts[f"{e.action}{night}"].append(f"{(e.target_value or '')[:40]} → {dest}")

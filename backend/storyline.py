@@ -38,6 +38,7 @@ def build_stories(days: int = 30, min_signals: int = 2) -> dict:
         for v in s.query(VerdictRow).filter(VerdictRow.window_start >= since).all():
             if v.intent == "job_seeking" and (v.risk_score or 0) >= 50:
                 sig[v.employee_id]["招聘访问"].append(f"{str(v.window_start)[5:11]} {v.risk_score}分")
+        _webs_sl = defaultdict(list)
         for a in s.query(AlertRow).filter(AlertRow.created_at >= since).all():
             if a.scenario == "mass_delete":
                 sig[a.employee_id]["大量删除"].append(str(a.created_at)[5:11])
@@ -45,9 +46,13 @@ def build_stories(days: int = 30, min_signals: int = 2) -> dict:
                 sig[a.employee_id]["外发告警"].append(f"{str(a.window_start)[5:11]} {a.risk_score}分")
         for e in s.query(EventRow).filter(EventRow.source == "ipguard",
                                            EventRow.occurred_at >= since).all():
+            if e.category == "WEB":
+                _d = ((e.raw or {}).get("domain") or "").lower()
+                if _d:
+                    _webs_sl.setdefault(e.employee_id, []).append((e.occurred_at, _d))
             if e.category == "DOC" and e.action in ("SEND", "UPLOAD") \
-                    and (e.raw or {}).get("channel") not in (None, "", "LOCAL"):
-                dest = ((e.raw or {}).get("dest_path") or "").split("/")[0][:30]
+                    and (e.raw or {}).get("channel") not in (None, "", "LOCAL") and not dicts.whitelisted_dest(e.raw or {}, _webs_sl.get(e.employee_id), e.occurred_at):
+                dest = dicts.dest_host(e.raw or {})[:30] or "未识别"
                 sig[e.employee_id]["网络外发"].append(
                     f"{str(e.occurred_at)[5:11]} {(e.target_value or '')[:36]}→{dest}")
             elif e.category == "SEARCH" and e.target_value:
