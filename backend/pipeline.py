@@ -154,15 +154,36 @@ def ingest_events(events) -> int:
         s = Session()
         try:
             hashes = [e.event_hash() for e in events]
-            existing = set()
+            existing = {}
             for i in range(0, len(hashes), 400):
-                existing.update(r[0] for r in
-                                s.query(EventRow.event_hash).filter(EventRow.event_hash.in_(hashes[i:i + 400])).all())
+                existing.update({r.event_hash: r for r in
+                                 s.query(EventRow).filter(EventRow.event_hash.in_(hashes[i:i + 400])).all()})
             added = 0
             ignored = _ignored_employees()
             seen = set()  # 批内去重: 同批两条相同hash(深信服重发/聚合边界重叠)会撞
             for e, h in zip(events, hashes):    # UNIQUE约束且整批回滚丢数据(2026-08-20)
-                if h in existing or h in seen or (e.employee_id or "").isdigit() or (e.employee_id or "") in ignored:  # 跳过已存在 + 访客(纯数字) + 忽略名单
+                if (e.employee_id or "").isdigit() or (e.employee_id or "") in ignored:
+                    continue
+                if h in existing:  # 同桶已入库(10分钟桶跨30秒批次): count累加——
+                    # 原直接跳过导致outlook.live.com 21行全count=1,频次类口径系统性低估
+                    # (锚点中频/高频加分、跨天模式、效率统计全偏低,2026-08-24实测)
+                    row = existing[h]
+                    row.count = (row.count or 0) + (e.count or 1)
+                    _rv = dict(row.raw or {})  # 拷贝后重赋值(JSON列原地改不被变更追踪)
+                    _rv["visit_count"] = row.count
+                    _er = e.raw or {}
+                    for _t2 in (_er.get("titles") or []):  # 后续批次的桶内语义证据合并
+                        _ts = _rv.setdefault("titles", [])
+                        if _t2 not in _ts and len(_ts) < 2:
+                            _ts.append(_t2)
+                    for _u2 in (_er.get("url_samples") or []):
+                        _us = _rv.setdefault("url_samples", [])
+                        if _u2 not in _us and len(_us) < 2:
+                            _us.append(_u2)
+                    row.raw = _rv
+                    added += 1  # 计入"有新活动",让画像/研判照常触发
+                    continue
+                if h in seen:
                     continue
                 seen.add(h)
                 s.add(EventRow(event_hash=h, occurred_at=e.occurred_at, employee_id=e.employee_id,

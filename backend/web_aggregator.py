@@ -52,7 +52,8 @@ def aggregate(events, bucket_minutes: int = 10) -> list:
         key = (e.employee_id, domain, b)
         if key not in buckets:
             buckets[key] = {"count": 0, "first": e.occurred_at, "last": e.occurred_at,
-                            "category": (e.raw or {}).get("category"), "sample": e}
+                            "category": (e.raw or {}).get("category"), "sample": e,
+                            "titles": [], "urls": []}
         rec = buckets[key]
         rec["count"] += 1
         if e.occurred_at < rec["first"]:
@@ -61,6 +62,14 @@ def aggregate(events, bucket_minutes: int = 10) -> list:
             rec["last"] = e.occurred_at
         if not rec["category"]:
             rec["category"] = (e.raw or {}).get("category")
+        # 桶内语义证据留存(2026-08-24): 聚合曾只留第一条的标题/URL——登录页标题
+        # 盖过上传页标题、filehelper"打开vs上传"的路径证据丢失
+        _t = ((e.raw or {}).get("title") or "").strip()
+        if _t and _t != "-" and _t not in rec["titles"] and len(rec["titles"]) < 2:
+            rec["titles"].append(_t)
+        _u = (e.target_value or "")
+        if _u.count("/") >= 2 and _u not in rec["urls"] and len(rec["urls"]) < 2:
+            rec["urls"].append(_u.split("?")[0][-60:])
 
     out = passthrough[:]
     for (emp, domain, bucket), rec in buckets.items():
@@ -68,6 +77,14 @@ def aggregate(events, bucket_minutes: int = 10) -> list:
         raw = dict(s.raw or {})
         raw["category"] = rec["category"]
         raw["visit_count"] = rec["count"]
+        if rec["titles"]:
+            raw["titles"] = rec["titles"]
+            raw["title"] = rec["titles"][-1]  # 最新标题(操作页)优先于首条(登录页)
+        if rec["urls"]:
+            raw["url_samples"] = rec["urls"]
+        if rec["first"] != rec["last"]:
+            raw["first_at"] = rec["first"].isoformat()
+            raw["last_at"] = rec["last"].isoformat()
         out.append(CanonicalEvent(
             occurred_at=bucket, employee_id=emp, device_id=s.device_id,
             category="WEB", action="VISIT", target_type="URL",

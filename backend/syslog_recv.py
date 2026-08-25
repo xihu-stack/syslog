@@ -16,6 +16,7 @@ _lock = threading.Lock()
 _event_buffer = []
 _buf_lock = threading.Lock()
 _flush_timer = None
+_last_profiles_ts = 0.0
 _flush_count = 0
 
 
@@ -73,7 +74,13 @@ def _flush_events():
         with _lock:
             _state["ingested"] = _state.get("ingested", 0) + n
         if n > 0:
-            pipeline.profiles.build_profiles()
+            # 画像节流(2026-08-24): 曾每30秒批后全量重建(1.5M事件+持写锁,锁竞争最大源)
+            # 改为≥10分钟才重建;画像消费方(研判基线/画像页)容忍10分钟滞后
+            import time as _pt
+            global _last_profiles_ts
+            if _pt.time() - _last_profiles_ts > 600:
+                _last_profiles_ts = _pt.time()
+                pipeline.profiles.build_profiles()
             pipeline.start_detection()
     except Exception as e:
         with _lock:

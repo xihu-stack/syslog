@@ -268,15 +268,21 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
         cat_tag = f"[{str(info['cat']).replace(chr(91),'').replace(chr(93),'')}]" if info["cat"] else ""
         # 浏览器标签标题(2026-08-20): IPG的APP_TITLE是页面内容语义——招聘站标题
         # 含"简历/人才"多为HR筛选,含职位名/薪资多为看JD;仅风险类域名,控token
-        _titles = [t for t in {(e.raw or {}).get("title") or "" for e in window
-                               if e.category == "WEB" and d in ((e.raw or {}).get("domain") or "")}
-                   if t and t != "-"][:2]
+        _tset = set()
+        for e in window:
+            if e.category == "WEB" and d in ((e.raw or {}).get("domain") or ""):
+                _tset.update((e.raw or {}).get("titles") or [])
+                _t1 = (e.raw or {}).get("title") or ""
+                if _t1:
+                    _tset.add(_t1)
+        _titles = [t for t in _tset if t and t != "-"][:2]
         title_tag = f" 《{'》/《'.join(t[:28] for t in _titles)}》" if _titles else ""
         # 外发通道类域名附带URL路径样本(3个):让AI区分"打开页面/轮询"vs"真实上传/发送"
         path_hint = ""
         if rc and ("文件" in rc or "微信" in rc or "网盘" in rc or "邮箱" in rc):
-            paths = list({(e.target_value or "").split("?")[0][-60:] for e in window
-                          if e.category == "WEB" and d in ((e.raw or {}).get("domain") or "") and (e.target_value or "").count("/") >= 2})[:3]
+            paths = list({u for e in window
+                          if e.category == "WEB" and d in ((e.raw or {}).get("domain") or "")
+                          for u in ((e.raw or {}).get("url_samples") or [])})[:3]
             if paths:
                 path_hint = " 路径样本:" + " | ".join(paths)
         _app_name = ((window[0].raw or {}).get("app") or "").lower() if window else ""
