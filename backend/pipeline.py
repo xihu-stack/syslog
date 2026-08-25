@@ -108,10 +108,31 @@ def ingest_file(path: str) -> int:
         s.close()
 
 
+def _pipestat(**kw):
+    """链路埋点(2026-08-25数据链路页): 每日settings计数器 pipestat_YYYYMMDD。"""
+    try:
+        import json as _j2
+        key = f"pipestat_{bj_now().strftime('%Y%m%d')}"
+        cur = {}
+        try:
+            cur = _j2.loads(dicts.get_setting(key) or "{}")
+        except Exception:
+            cur = {}
+        for k, v in kw.items():
+            cur[k] = (cur.get(k) or 0) + v
+        dicts.set_setting(key, _j2.dumps(cur, ensure_ascii=False))
+    except Exception:
+        pass
+
+
 def ingest_events(events) -> int:
     """直接入库一批标准事件（syslog 实时用）：降噪聚合 → 用户名统一 → 批量幂等写入。返回新增条数。"""
     init_db()
+    _web_in = sum(1 for e in events if e.category == "WEB")
     events = aggregate(events)
+    _web_out = sum(1 for e in events if e.category == "WEB")
+    _pipestat(raw_in=len(events), web_in=_web_in,
+              noise_or_merged=max(_web_in - _web_out, 0) + max(_web_out - _web_in, 0))
     if not events:
         return 0
     try:  # 用户标识统一: 确认过的映射(账号/IP标识->中文名)入库前转换,新数据天然统一
@@ -151,6 +172,7 @@ def ingest_events(events) -> int:
                     getattr(e, "source", "") != "ipguard" and e.category == "WEB"
                     and (e.employee_id, ((e.raw or {}).get("domain") or "").lower()) in _cand3)]
                 if _b3 - len(events):
+                    _pipestat(cross_dedup=_b3 - len(events))
                     print(f"[ingest] 反向去重: {_b3 - len(events)}条深信服副本跳过(IPG已记录)", flush=True)
         except Exception:
             pass
@@ -177,6 +199,7 @@ def ingest_events(events) -> int:
                 events = [e for e in events if not (
                     getattr(e, "source", "") == "ipguard" and e.category == "WEB"
                     and (e.employee_id, ((e.raw or {}).get("domain") or "").lower()) in _cand)]
+                _pipestat(cross_dedup=_before - len(events))
                 print(f"[ingest] 跨源网页去重: {_before - len(events)}条IPG副本跳过", flush=True)
         except Exception:
             pass
@@ -262,6 +285,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         print(f"[detect] 全局参照完成 耗{_t0.time()-_T:.1f}s", flush=True)  # 全局参照：每轮算一次，喂给所有窗口的 AI
         dedup_hours = int(dicts.get_setting("dedup_window_hours", "6") or "6")
         to_judge = []
+        _sup = {}  # 抑制原因计数(数据链路页展示"为什么没送AI")
         _run_seen = set()  # 轮内去重:(员工,高危域名) 已排队送AI的,同轮不再重复判
         _base_cache = {}  # (员工, 日期)→基线: 同员工同天的窗口共享一份。全量重判时
         # 3000+窗口逐个重算基线(每人查全量事件+算画像)会拖到几十分钟(2026-08-19实测卡死)
@@ -276,10 +300,12 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                     continue
                 if rs.query(VerdictRow).filter_by(employee_id=emp, window_start=w[0].occurred_at,
                                                   window_end=w[-1].occurred_at).first():
+                    _sup["已判过"] = _sup.get("已判过", 0) + 1
                     continue
                 # 同员工 + 同高危域名 + 近 N 小时已研判过 → 抑制(防 VPN 后台持续连接反复研判)
                 trig = _window_trigger_domains(w)
                 if trig and _recently_judged(rs, emp, trig, dedup_hours):
+                    _sup["6小时去重"] = _sup.get("6小时去重", 0) + 1
                     continue
                 # 轮内抑制:筛选阶段同轮窗口互相看不到已落库的verdicts,
                 # 不拦的话同域名多窗口会全部重复送LLM(浪费调用+研判刷屏)
@@ -288,6 +314,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 if trig:
                     _run_seen.update((emp, d) for d in trig)
                 to_judge.append((emp, w, baseline, dev))
+        _pipestat(windows=len(to_judge), **{f"sup_{k}": v for k, v in _sup.items()})
     finally:
         rs.close()
 

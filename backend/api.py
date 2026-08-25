@@ -13,7 +13,7 @@ import time as _time
 from fastapi import Body, FastAPI, File, HTTPException, UploadFile, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, or_
 
 from db import (AlertRow, AskHistoryRow, EventRow, ExceptionRow, FeedbackRow, ProfileRow, RawLogRow, Session, VerdictRow, bj_now, init_db, json_field)
 import llm_client
@@ -2079,6 +2079,103 @@ def rules_apply(body: dict = Body(...)):
             cur.append(domain)
         dicts.set_dict(target, cur)
     return {"ok": True, "target": target, "domain": domain, "cat": cat}
+
+
+# ---------------- 数据链路可视化(2026-08-25) ----------------
+@app.get("/api/pipeline/overview")
+def pipeline_overview():
+    """链路漏斗: 原始报文→降噪聚合→事件→触发窗口→AI研判→告警→复核。含双源速率与抑制原因。"""
+    import json as _j3
+    from datetime import timedelta as _td4
+    s = Session()
+    try:
+        _n = bj_now()
+        today = _n.replace(hour=0, minute=0, second=0, microsecond=0)
+        ps = {}
+        try:
+            ps = _j3.loads(dicts.get_setting(f"pipestat_{today.strftime('%Y%m%d')}") or "{}")
+        except Exception:
+            ps = {}
+        raw_today = s.query(func.count(RawLogRow.id)).filter(RawLogRow.received_at >= today).scalar() or 0
+        raw_5m = s.query(func.count(RawLogRow.id)).filter(RawLogRow.received_at >= _n - _td4(minutes=5)).scalar() or 0
+        by_type = {t: c for t, c in s.query(RawLogRow.log_type, func.count(RawLogRow.id))
+                   .filter(RawLogRow.received_at >= today).group_by(RawLogRow.log_type).all()}
+        ev_today = s.query(func.count(EventRow.id)).filter(EventRow.occurred_at >= today).scalar() or 0
+        ev_by_cat = {c: n for c, n in s.query(EventRow.category, func.count(EventRow.id))
+                     .filter(EventRow.occurred_at >= today).group_by(EventRow.category).all()}
+        vd_today = s.query(func.count(VerdictRow.id)).filter(VerdictRow.window_start >= today).scalar() or 0
+        vd_by_intent = {i: n for i, n in s.query(VerdictRow.intent, func.count(VerdictRow.id))
+                        .filter(VerdictRow.window_start >= today).group_by(VerdictRow.intent).all()}
+        al_today = s.query(func.count(AlertRow.id)).filter(AlertRow.window_start >= today).scalar() or 0
+        n1 = {}
+        try:
+            dr = _j3.loads(dicts.get_setting("day_reviews") or "{}")
+            n1 = {"人数": len(dr), "升级": sum(1 for r in dr.values() if r.get("direction") == "upgrade"),
+                  "降级": sum(1 for r in dr.values() if r.get("direction") == "downgrade"),
+                  "维持": sum(1 for r in dr.values() if r.get("direction") == "keep")}
+        except Exception:
+            pass
+        return {"date": today.strftime("%Y-%m-%d"),
+                "raw": {"today": raw_today, "last5min": raw_5m, "by_type": by_type},
+                "stat": ps,
+                "events": {"today": ev_today, "by_cat": ev_by_cat},
+                "verdicts": {"today": vd_today, "by_intent": vd_by_intent},
+                "alerts_today": al_today, "n1_last": n1}
+    finally:
+        s.close()
+
+
+@app.get("/api/pipeline/trace")
+def pipeline_trace(q: str):
+    """单条日志全链路追踪: 输入员工名或域名, 展示 原始报文→聚合事件→触发判定→AI窗口样例→研判→告警。"""
+    import detector as _dt
+    from datetime import timedelta as _td5
+    q = (q or "").strip()
+    if not q:
+        return {"error": "q 不能为空"}
+    s = Session()
+    try:
+        _n = bj_now()
+        out = {"q": q, "stages": {}}
+        # 阶段1: 原始报文(按user或msg包含)
+        raws = s.query(RawLogRow).filter(or_(RawLogRow.user == q, RawLogRow.msg.like(f"%{q}%")))            .order_by(desc(RawLogRow.received_at)).limit(4).all()
+        out["stages"]["raw"] = [{"ts": str(r.received_at)[:19], "type": r.log_type, "user": r.user,
+                                 "msg": (r.msg or "")[:120]} for r in raws]
+        # 阶段2: 聚合事件(该员工 或 域名包含)
+        evq = s.query(EventRow).filter(EventRow.occurred_at >= _n - _td5(days=3))
+        if q in [r[0] for r in s.query(EventRow.employee_id).distinct().limit(2000).all() if r[0]]:
+            evs = evq.filter(EventRow.employee_id == q).order_by(desc(EventRow.occurred_at)).limit(12).all()
+            out["emp_mode"] = True
+        else:
+            from sqlalchemy import text as _txt
+            evs = evq.filter(EventRow.category == "WEB",
+                             _txt("json_extract(events.raw,'$.domain') LIKE :d")).params(d=f"%{q}%")                .order_by(desc(EventRow.occurred_at)).limit(12).all()
+            out["emp_mode"] = False
+        out["stages"]["events"] = [{"ts": str(e.occurred_at)[11:16], "cat": e.category, "act": e.action,
+                                    "count": e.count, "target": (e.target_value or "")[:40],
+                                    "domain": ((e.raw or {}).get("domain") or "")[:36],
+                                    "titles": ((e.raw or {}).get("titles") or [])[:2]}
+                                   for e in evs]
+        # 阶段3+4: 若是员工且有研判 → 触发原因+AI窗口样例+结论
+        emp = q if out.get("emp_mode") else (evs[0].employee_id if evs else "")
+        v = s.query(VerdictRow).filter(VerdictRow.employee_id == emp)            .order_by(desc(VerdictRow.id)).first() if emp else None
+        if v:
+            wevs = s.query(EventRow).filter(EventRow.event_hash.in_(v.event_hashes or [])).all()
+            wevs.sort(key=lambda x: x.occurred_at)
+            out["stages"]["ai_input"] = {"window": _dt._fmt_window(wevs)[:1200], "verdict": {
+                "ts": str(v.window_start)[:16], "intent": v.intent, "score": v.risk_score,
+                "explain": (v.explanation or "")[:200], "model": v.model}}
+            a = s.query(AlertRow).filter(AlertRow.verdict_id == v.id).first()
+            out["stages"]["output"] = {"alert": {"id": a.id, "score": a.risk_score, "status": a.status,
+                                                 "summary": (a.summary or "")[:160]} if a else None}
+        else:
+            out["stages"]["ai_input"] = None
+            out["stages"]["output"] = None
+        if not out["stages"]["raw"] and not out["stages"]["events"]:
+            out["hint"] = "近3天无匹配。员工名请用系统内标识(如中文名/拼音/账号)。"
+        return out
+    finally:
+        s.close()
 
 
 # ---------------- 原始日志查看 ----------------

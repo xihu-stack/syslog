@@ -344,7 +344,7 @@ def _listen(host, port):
                     "from": addr[0],
                     "msg": text[:4000],  # IPG JSON报文1-3KB,500截断丢掉文件名/动作/用户字段(2026-08-20)
                 })
-                _state["recent"] = _state["recent"][-500:]
+                _state["recent"] = _state["recent"][-5000:]  # 2026-08-25: 500上限在突发时丢原始报文(实测今日丢~1万条),raw_logs非全量
             # 实时解析为标准事件——按报文特征路由(2026-08-20修复:
             # 深信服解析器是宽松KV提取,对IPG报文也返回垃圾事件,IPG解析器从未被执行;
             # 必须先认OTransLog特征再落深信服)
