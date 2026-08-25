@@ -265,7 +265,7 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
         return f"×{n}"
     for d, info in high_sig[:10]:
         rc = dicts.risk_class(d)
-        cat_tag = f"[{info['cat']}]" if info["cat"] else ""
+        cat_tag = f"[{str(info['cat']).replace(chr(91),'').replace(chr(93),'')}]" if info["cat"] else ""
         # 浏览器标签标题(2026-08-20): IPG的APP_TITLE是页面内容语义——招聘站标题
         # 含"简历/人才"多为HR筛选,含职位名/薪资多为看JD;仅风险类域名,控token
         _titles = [t for t in {(e.raw or {}).get("title") or "" for e in window
@@ -285,16 +285,11 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
     # 低信号(个人邮箱/微信)：标注但明确"访问≠外发"，避免被当高危
     for d, info in low_sig[:8]:
         rc = dicts.risk_class(d)
-        cat_tag = f"[{info['cat']}]" if info["cat"] else ""
+        cat_tag = f"[{str(info['cat']).replace(chr(91),'').replace(chr(93),'')}]" if info["cat"] else ""
         lines.append(f"[{rc}-低信号·访问非外发] {d} {_cnt_tag(d, info['count'])} {cat_tag}")
-    # 常规访问（仅 Top15，弱化"数量"）
-    for d, info in normal[:15]:
-        cat_tag = f"[{info['cat']}]" if info["cat"] else ""
-        lines.append(f"[访问网页] {d} ×{info['count']} {cat_tag}")
-    if len(normal) > 15:
-        lines.append(f"…及另外 {len(normal) - 15} 个常规域名（均非高风险）")
-
     n_other = len(others)
+    # 文档/搜索事件前置(2026-08-24): SEND/UPLOAD是窗口的核心信号,排在常规网页
+    # 噪声之前,保证AI第一屏看到真信号
     for e in others[:12]:
         t = e.occurred_at.strftime("%m-%d %H:%M")
         src = SRC.get(getattr(e, 'source', ''), '')
@@ -306,6 +301,14 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
             lines.append(f"{t} [{src}] [{e.action}] {e.target_value}（通道={(e.raw or {}).get('channel')}, 应用={(e.raw or {}).get('app')}）{_dest}")
     if n_other > 12:
         lines.append(f"…及另外 {n_other - 12} 条文档/搜索")
+    # 常规访问压缩(2026-08-24欧阳清案例: 17个微软遥测/CDN噪声铺满15行,把唯一的
+    # 真信号(微信SEND)挤到最后,稀释AI注意力)——常规域名仅列Top5,其余一行带过
+    for d, info in normal[:5]:
+        cat_tag = f"[{str(info['cat']).replace(chr(91),'').replace(chr(93),'')}]" if info["cat"] else ""
+        lines.append(f"[访问网页] {d} ×{info['count']} {cat_tag}")
+    if len(normal) > 5:
+        lines.append(f"…及另外 {len(normal) - 5} 个常规域名访问（微软/CDN/搜索等服务流量，均非高风险，勿逐条分析）")
+
     raw = "\n".join(lines) if lines else "(无行为)"
     # 硬截断：超过 1500 字（约 2000 tokens）则截断（留空间给 system prompt + 输出）
     if len(raw) > 1500:
@@ -456,7 +459,7 @@ def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exempti
     day_txt = f"\n{day_ctx}" if day_ctx else ""
     user = (f"员工：{window[0].employee_id}（设备：{window[0].device_id}）\n"
             f"行为序列：\n{_fmt_window(window)}{g_txt}{profile_txt}{dev_txt}{exempt_txt}{hist_txt}{day_txt}\n\n"
-            f"写explanation时:域名次数用『本窗口N次,今日累计M次』双口径(累计来自[当日累计]行),不要只写窗口次数让人误读为全天。请输出 JSON。")
+            f"写explanation时:域名次数优先『本窗口N次,今日累计M次』双口径(今日累计仅当序列标注了[当日累计]才可引用,未标注就只写窗口次数,严禁编造累计)。请输出 JSON。")
     try:
         raw = llm_client.chat(
             [{"role": "system", "content": SYSTEM_PROMPT},

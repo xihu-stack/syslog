@@ -78,7 +78,7 @@ def compute_profile(rows) -> dict:
                 # 正常办公习惯。否则AI看到"在其基线内"会降权误判。
                 if d not in _rc:
                     _rc[d] = dicts.risk_class(d)
-                if not _rc[d]:
+                if not _rc[d] and "." in d:  # 无点号=非域名(SNMP等协议标签,2026-08-24发现混入基线)
                     domains[d] += 1
             dc = (r.raw or {}).get("domain_class")
             if dc and dc != "other":
@@ -91,8 +91,13 @@ def compute_profile(rows) -> dict:
             for code in _re.findall(r"[A-Z]{2,6}[-_]\d{2,6}", tv)[:3]:
                 project_codes[code] += 1
             if r.action in ("SEND", "UPLOAD", "PRINT", "BURN"):
-                dest = ((r.raw or {}).get("dest_path") or "").split("/")[0][:40]
-                send_ch[f"{r.action}:{dest or (r.raw or {}).get('channel') or 'LOCAL'}"] += 1
+                dest = ((r.raw or {}).get("dest_path") or "").strip().lower()
+                if dest.startswith(("http:", "https:")):
+                    _p = dest.split("/")
+                    dest = _p[2] if len(_p) > 2 else dest
+                else:
+                    dest = dest.split("/")[0]
+                send_ch[f"{r.action}:{dest[:40] or (r.raw or {}).get('channel') or 'LOCAL'}"] += 1
                 sends_by_day[d0.isoformat()] += 1
         elif r.category == "SEARCH" and r.target_value:
             search_topics[r.target_value.strip()[:24]] += 1
