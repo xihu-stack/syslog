@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from db import Session, EventRow, AlertRow, ExceptionRow, bj_now
+from sqlalchemy import text
 import dicts
 
 
@@ -41,13 +42,13 @@ def run_deep_audit() -> dict:
     try:
         now = bj_now()
         # D1 跨源双计(近1小时)
-        n1 = s.execute("""
+        n1 = s.execute(text("""
             SELECT COUNT(*) FROM events a JOIN events b ON a.employee_id=b.employee_id
               AND a.category='WEB' AND b.category='WEB' AND a.source!=b.source
               AND json_extract(a.raw,'$.domain')=json_extract(b.raw,'$.domain')
               AND b.source!='ipguard' AND a.source='ipguard'
               AND b.occurred_at BETWEEN a.occurred_at AND datetime(a.occurred_at,'+10 minutes')
-            WHERE a.occurred_at >= :t""", {"t": now - timedelta(hours=1)}).scalar() or 0
+            WHERE a.occurred_at >= :t"""), {"t": now - timedelta(hours=1)}).scalar() or 0
         out["D1_跨源双计"] = n1
         if n1 > 5 and _once_today("d1"):
             _notify(f"跨源去重回归: 近1小时 {n1} 对同浏览双计(IPG与深信服)")
@@ -82,9 +83,9 @@ def run_deep_audit() -> dict:
             _notify(f"研判水位落后 {gap} 条事件(疑似研判卡死或漏判,请检查检测状态)")
 
         # D5 告警键碰撞
-        dups = s.execute("""
+        dups = s.execute(text("""
             SELECT dedup_key, COUNT(*) c FROM alerts WHERE dedup_key IS NOT NULL
-            GROUP BY dedup_key HAVING c > 1 LIMIT 5""").fetchall()
+            GROUP BY dedup_key HAVING c > 1 LIMIT 5""")).fetchall()
         out["D5_键碰撞"] = len(dups)
         if dups and _once_today("d5"):
             _notify(f"告警dedup_key重复 {len(dups)} 组(合并逻辑回归): " +
