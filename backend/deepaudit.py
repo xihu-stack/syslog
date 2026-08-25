@@ -79,17 +79,29 @@ def run_deep_audit() -> dict:
         mx = s.query(EventRow.id).order_by(EventRow.id.desc()).first()
         gap = (mx[0] - wm) if mx else 0
         out["D4_水位差"] = gap
-        if gap > 5000 and _once_today("d4"):
-            _notify(f"研判水位落后 {gap} 条事件(疑似研判卡死或漏判,请检查检测状态)")
+        if gap > 5000:
+            try:  # 自愈: 直接拉起一轮研判(单飞,卡死多为检测线程退出)
+                import pipeline
+                pipeline.start_detection()
+                _notify(f"研判水位落后 {gap} 条,已自动拉起一轮研判补救")
+            except Exception as _pe:
+                _notify(f"研判水位落后 {gap} 条且自动拉起失败: {_pe}")
 
         # D5 告警键碰撞
         dups = s.execute(text("""
             SELECT dedup_key, COUNT(*) c FROM alerts WHERE dedup_key IS NOT NULL
             GROUP BY dedup_key HAVING c > 1 LIMIT 5""")).fetchall()
         out["D5_键碰撞"] = len(dups)
-        if dups and _once_today("d5"):
-            _notify(f"告警dedup_key重复 {len(dups)} 组(合并逻辑回归): " +
-                    "; ".join(f"{d[0][:36]}×{d[1]}" for d in dups))
+        if dups:
+            # 自愈: 保留同键最高分行(与人工修复同规则),防列表重复计数
+            from db import write_lock, AlertRow as _AR
+            with write_lock:
+                for dk, _c in dups:
+                    rows = s.query(_AR).filter_by(dedup_key=dk).order_by(_AR.risk_score.desc()).all()
+                    for extra in rows[1:]:
+                        s.delete(extra)
+                s.commit()
+            _notify(f"自动合并重复告警键 {len(dups)} 组(各保留最高分)")
 
         # D6 未来事件(时钟漂移)
         n6 = s.query(EventRow).filter(EventRow.occurred_at > now + timedelta(minutes=5)).count()
