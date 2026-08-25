@@ -22,11 +22,12 @@ def scan_archive_then_send(s) -> int:
             EventRow.occurred_at >= bj_now() - timedelta(days=1)).all():
         if e.category == "DOC":
             by_emp[e.employee_id].append(e)
+    _webs = _webs_by_emp(s, bj_now() - timedelta(days=1))
     created = 0
     for emp, evs in by_emp.items():
         archives = [e for e in evs if e.action == "ARCHIVE"]
         sends = [e for e in evs if e.action in ("SEND", "UPLOAD")
-                 and not _is_whitelisted_dest(e)]
+                 and not _is_whitelisted_dest(e, _webs.get(emp))]
         if not archives or not sends:
             continue
         # 压缩文件名与外发文件名有关联(同名/包含关系)
@@ -39,11 +40,21 @@ def scan_archive_then_send(s) -> int:
                 key = f"{emp}|archive_send|{day}"
                 if s.query(AlertRow).filter_by(dedup_key=key).first():
                     break
-                dest = ((send.raw or {}).get("dest_path") or "").split("/")[0][:30]
+                dest = ((send.raw or {}).get("dest_path") or "").strip()
+                if dest.startswith(("http:", "https:")):
+                    _p = dest.split("/")
+                    dest = _p[2] if len(_p) > 2 else dest
+                else:
+                    dest = dest.split("/")[0]
+                if not dest:  # 空目的地: 邻近域名样例
+                    _near = [d for t, d in _webs.get(emp, [])
+                             if abs((t - send.occurred_at).total_seconds()) <= 180][:2]
+                    dest = ("同期浏览:" + "/".join(_near)) if _near else "未识别目的地(网页上传)"
+                _app = (send.raw or {}).get("app") or ""
                 s.add(AlertRow(employee_id=emp, scenario="archive_exfil",
                                severity="CRITICAL", risk_score=85,
                                summary=(f"{emp}在{day}先压缩『{(archives[0].target_value or '')[:30]}』"
-                                        f"再外发『{sn[:30]}』至{dest},属打包后蓄意带走模式"),
+                                        f"再经{_app or '网络'}外发『{sn[:30]}』至{dest[:40]},属打包后蓄意带走模式"),
                                dedup_key=key,
                                window_start=send.occurred_at, created_at=bj_now(), status="NEW"))
                 created += 1
@@ -160,10 +171,40 @@ def app_context(e) -> str:
     return app or ""
 
 
-def _is_whitelisted_dest(e) -> bool:
-    dest = ((e.raw or {}).get("dest_path") or "").split("/")[0].lower()
-    return bool(dest and any(dest == w or dest.endswith("." + w)
-                             for w in dicts.get("risk_whitelist_domains") or []))
+def _is_whitelisted_dest(e, webs=None) -> bool:
+    """外发目的地在公司白名单。2026-08-24: URL型目的地取主机名(原'https:'截断);
+    空目的地(网页上传IPG不记域名)按±3分钟浏览域名推断(Teams/M365传附件不算外发)。"""
+    dest = ((e.raw or {}).get("dest_path") or "").strip().lower()
+    if dest.startswith(("http:", "https:")):
+        _p = dest.split("/")
+        dest = _p[2] if len(_p) > 2 else dest
+    else:
+        dest = dest.split("/")[0]
+    _wl = [w.lower() for w in (dicts.get("risk_whitelist_domains") or [])]
+    if dest:
+        return any(dest == w or dest.endswith("." + w) for w in _wl)
+    if webs is None:
+        return False
+    ts = getattr(e, "occurred_at", None)
+    for t, d in webs:
+        if ts and abs((t - ts).total_seconds()) <= 180:
+            if any(d == w or d.endswith("." + w) for w in _wl):
+                return True
+    return False
+
+
+def _webs_by_emp(s, since):
+    """各员工当日WEB事件(时间,域名),供空目的地邻近推断。"""
+    from collections import defaultdict as _dd
+    webs = _dd(list)
+    for w in s.query(EventRow).filter(EventRow.category == "WEB",
+                                       EventRow.occurred_at >= since).all():
+        d = ((w.raw or {}).get("domain") or "").lower()
+        if d:
+            webs[w.employee_id].append((w.occurred_at, d))
+    for k in webs:
+        webs[k].sort()
+    return webs
 
 
 def run_all_patterns() -> dict:
