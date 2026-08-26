@@ -428,7 +428,7 @@ def list_alerts(severity: str | None = None, limit: int = 200, when: str | None 
             else:                           # week 近7天
                 q = q.filter(AlertRow.window_start >= _today - timedelta(days=7))
         def _prio(r):
-            if r.risk_score >= 85 or r.scenario in ("mass_delete", "mass_exfil", "archive_exfil", "rename_exfil", "trend_spike"):
+            if r.risk_score >= 90 or r.scenario in ("mass_delete", "mass_exfil", "archive_exfil", "rename_exfil", "trend_spike"):
                 return "优先"
             if len(_sig_cnt.get(r.employee_id, ())) >= 2:
                 return "优先"
