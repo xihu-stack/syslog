@@ -581,6 +581,19 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         _anchored = None
         if isinstance(v, dict) and (v.get("risk_score") or 0) >= 30:
             _a = detector.anchor_score(v.get("intent"), w, day_total=_day_tot)
+            if _a is None and v.get("intent") == "data_exfiltration":
+                # 白名单目的地全掩护(2026-08-26何晴案例): 锚点证据门正确排除了公司通道
+                # 上传,但LLM仍自行判85分外发——锚点None时LLM分无压制。窗口所有DOC上传
+                # 目的地均白名单(含邻近推断) → 强制normal_work
+                _webs_in_w = [(_tw, ((_tr or {}).get("domain") or "").lower())
+                              for _te in w if _te.category == "WEB"
+                              for _tw in [getattr(_te, "occurred_at", None)]
+                              for _tr in [(_te.raw or {}).get("domain") and _te.raw]]
+                _webs_in_w = [(t, d) for t, d in _webs_in_w if t and d]
+                _sends_w = [e for e in w if e.category == "DOC" and e.action in ("SEND", "UPLOAD")]
+                if _sends_w and all(dicts.whitelisted_dest(e.raw or {}, _webs_in_w, e.occurred_at) for e in _sends_w):
+                    v = {**v, "intent": "normal_work", "risk_score": min(v.get("risk_score") or 0, 20),
+                         "explanation": "[公司通道] " + (v.get("explanation") or "")}
             if _a is not None:
                 v = {**v, "risk_score": _a}
                 _anchored = _a
