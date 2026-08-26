@@ -1108,6 +1108,7 @@ function Alerts({goProfile,filter}){
   const [statusF,setStatusF]=useState((filter&&filter.status)||(isToday?'all':'NEW'));   // NEW(未处理)|handled(已处理)|all
   const [rows,setRows]=useState(null); const [q,setQ]=useState(''); const [lvl,setLvl]=useState((filter&&filter.lvl)||'all');
   const [scenario,setScenario]=useState((filter&&filter.scenario)||'all');
+  const [focusOnly,setFocusOnly]=useState(false);  // 2026-08-26分层: 默认全看,可切只看优先
   const [lastUpd,setLastUpd]=useState(null); const [loading,setLoading]=useState(true);
   const [cfModal,setCfModal]=useState({open:false,vid:0,note:''});
   const load=async()=>{const p=new URLSearchParams();p.set('limit','300');if(when!=='all')p.set('when',when);if(statusF!=='all')p.set('status',statusF);const r=await GETL('/api/alerts?'+p.toString());setRows(r);setLastUpd(new Date());setLoading(false);};
@@ -1123,7 +1124,7 @@ function Alerts({goProfile,filter}){
     POST('/api/verdicts/'+fpModal.vid+'/false_positive?reason='+encodeURIComponent(fullReason)+'&signal_type='+fpModal.intent+'&expires_days='+(fpModal.reason==='临时项目'?'30':'0')).then(()=>{ message.success('已标记误报，后续同类不再告警'); setFpModal({...fpModal,open:false}); load(); });
   };
   const scenSet=[...new Set((rows||[]).map(r=>r.scenario).filter(Boolean))];
-  const agData=(()=>{const filtered=(rows||[]).filter(v=>{if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;if(lvl==='crit'&&v.risk_score<76)return false;if(lvl==='high'&&(v.risk_score<56||v.risk_score>75))return false;if(lvl==='mid'&&(v.risk_score<31||v.risk_score>55))return false;if(scenario!=='all'&&v.scenario!==scenario)return false;return true;});const ag={};filtered.forEach(v=>{if(!ag[v.employee])ag[v.employee]={key:v.employee,employee:v.employee,scenarios:[],maxRisk:0,count:0,latest:v.window_start,summary:'',verdict_id:v.verdict_id,intent:v.scenario};const g=ag[v.employee];const sc=INTENT[v.scenario]||v.scenario;if(!g.scenarios.find(s=>s.label===sc))g.scenarios.push({label:sc,risk:v.risk_score});if((v.risk_score||0)>g.maxRisk){g.maxRisk=v.risk_score;g.summary=v.summary;g.verdict_id=v.verdict_id;g.intent=v.scenario;g.status=v.status;}g.count++;if(v.window_start>g.latest)g.latest=v.window_start;g.reviewed=g.reviewed||((v.summary||'').indexOf('[次日复核')===0);});const arr=Object.values(ag);
+  const agData=(()=>{const filtered=(rows||[]).filter(v=>{if(focusOnly&&v.priority!=='优先')return false;if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;if(lvl==='crit'&&v.risk_score<76)return false;if(lvl==='high'&&(v.risk_score<56||v.risk_score>75))return false;if(lvl==='mid'&&(v.risk_score<31||v.risk_score>55))return false;if(scenario!=='all'&&v.scenario!==scenario)return false;return true;});const ag={};filtered.forEach(v=>{if(!ag[v.employee])ag[v.employee]={key:v.employee,employee:v.employee,scenarios:[],maxRisk:0,count:0,latest:v.window_start,summary:'',verdict_id:v.verdict_id,intent:v.scenario};const g=ag[v.employee];const sc=INTENT[v.scenario]||v.scenario;if(!g.scenarios.find(s=>s.label===sc))g.scenarios.push({label:sc,risk:v.risk_score});if((v.risk_score||0)>g.maxRisk){g.maxRisk=v.risk_score;g.summary=v.summary;g.verdict_id=v.verdict_id;g.intent=v.scenario;g.status=v.status;}g.count++;if(v.window_start>g.latest)g.latest=v.window_start;g.reviewed=g.reviewed||((v.summary||'').indexOf('[次日复核')===0);});const arr=Object.values(ag);
     if(when==='today') arr.sort((a,b)=>(b.latest||'').localeCompare(a.latest||''));
     else if(when==='yesterday') arr.sort((a,b)=>(b.reviewed?1:0)-(a.reviewed?1:0)||b.maxRisk-a.maxRisk);
     else arr.sort((a,b)=>b.maxRisk-a.maxRisk);
@@ -1150,10 +1151,13 @@ function Alerts({goProfile,filter}){
           <Select.Option value="all">全部场景</Select.Option>
           {scenSet.map(s=><Select.Option key={s} value={s}>{INTENT[s]||s}</Select.Option>)}
         </Select>}
+        <Tooltip title="优先=复合信号(≥2类风险)/高分/聚合模式类;常规=单次截图/邮箱等低价值,点击行仍可查看">
+        <Switch checkedChildren="只看重点" unCheckedChildren="全部" checked={focusOnly} onChange={setFocusOnly} />
+        </Tooltip>
       </Space>
       <Table size="small" rowKey="key" pagination={{pageSize:14,showTotal:t=>`共 ${alertN} 条告警 / ${t} 人（按用户合并）`}} loading={loading} dataSource={agData}
         columns={[
-          {title:<TH t="用户" />,dataIndex:'employee',width:120,render:v=><a className="uname" onClick={(e)=>{e.stopPropagation();goProfile(v);}}>{EMP_D(v)}</a>},
+          {title:<TH t="用户" />,dataIndex:'employee',width:150,render:(v,r)=><span><a className="uname" onClick={(e)=>{e.stopPropagation();goProfile(v);}}>{EMP_D(v)}</a>{r.priority==='优先'&&<Tag color="volcano" style={{marginLeft:4,fontSize:10,lineHeight:'16px'}}>优先</Tag>}</span>},
           {title:<TH t="风险场景" tip="该员工当前最高分告警的场景(主场景,加粗)。+N 表示还涉及N个其他场景,鼠标移上查看。" />,dataIndex:'scenarios',width:170,render:(v,r)=>{const mainL=INTENT[r.intent]||r.intent;const L=LVL(r.maxRisk);const subs=v.filter(s=>s.label!==mainL);const st=SRCTAG(r.summary,r.intent,r.latest);return <Space wrap size={[4,3]}><Tooltip title={st.tip}><Tag style={{background:st.c+'14',color:st.c,border:'1px solid '+st.c+'44',fontSize:10}}>{st.t}</Tag></Tooltip><Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40',fontWeight:600}}>{mainL} {r.maxRisk}</Tag>{subs.length>0&&<Tooltip title={'另涉及：'+subs.map(s=>s.label).join('、')}><Tag style={{fontSize:11,color:'var(--ink3)',background:'var(--bg)',border:'1px solid var(--ink4)'}}>+{subs.length}</Tag></Tooltip>}</Space>}},
           {title:<TH t="告警数" tip="该员工在当前筛选范围内的告警条数(合并前)。同一员工同意图会合并展示。" />,dataIndex:'count',width:80,render:v=><span className="num" style={{color:'var(--ink2)',fontWeight:600}}>{v}</span>},
           {title:<TH t="最近告警" tip="该员工最近一次告警的行为发生时间。" />,dataIndex:'latest',width:135,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},

@@ -357,9 +357,49 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 try:
                     import llm_client as _lc
                     import llm_client as _lc2
+
+                    def _expl_ok(emp, wstart, v, w):
+                        """说明完整度自检(2026-08-26): 5W五要素缺项→用窗口事实模板重写,
+                        保证每条说明独立可读(梁瑞'外发:→→'半成品案例)。"""
+                        e = str(v.get("explanation") or "")
+                        if len(e) < 25:
+                            return False
+                        has_who = emp[:2] in e or "员工" in e
+                        _ds = str(wstart)[5:10]
+                        has_time = any(x in e for x in (_ds, "凌晨", "上午", "下午", "工作时段", "深夜", "夜间", "时段"))
+                        has_ch = any(x in e for x in ("通过", "经", "exe", "通道"))
+                        has_obj = ("『" in e) or ("×" in e) or (".p" in e) or (".x" in e) or (".d" in e) or ("访问" in e)
+                        has_q = any(x in e for x in ("属", "风险", "嫌疑", "违规", "正常", "偏离"))
+                        return all([has_who, has_time, has_ch, has_obj, has_q])
+
+                    def _factual_expl(emp, w, wstart, v):
+                        _sends = [e for e in w if e.category == "DOC" and e.action in ("SEND", "UPLOAD", "PRINT")]
+                        _doms = []
+                        for e in w:
+                            if e.category == "WEB":
+                                d = ((e.raw or {}).get("domain") or "").lower()
+                                if d and dicts.risk_class(d) and d not in _doms:
+                                    _doms.append(d)
+                        _t = str(wstart)[5:16].replace("T", " ")
+                        _inten = {"data_exfiltration": "数据外发", "policy_violation": "违规访问",
+                                  "job_seeking": "求职信号", "baseline_deviation": "行为偏离",
+                                  "normal_work": "正常办公"}.get(v.get("intent"), v.get("intent") or "行为")
+                        if _sends:
+                            _fs = "、".join(f"『{(e.target_value or '未命名')[:36]}』" for e in _sends[:3])
+                            _mb = sum((e.size_bytes or 0) for e in _sends) / 1048576
+                            _ch = (_sends[0].raw or {}).get("app") or (_sends[0].raw or {}).get("channel") or "网络"
+                            return (f"{emp}在{_t}通过{_ch}发送{_fs}共{len(_sends)}个文件"
+                                    + (f"({_mb:.1f}MB)" if _mb >= 0.5 else "")
+                                    + f",属{_inten}(系统按窗口事实生成)。")
+                        if _doms:
+                            return f"{emp}在{_t}访问风险域名{'、'.join(_doms[:3])},属{_inten}(系统按窗口事实生成)。"
+                        return f"{emp}在{_t}存在{_inten}相关行为(系统按窗口事实生成)。"
+
                     for emp, device, wstart, wend, hashes, v in buf:
                         # explanation剥离思维链(2026-08-26唐方毅案例: 说明以"好,我现在需要分析"开头
                         # ——deep模型think未剥净即入库);同时清掉角色扮演残留
+                        if not _expl_ok(emp, wstart, v, w):
+                            v["explanation"] = _factual_expl(emp, w, wstart, v)
                         if v.get("explanation"):
                             _e2 = _lc2.strip_think(str(v["explanation"]))
                             for _bad in ("好，我现在", "好的，我现在", "首先，", "让我分析"):
@@ -390,7 +430,13 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                                 wsession.add(AlertRow(employee_id=emp, scenario=v.get("intent"),
                                     severity=severity_of(v.get("risk_score", 0)), risk_score=v.get("risk_score", 0),
                                     verdict_id=vr.id, summary=v.get("explanation"), dedup_key=key, window_start=wstart))
-                                if v.get("risk_score", 0) >= 75:
+                                # 推送门控(2026-08-26): 单次低价值不推,只推复合/高分/大体量——
+                                # 否则单张截图也轰炸webhook
+                                _mb2 = sum((e.size_bytes or 0) for e in w
+                                           if e.category == "DOC" and e.action in ("SEND", "UPLOAD")) / 1048576
+                                if (v.get("risk_score", 0) >= 85
+                                        or (v.get("risk_score", 0) >= 75 and _mb2 >= 5)
+                                        or v.get("file_sensitivity") == "high"):
                                     _notify_webhook(emp, v.get("risk_score", 0), v.get("explanation", ""))
                             else:
                                 # 已有告警:当天再犯即刷新最近活动时间(window_start),让"今日告警"/趋势图
@@ -402,7 +448,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                                 _was = existing.status
                                 if _was and _was != "NEW":
                                     existing.status = "NEW"
-                                    if v.get("risk_score", 0) >= 75:
+                                    if v.get("risk_score", 0) >= 85:
                                         _notify_webhook(f"{emp}(复犯,原状态{_was})", v.get("risk_score", 0),
                                                         v.get("explanation", ""))
                                 # 内容与时间同步: verdict_id/summary 指向本次(最新)窗口的研判——

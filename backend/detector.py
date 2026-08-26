@@ -179,6 +179,7 @@ SYSTEM_PROMPT = (
     "deviation(none|minor|major|severe), risk_score(0-100整数), "
     "file_sensitivity(仅外发类窗口必填: high|mid|none)——按文件名+扩展名+上下文推断内容敏感性,与次数大小无关:high=实验/临床/项目数据(试验报告/测序/序列/数据包/文库)、合同财务、数据库导出、设计源文件;mid=办公文档但含项目编号或内部术语;none=临时缓存/系统文件/私人生活文件(个人照片/购物/家人), "
     "explanation格式(5W,严格执行):【谁】在【何时(日期+时段)】通过【通道(应用/域名/设备)】【干了什么(动作+对象:文件名或域名×次数+文件大小)】,属于【问题定性(场景+风险含义)】。例: 张三在08-20凌晨通过微信文件助手发送『HX15001试验手册.pdf』等3个文件(共2.1MB),属数据外发。"
+    "【方向铁律】行为序列中标注[↓收]的动作(下载/接收)是数据**进入**本机——严禁在explanation里把下载/接收的文件定性为外发对象或外发内容;外发只能引用[↑发](SEND/UPLOAD/PRINT/BURN)动作的文件;下载仅可作为行为上下文提及。\n"
     "【通道具体性铁律】explanation的通道禁止写『网络/通过网络/网络通道』这类空泛词——必须用输入中给出的具体应用名(如msedgewebview2.exe/Weixin.exe/OUTLOOK.EXE)或域名;目的地未记录时如实写『目的地未记录(网页上传)』,不得省略去向;有大小必须写大小。"
 "【总次数口径】汇总『共N次访问/进行了N次』时,标注了(连接心跳)的ws./wss.等心跳域名【不计入】——总次数=各非心跳域名次数之和;心跳域名如需提及,单独表述为『另有WebSocket心跳连接』;严禁把心跳请求数加进总访问次数(2026-08-26高贯飞案例: 把心跳桶count加总成'1426次访问')。\n"
     "【数字精度铁律】explanation中的所有数字(次数/人数/天数/文件数/大小)必须与行为序列中标注的完全一致——窗口标注×13次你必须写13次,不得四舍五入/模糊化/写'多次'。当日累计N次须标注'今日累计N次'。引用行为史数据须标注'(近7天)'。"
@@ -316,7 +317,10 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
             # AI无从写具体;补大小与目的地缺失标注
             _sz = f", {e.size_bytes / 1048576:.1f}MB" if (e.size_bytes or 0) > 10240 else ""
             _dest = f" → {_dp[:60]}" if _dp and e.action in ("SEND", "UPLOAD", "PRINT") else (" → 目的地未记录(网页上传)" if e.action in ("SEND", "UPLOAD") else "")
-            lines.append(f"{t} [{src}] [{e.action}] {e.target_value}{_sz}（通道={(e.raw or {}).get('channel')}, 应用={(e.raw or {}).get('app')}）{_dest}")
+            # 方向标记(2026-08-26高聪案例: 说明把"下载缩略图"定性为外发对象——
+            # 下载/接收是数据进入本机,方向为收,不是外发证据)
+            _dir = "↑发" if e.action in ("SEND", "UPLOAD", "PRINT", "BURN") else ("↓收" if e.action in ("DOWNLOAD", "RECV") else "  ")
+            lines.append(f"{t} [{src}] [{e.action}{_dir}] {e.target_value}{_sz}（通道={(e.raw or {}).get('channel')}, 应用={(e.raw or {}).get('app')}）{_dest}")
     if n_other > 12:
         lines.append(f"…及另外 {n_other - 12} 条文档/搜索")
     # 常规访问压缩(2026-08-24欧阳清案例: 17个微软遥测/CDN噪声铺满15行,把唯一的

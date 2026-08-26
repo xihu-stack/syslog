@@ -405,6 +405,11 @@ def list_alerts(severity: str | None = None, limit: int = 200, when: str | None 
     from datetime import timedelta
     s = Session()
     try:
+        # 优先级分层(2026-08-26): 复合信号(同人多场景NEW)≥2类 / ≥85分 /
+        # 聚合与模式类(mass_*/archive/rename) / 敏感文件类 → 优先;单次截图/邮箱类 → 常规
+        _sig_cnt = {}
+        for r2 in s.query(AlertRow.employee_id, AlertRow.scenario).filter(AlertRow.status == "NEW").all():
+            _sig_cnt.setdefault(r2[0], set()).add(r2[1])
         q = s.query(AlertRow).order_by(desc(AlertRow.risk_score), desc(AlertRow.created_at))
         if severity:
             q = q.filter(AlertRow.severity == severity)
@@ -422,10 +427,17 @@ def list_alerts(severity: str | None = None, limit: int = 200, when: str | None 
                              AlertRow.window_start < _today)
             else:                           # week 近7天
                 q = q.filter(AlertRow.window_start >= _today - timedelta(days=7))
+        def _prio(r):
+            if r.risk_score >= 85 or r.scenario in ("mass_delete", "mass_exfil", "archive_exfil", "rename_exfil", "trend_spike"):
+                return "优先"
+            if len(_sig_cnt.get(r.employee_id, ())) >= 2:
+                return "优先"
+            return "常规"
+
         return [{
             "id": r.id, "employee": r.employee_id, "scenario": r.scenario,
             "severity": r.severity, "risk_score": r.risk_score, "summary": r.summary,
-            "status": r.status,
+            "status": r.status, "priority": _prio(r),
             "window_start": r.window_start.isoformat() if r.window_start else None,
             "verdict_id": r.verdict_id,
         } for r in q.limit(limit).all()]
