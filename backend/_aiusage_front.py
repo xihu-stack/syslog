@@ -5,7 +5,7 @@ p = "backend/static/index.html"
 src = io.open(p, encoding="utf-8").read()
 
 anchor = '''    <Row gutter={[16,16]} style={{marginTop:16}} align="stretch">
-        <Col span={17}>
+      <Col span={17}>
         <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警日趋势</b>'''
 assert src.count(anchor) == 1, "trend anchor"
 
