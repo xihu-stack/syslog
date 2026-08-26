@@ -82,19 +82,28 @@ def _digest(s, emp, d0, d1, day):
         return None
     lines = [f"员工: {emp} 日期: {day}"]
     web, sends, dels, docs, ks, hrs = Counter(), [], [], [], [], set()
+    web_domains = []
     for e in evs:
         if e.occurred_at:
             hrs.add(e.occurred_at.hour)
         raw = e.raw or {}
         if e.category == "WEB":
             d = (raw.get("domain") or "").lower()
+            if d:
+                web_domains.append((e.occurred_at, d))
             if dicts.risk_class(d):
                 t = (raw.get("title") or "")[:20]
                 web[f"{d}×{e.count or 1}《{t}》" if t else f"{d}×{e.count or 1}"] += 1
         elif e.category == "DOC":
             if e.action in ("SEND", "UPLOAD"):
                 dest = dicts.dest_host(raw)[:30]
-                sends.append(f"{(e.target_value or '')[:30]}→{dest or '未识别(网页上传)'}")
+                # 同期浏览(±5分钟)域名样例(2026-08-26朱亮案例: 深信服延迟7分钟批量推,
+                # N+0时刻看不到目的地,N+1全天视野能看到——让R1说清"传去了哪")
+                _near = sorted({(w2[1] or "")[:30] for w2 in web_domains
+                                if abs((w2[0] - e.occurred_at).total_seconds()) <= 300
+                                and not ((w2[1] or "").startswith(("ws.", "statistic.", "stat.", "log.")))})[:3]
+                _nt = f" [同期浏览:{'/'.join(_near)}]" if (_near and not dest) else ""
+                sends.append(f"{(e.target_value or '')[:30]}→{dest or '未识别(网页上传)'}{_nt}")
             elif e.action == "DELETE" and not detector.is_noise_doc(e):
                 dels.append((e.target_value or "")[:30])
             else:
