@@ -117,13 +117,18 @@ def anchor_score(intent, window, day_total=None) -> int | None:
     # 目的地=网页上传工具/个人邮箱/网盘(稀有通道) 85;微信(日常高频) 80;
     # 目的地稀有度分层: 网盘/个人邮箱等稀有通道85,微信等日常通道80;
     # 文件名是否敏感不在此判断——AI在说明里定性,锚点只管动作+通道的客观强度
-    _send_dests = [((e.raw or {}).get("dest_path") or "").lower() for e in window
-                   if e.category == "DOC" and e.action in ("SEND", "UPLOAD")
-                   and (e.raw or {}).get("channel") not in (None, "", "LOCAL")
-                   and not _wl_dest(e)]
+    _send_evs = [e for e in window if e.category == "DOC" and e.action in ("SEND", "UPLOAD")
+                 and (e.raw or {}).get("channel") not in (None, "", "LOCAL")
+                 and not _wl_dest(e)]
+    _send_dests = [dicts.dest_host(e.raw or {}) for e in _send_evs]
     if _send_dests:
         _rare = any(dicts.risk_class(d) in ("网盘/云盘", "个人邮箱") for d in _send_dests)
-        score = max(score, 85 if _rare else 80)
+        # 单次纯图片外发(2026-08-26用户拍板): 一张截图与一份试验方案不该同档——
+        # 日常通道80→75;高频(当日≥4次+5)会把常发截图的人抬回80,只降偶发
+        _IMG2 = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".heic")
+        _single_img = (len(_send_evs) == 1
+                       and str(_send_evs[0].target_value or "").lower().endswith(_IMG2))
+        score = max(score, 85 if _rare else (75 if _single_img else 80))
     if night:
         score += 5
     return min(score, 90)
@@ -172,7 +177,8 @@ SYSTEM_PROMPT = (
     "file_sensitivity(仅外发类窗口必填: high|mid|none)——按文件名+扩展名+上下文推断内容敏感性,与次数大小无关:high=实验/临床/项目数据(试验报告/测序/序列/数据包/文库)、合同财务、数据库导出、设计源文件;mid=办公文档但含项目编号或内部术语;none=临时缓存/系统文件/私人生活文件(个人照片/购物/家人), "
     "explanation格式(5W,严格执行):【谁】在【何时(日期+时段)】通过【通道(应用/域名/设备)】【干了什么(动作+对象:文件名或域名×次数+文件大小)】,属于【问题定性(场景+风险含义)】。例: 张三在08-20凌晨通过微信文件助手发送『HX15001试验手册.pdf』等3个文件(共2.1MB),属数据外发。"
     "【通道具体性铁律】explanation的通道禁止写『网络/通过网络/网络通道』这类空泛词——必须用输入中给出的具体应用名(如msedgewebview2.exe/Weixin.exe/OUTLOOK.EXE)或域名;目的地未记录时如实写『目的地未记录(网页上传)』,不得省略去向;有大小必须写大小。"
-"【数字精度铁律】explanation中的所有数字(次数/人数/天数/文件数/大小)必须与行为序列中标注的完全一致——窗口标注×13次你必须写13次,不得四舍五入/模糊化/写'多次'。当日累计N次须标注'今日累计N次'。引用行为史数据须标注'(近7天)'。"
+"【总次数口径】汇总『共N次访问/进行了N次』时,标注了(连接心跳)的ws./wss.等心跳域名【不计入】——总次数=各非心跳域名次数之和;心跳域名如需提及,单独表述为『另有WebSocket心跳连接』;严禁把心跳请求数加进总访问次数(2026-08-26高贯飞案例: 把心跳桶count加总成'1426次访问')。\n"
+【数字精度铁律】explanation中的所有数字(次数/人数/天数/文件数/大小)必须与行为序列中标注的完全一致——窗口标注×13次你必须写13次,不得四舍五入/模糊化/写'多次'。当日累计N次须标注'今日累计N次'。引用行为史数据须标注'(近7天)'。"
     "禁止泛泛套话,对象必须是具体文件名/域名, "
     "channels(数组,取自 usb|netdisk|personal_email|upload|local|remote_control)。"
 )
