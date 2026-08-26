@@ -174,12 +174,7 @@ def app_context(e) -> str:
 def _is_whitelisted_dest(e, webs=None) -> bool:
     """外发目的地在公司白名单。2026-08-24: URL型目的地取主机名(原'https:'截断);
     空目的地(网页上传IPG不记域名)按±3分钟浏览域名推断(Teams/M365传附件不算外发)。"""
-    dest = ((e.raw or {}).get("dest_path") or "").strip().lower()
-    if dest.startswith(("http:", "https:")):
-        _p = dest.split("/")
-        dest = _p[2] if len(_p) > 2 else dest
-    else:
-        dest = dest.split("/")[0]
+    dest = dicts.dest_host(e.raw or {})
     _wl = [w.lower() for w in (dicts.get("risk_whitelist_domains") or [])]
     if dest:
         return any(dest == w or dest.endswith("." + w) for w in _wl)

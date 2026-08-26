@@ -164,13 +164,7 @@ def scan_mass_exfil(s) -> int:
         return wl_hit, doms
 
     def _host(e):
-        d = ((e.raw or {}).get("dest_path") or "").strip().lower()
-        if d.startswith(("http:", "https:")):
-            _p = d.split("/")
-            d = _p[2] if len(_p) > 2 else d
-        else:
-            d = d.split("/")[0]
-        return d
+        return dicts.dest_host(e.raw or {})  # 统一走共享工具: URL主机+剥端口(私有副本曾漏剥端口致ELN:5083匹配白名单失败)
 
     by_emp_day = defaultdict(list)
     _inferred = {}
@@ -189,7 +183,7 @@ def scan_mass_exfil(s) -> int:
         by_emp_day[(e.employee_id, e.occurred_at.date())].append(e)
 
     def _dest_show(e):
-        d = _host(e)
+        d = dicts.dest_host(e.raw or {})
         if d:
             return d[:36]
         inf = _inferred.get((e.employee_id, e.id))
@@ -198,10 +192,19 @@ def scan_mass_exfil(s) -> int:
         ch = (e.raw or {}).get("channel") or ""
         return (ch + "·未识别目的地") if ch and ch != "LOCAL" else "网络通道·未识别目的地"
 
-    created = updated = 0
+    created = updated = closed = 0
     for (emp, day_d), lst in by_emp_day.items():
         total_mb = sum((e.size_bytes or 0) for e in lst) / 1048576
         if len(lst) < 15 and total_mb < 50:
+            # 白名单口径变化后重算低于阈值 → 关闭残留告警(2026-08-26周逸飞案例:
+            # filez.com加白当日,旧85分告警仍挂NEW)
+            _stale = s.query(AlertRow).filter_by(dedup_key=f"{emp}|mass_exfil|{day_d.strftime('%Y-%m-%d')}").first()
+            if _stale and _stale.status == "NEW" and "[白名单" not in (_stale.summary or ""):
+                _stale.status = "CLOSED"
+                _stale.risk_score = 15
+                _stale.severity = "LOW"
+                _stale.summary = "[白名单更正: 按当前白名单口径重算低于聚合阈值(目的地实为公司通道/白名单域)] " + (_stale.summary or "")[:140]
+                closed += 1
             continue
         day = day_d.strftime("%Y-%m-%d")
         key = f"{emp}|mass_exfil|{day}"

@@ -68,12 +68,7 @@ def anchor_score(intent, window, day_total=None) -> int | None:
     # 锚点会把错误意图锁进75+档(潘利锋凌晨案例,selfheal连续多轮对齐暴露)
     def _wl_dest(e):
         """DOC外发目的地在公司豁免白名单(OA/费控等内部业务平台)→不算外发风险。"""
-        d = ((e.raw or {}).get("dest_path") or "").strip().lower()
-        if d.startswith(("http:", "https:")):  # URL型目的地(https://eln...): 取主机名
-            _p = d.split("/")
-            d = _p[2] if len(_p) > 2 else d
-        else:
-            d = d.split("/")[0]
+        d = dicts.dest_host(e.raw or {})  # 统一共享工具(URL主机+剥端口): 私有副本曾漏剥端口
         if d:
             return any(d == w or d.endswith("." + w) for w in dicts.get("risk_whitelist_domains") or [])
         # 网页上传无目标域名(2026-08-24鄢荣梅案例): msedgewebview2.exe上传IPG不记
