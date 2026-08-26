@@ -20,7 +20,7 @@ from collections import Counter, defaultdict
 from datetime import timedelta
 
 import dicts
-from db import AlertRow, EventRow, ExceptionRow, Session, VerdictRow, bj_now
+from db import AlertRow, EventRow, ExceptionRow, Session, VerdictRow, bj_now, severity_of
 
 _DOC_W = ("COPY", "MOVE", "DELETE", "UPLOAD", "SEND", "PRINT", "BURN")
 _SIG = {"policy_violation": ("网盘/云盘", "个人邮箱"),
@@ -150,6 +150,7 @@ def _selfcheck_body() -> dict:
                 if a.verdict_id != v.id or a.risk_score != v.risk_score:
                     fixes.append(f"I1 对齐: {a.employee_id}/{a.scenario} vid {a.verdict_id}->{v.id} 分 {a.risk_score}->{v.risk_score}")
                     a.verdict_id, a.risk_score = v.id, v.risk_score
+                    a.severity = severity_of(v.risk_score or 0)
                     a.summary = v.explanation or a.summary
             elif a.status == "NEW":
                 # I5: 查近7天真实行为
@@ -210,11 +211,14 @@ def _selfcheck_body() -> dict:
                     fixes.append(f"I6 研判档位吸附: {v.employee_id}/{v.intent} {v.risk_score}->{legal[0]}")
                     v.risk_score = legal[0]
         for a in s.query(AlertRow).all():
-            if a.status == "NEW" and not _reviewed(a) and a.scenario in _ANCHOR_TIERS and a.risk_score not in _ANCHOR_TIERS[a.scenario]:
+            # 2026-08-26: 只吸≥50——复犯刷新会把告警分更新为最新研判分(可能30/45),
+            # 吸附把它硬拉回75+造成"告警80/研判45"错位(当日审计8条);<50非告警级不吸
+            if a.status == "NEW" and not _reviewed(a) and a.scenario in _ANCHOR_TIERS                     and 50 <= (a.risk_score or 0) and a.risk_score not in _ANCHOR_TIERS[a.scenario]:
                 legal = sorted(x for x in _ANCHOR_TIERS[a.scenario] if x >= (a.risk_score or 0))
                 if legal:
                     fixes.append(f"I6 档位吸附: {a.employee_id}/{a.scenario} {a.risk_score}->{legal[0]}")
                     a.risk_score = legal[0]
+                    a.severity = severity_of(legal[0])
 
         s.commit()
         return {"checked": "all", "fixes": fixes}

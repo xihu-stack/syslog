@@ -75,14 +75,13 @@ def scan_mass_deletes() -> dict:
 
 
 def scan_mass_exfil(s) -> int:
-    """外发量聚合: 单日非白名单SEND/UPLOAD≥15次 或 总量≥50MB → 告警。"""
-    # 邻近白名单推断(2026-08-24鄢荣梅案例): IPG对网页上传(msedgewebview2.exe等)
-    # 不记录目标域名只标NETWORK,空目的地被当"非白名单"误计入蚂蚁搬家——
-    # 按同时刻(±3分钟)浏览的公司白名单域名判定为Teams/M365等公司通道
+    """外发量聚合: 单日历日非白名单SEND/UPLOAD≥15次 或 总量≥50MB → 告警。
+    2026-08-26: 按日历日分组(原滚动24h跨日混键,周逸飞案例);同日数据增长时
+    刷新已有告警的摘要/分数(原跳过导致摘要停留在首次扫描快照——柏芳3→8次)。"""
     _wl = [w.lower() for w in dicts.get("risk_whitelist_domains") or []]
     webs = defaultdict(list)
     for w in s.query(EventRow).filter(EventRow.category == "WEB",
-                                       EventRow.occurred_at >= bj_now() - timedelta(days=1)).all():
+                                       EventRow.occurred_at >= bj_now() - timedelta(days=2)).all():
         d = ((w.raw or {}).get("domain") or "").lower()
         if d:
             webs[w.employee_id].append((w.occurred_at, d))
@@ -90,7 +89,6 @@ def scan_mass_exfil(s) -> int:
         webs[k].sort()
 
     def _nearby(emp, ts):
-        """±3分钟浏览域名: 返回(白名单命中, 非白名单域名样例)"""
         wl_hit, doms = False, []
         for t, d in webs.get(emp, ()):
             if abs((t - ts).total_seconds()) > 180:
@@ -101,63 +99,69 @@ def scan_mass_exfil(s) -> int:
                 doms.append(d)
         return wl_hit, doms
 
-    by_emp = defaultdict(list)
+    def _host(e):
+        d = ((e.raw or {}).get("dest_path") or "").strip().lower()
+        if d.startswith(("http:", "https:")):
+            _p = d.split("/")
+            d = _p[2] if len(_p) > 2 else d
+        else:
+            d = d.split("/")[0]
+        return d
+
+    by_emp_day = defaultdict(list)
     _inferred = {}
     for e in s.query(EventRow).filter(EventRow.source == "ipguard",
-                                       EventRow.occurred_at >= bj_now() - timedelta(days=1),
+                                       EventRow.occurred_at >= bj_now() - timedelta(days=2),
                                        EventRow.action.in_(("SEND", "UPLOAD"))).all():
-        dest = ((e.raw or {}).get("dest_path") or "").strip().lower()
-        if dest.startswith(("http:", "https:")):
-            _p = dest.split("/")
-            dest = _p[2] if len(_p) > 2 else dest
-        else:
-            dest = dest.split("/")[0]
+        dest = _host(e)
         if dest and any(dest == w or dest.endswith("." + w) for w in _wl):
             continue
-        if not dest:  # 空目的地: 邻近推断
+        if not dest:
             wl_hit, doms = _nearby(e.employee_id, e.occurred_at)
             if wl_hit:
-                continue  # 公司通道(Teams/M365传附件),不计入外发
+                continue
             if doms:
                 _inferred[(e.employee_id, e.id)] = doms[0][:36]
-        by_emp[e.employee_id].append(e)
-    created = 0
-    for emp, lst in by_emp.items():
+        by_emp_day[(e.employee_id, e.occurred_at.date())].append(e)
+
+    def _dest_show(e):
+        d = _host(e)
+        if d:
+            return d[:36]
+        inf = _inferred.get((e.employee_id, e.id))
+        if inf:
+            return inf + "(同期浏览)"
+        ch = (e.raw or {}).get("channel") or ""
+        return (ch + "·未识别目的地") if ch and ch != "LOCAL" else "网络通道·未识别目的地"
+
+    created = updated = 0
+    for (emp, day_d), lst in by_emp_day.items():
         total_mb = sum((e.size_bytes or 0) for e in lst) / 1048576
         if len(lst) < 15 and total_mb < 50:
             continue
-        day = lst[0].occurred_at.strftime("%Y-%m-%d")
+        day = day_d.strftime("%Y-%m-%d")
         key = f"{emp}|mass_exfil|{day}"
-        if s.query(AlertRow).filter_by(dedup_key=key).first():
-            continue
-        # 样例文件名放宽到48字符(2026-08-24用户反馈: HXN-9004...zip被截成.zi);
-        # 目的地为空时回退到通道名,不再留悬空箭头
-        def _dest(e):
-            d = ((e.raw or {}).get("dest_path") or "").strip()
-            if d.startswith(("http:", "https:")):
-                _p = d.split("/")
-                d = _p[2] if len(_p) > 2 else d
-            else:
-                d = d.split("/")[0]
-            if d:
-                return d[:36]
-            inf = _inferred.get((e.employee_id, e.id))
-            if inf:
-                return inf + "(同期浏览)"
-            ch = (e.raw or {}).get("channel") or ""
-            return (ch + "·未识别目的地") if ch and ch != "LOCAL" else "网络通道·未识别目的地"
-        sample = "; ".join(f"『{(e.target_value or '未命名文件')[:48]}』→{_dest(e)}" for e in lst[:4])
-        # 触发模式区分(2026-08-24用户反馈: 单次1.78GB也叫"蚂蚁搬家"矛盾)——
-        # ≥15次=高频小批量(蚂蚁搬家), 少量但体量大=单次/少量大体量外发
+        existing = s.query(AlertRow).filter_by(dedup_key=key).first()
+        if existing and existing.status in ("FP", "CONFIRMED"):
+            continue  # 用户已处置的不动
+        sample = "; ".join(f"『{(e.target_value or '未命名文件')[:48]}』→{_dest_show(e)}" for e in lst[:4])
         mode = "高频小批量·蚂蚁搬家模式" if len(lst) >= 15 else "少量大体量外发"
         big = max(((e.size_bytes or 0) for e in lst), default=0)
         big_txt = f",单文件最大{big / 1048576:.0f}MB" if big > 50 * 1048576 else ""
         risk = 85 if len(lst) >= 30 or total_mb >= 100 else 75
-        s.add(AlertRow(employee_id=emp, scenario="mass_exfil",
-                       severity="CRITICAL" if risk >= 76 else "HIGH", risk_score=risk,
-                       summary=f"{emp}在{day}向非白名单目的地累计外发{len(lst)}次、共{total_mb:.1f}MB{big_txt}({mode})。样例: {sample}",
-                       dedup_key=key, window_start=lst[-1].occurred_at, created_at=bj_now(), status="NEW"))
-        created += 1
-        print(f"[massops-exfil] {emp} {day} 外发{len(lst)}次/{total_mb:.0f}MB -> {risk}分", flush=True)
+        sm = f"{emp}在{day}向非白名单目的地累计外发{len(lst)}次、共{total_mb:.1f}MB{big_txt}({mode})。样例: {sample}"
+        sev = "CRITICAL" if risk >= 76 else "HIGH"
+        if existing:
+            existing.summary = sm
+            existing.risk_score = risk
+            existing.severity = sev
+            existing.window_start = lst[-1].occurred_at
+            updated += 1
+        else:
+            s.add(AlertRow(employee_id=emp, scenario="mass_exfil",
+                           severity=sev, risk_score=risk, summary=sm,
+                           dedup_key=key, window_start=lst[-1].occurred_at, created_at=bj_now(), status="NEW"))
+            created += 1
+        print(f"[massops-exfil] {emp} {day} 外发{len(lst)}次/{total_mb:.0f}MB -> {risk}分" + ("(刷新)" if existing else ""), flush=True)
     s.commit()
     return created
