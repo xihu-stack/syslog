@@ -2103,6 +2103,106 @@ def rules_apply(body: dict = Body(...)):
     return {"ok": True, "target": target, "domain": domain, "cat": cat}
 
 
+# ---------------- AI 使用分析(2026-08-26) ----------------
+_AI_CACHE = {"stats": None, "ts": 0, "insight": None, "its": 0}
+
+
+@app.get("/api/ai-usage")
+def ai_usage():
+    """AI平台使用分析: 近7天各平台活跃时段/人数/TOP用户/上传文件行为 + 页面标题样本。"""
+    import time as _t
+    from datetime import timedelta as _tda
+    from collections import defaultdict as _dd2, Counter as _ct2
+    if _AI_CACHE["stats"] and _t.time() - _AI_CACHE["ts"] < 300:
+        return _AI_CACHE["stats"]
+    s = Session()
+    try:
+        _n = bj_now()
+        since = _n - _tda(days=7)
+        ais = [d.lower() for d in dicts.get("ai_assistant_domains") or []]
+
+        def is_ai(d):
+            return any(d == a or d.endswith("." + a) for a in ais)
+
+        plats = _dd2(lambda: {"buckets": 0, "count": 0, "users": set(), "titles": _ct2()})
+        emp_cnt = _dd2(lambda: {"buckets": 0, "count": 0, "plats": set()})
+        rows = s.query(EventRow).filter(EventRow.category == "WEB",
+                                         EventRow.occurred_at >= since).all()
+        for e in rows:
+            d = ((e.raw or {}).get("domain") or "").lower()
+            if not d or not is_ai(d):
+                continue
+            # 主域归类(chat.deepseek.com→deepseek; cdn/log子域计入其主域)
+            fam = next((a for a in ais if d == a or d.endswith("." + a)), d)
+            fam = fam.split(".")[0] if fam.split(".")[0] not in ("chat", "api", "cdn", "log", "opt", "ws", "wss", "mcs", "lf", "hif") else ".".join(fam.split(".")[-2:])
+            p2 = plats[fam]
+            p2["buckets"] += 1
+            p2["count"] += (e.count or 1)
+            p2["users"].add(e.employee_id)
+            for t in ((e.raw or {}).get("titles") or [])[:1] or ([(e.raw or {}).get("title")] if (e.raw or {}).get("title") and (e.raw or {}).get("title") != "-" else []):
+                if 3 < len(t) < 60 and not t.startswith(("ChatGPT", "New chat", "Kimi", "豆包", "DeepSeek", "登录", "Sign")):
+                    p2["titles"][t] += 1
+            ee = emp_cnt[e.employee_id]
+            ee["buckets"] += 1
+            ee["count"] += (e.count or 1)
+            ee["plats"].add(fam)
+        # 往AI上传文件(DOC SEND/UPLOAD 目的地为AI域) = 数据进入外部AI
+        uploads = _dd2(lambda: {"n": 0, "mb": 0.0, "files": []})
+        for e in s.query(EventRow).filter(EventRow.category == "DOC",
+                                           EventRow.action.in_(("SEND", "UPLOAD")),
+                                           EventRow.occurred_at >= since).all():
+            dest = dicts.dest_host(e.raw or {})
+            if dest and is_ai(dest):
+                u = uploads[e.employee_id]
+                u["n"] += 1
+                u["mb"] += (e.size_bytes or 0) / 1048576
+                if (e.target_value or "") and len(u["files"]) < 5:
+                    u["files"].append((e.target_value or "")[:40])
+        out = {
+            "since": str(since.date()),
+            "platforms": [{"name": k, "buckets": v["buckets"], "count": v["count"],
+                           "users": len(v["users"]),
+                           "top_titles": [t for t, _ in v["titles"].most_common(12)]}
+                          for k, v in sorted(plats.items(), key=lambda x: -x[1]["buckets"])[:12]],
+            "top_users": [{"employee": k, "buckets": v["buckets"], "count": v["count"],
+                           "plats": sorted(v["plats"])[:4]}
+                          for k, v in sorted(emp_cnt.items(), key=lambda x: -x[1]["buckets"])[:12]],
+            "uploads": [{"employee": k, "n": v["n"], "mb": round(v["mb"], 1), "files": v["files"]}
+                        for k, v in sorted(uploads.items(), key=lambda x: -x[1]["mb"])[:10]],
+        }
+        _AI_CACHE["stats"] = out
+        _AI_CACHE["ts"] = _t.time()
+        return out
+    finally:
+        s.close()
+
+
+@app.get("/api/ai-usage/insight")
+def ai_usage_insight():
+    """本地LLM按页面标题归纳'主要用AI做什么'(语义分类,不写死关键词)。缓存30分钟。"""
+    import time as _t
+    import llm_client
+    if _AI_CACHE["insight"] and _t.time() - _AI_CACHE["its"] < 1800:
+        return _AI_CACHE["insight"]
+    st = ai_usage()
+    _NL = chr(10)
+    ctx = _NL.join(f"平台[{p['name']}] 活跃{p['buckets']}时段/{p['users']}人, 页面标题样本: {'; '.join(p['top_titles'][:8])}" for p in st["platforms"])
+    up = _NL.join(f"{u['employee']} 向AI上传{u['n']}次/{u['mb']}MB: {'; '.join(u['files'][:3])}" for u in st["uploads"][:8])
+    prompt = ("你是企业行为分析师。基于员工近7天访问AI平台的页面标题样本,归纳【主要用AI做什么】:按用途分类"
+              "(如科研数据分析/代码开发/文档写作/翻译/信息检索/简历求职/其他),给出每类的典型证据(引用标题原文)与占比粗估;"
+              "并单独指出哪些行为有数据安全风险(向AI上传公司文件/求职写作)。用中文,300字内,条目式。" + _NL + _NL
+              + "平台统计:" + _NL + ctx + ((_NL + _NL + "上传行为:" + _NL + up) if up else (_NL + "(无向AI上传文件的行为)")))
+    try:
+        raw = llm_client.chat([{"role": "system", "content": prompt}, {"role": "user", "content": "请分析。"}],
+                              max_tokens=800, timeout=180)
+        r = {"summary": llm_client.strip_think(raw)}
+    except Exception as ex:
+        r = {"summary": f"分析失败: {ex}"}
+    _AI_CACHE["insight"] = r
+    _AI_CACHE["its"] = _t.time()
+    return r
+
+
 # ---------------- 数据链路可视化(2026-08-25) ----------------
 @app.get("/api/pipeline/overview")
 def pipeline_overview():
