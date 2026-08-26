@@ -303,7 +303,7 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
     n_other = len(others)
     # 文档/搜索事件前置(2026-08-24): SEND/UPLOAD是窗口的核心信号,排在常规网页
     # 噪声之前,保证AI第一屏看到真信号
-    for e in others[:12]:
+    for e in others[:25]:
         t = e.occurred_at.strftime("%m-%d %H:%M")
         src = SRC.get(getattr(e, 'source', ''), '')
         if e.category == "SEARCH":
@@ -321,21 +321,41 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
             # 下载/接收是数据进入本机,方向为收,不是外发证据)
             _dir = "↑发" if e.action in ("SEND", "UPLOAD", "PRINT", "BURN") else ("↓收" if e.action in ("DOWNLOAD", "RECV") else "  ")
             lines.append(f"{t} [{src}] [{e.action}{_dir}] {e.target_value}{_sz}（通道={(e.raw or {}).get('channel')}, 应用={(e.raw or {}).get('app')}）{_dest}")
-    if n_other > 12:
-        lines.append(f"…及另外 {n_other - 12} 条文档/搜索")
+    if n_other > 25:
+        lines.append(f"…及另外 {n_other - 25} 条文档/搜索")
     # 常规访问压缩(2026-08-24欧阳清案例: 17个微软遥测/CDN噪声铺满15行,把唯一的
     # 真信号(微信SEND)挤到最后,稀释AI注意力)——常规域名仅列Top5,其余一行带过
-    for d, info in normal[:5]:
+    for d, info in normal[:10]:
         cat_tag = f"[{str(info['cat']).replace(chr(91),'').replace(chr(93),'')}]" if info["cat"] else ""
         lines.append(f"[访问网页] {d} ×{info['count']} {cat_tag}")
-    if len(normal) > 5:
-        lines.append(f"…及另外 {len(normal) - 5} 个常规域名访问（微软/CDN/搜索等服务流量，均非高风险，勿逐条分析）")
+    if len(normal) > 10:
+        lines.append(f"…及另外 {len(normal) - 10} 个常规域名访问（微软/CDN/搜索等服务流量，均非高风险，勿逐条分析）")
 
     raw = "\n".join(lines) if lines else "(无行为)"
-    # 硬截断：超过 1500 字（约 2000 tokens）则截断（留空间给 system prompt + 输出）
-    if len(raw) > 1500:
-        raw = raw[:1500] + "\n…（行为过多已截断）"
+    # 截断上限 3500 字(2026-08-26用户要求: 本地AI不费钱,保证完整输入不截断丢风险;
+    # 旧版1500字截断导致高活跃员工窗口丢证据。超长时由pipeline切分为子窗口分次研判,
+    # 此处只是最后兜底)
+    if len(raw) > 3500:
+        raw = raw[:3500] + "\n…（行为过多,pipeline将切分研判）"
     return raw
+
+
+def fmt_window_len(window) -> int:
+    """预判窗口格式化后的长度(不重复构建,用行数×平均行长估算)。"""
+    return len(_fmt_window(window))
+
+
+def split_window(window):
+    """超长窗口二分切分: 按时间中点分成两半,各自独立送LLM。
+    保证每个子窗口完整输入不截断(2026-08-26用户要求)。"""
+    if len(window) <= 1:
+        return [window]
+    mid = len(window) // 2
+    left, right = window[:mid], window[mid:]
+    # 重叠 2 条避免边界遗漏
+    if len(left) > 2 and len(right) > 2:
+        right = left[-2:] + right
+    return [left, right]
 
 
 def deviation(window, baseline, global_domains=None) -> list:
