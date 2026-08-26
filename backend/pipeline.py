@@ -377,7 +377,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                             sc += 1
                         if any(x in e for x in ("属", "风险", "嫌疑", "违规", "正常", "偏离")):
                             sc += 1
-                        return sc >= 4
+                        return sc >= 3  # 3/5即过(2026-08-26审计: 4太严致37%说明被模板覆盖)
 
                     def _factual_expl(emp, w, wstart, v):
                         _sends = [e for e in w if e.category == "DOC" and e.action in ("SEND", "UPLOAD", "PRINT")]
@@ -411,19 +411,25 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                                     _topdom.append(_d)
                         _act_txt = "、".join(f"{k}×{n}" for k, n in _acts.most_common(4))
                         _dom_txt = (";域名: " + ", ".join(_topdom[:3])) if _topdom else ""
-                        return f"{emp}在{_t}的行为: {_act_txt}{_dom_txt},属{_inten}(系统按窗口事实生成)。"
+                        _hr = w[0].occurred_at.hour if w and w[0].occurred_at else 12
+                        _tod = "凌晨" if _hr < 7 else ("深夜" if _hr >= 22 else "工作时段")
+                        _riskdom = [d for d in _topdom if dicts.risk_class(d)]
+                        _rd_txt = f";风险域名:{','.join(_riskdom[:2])}" if _riskdom else ""
+                        _sc = sum(1 for k in _acts if "SEND" in k or "UPLOAD" in k)
+                        _sn = f";外发{_sc}次" if _sc else ""
+                        return f"{emp}在{_t}({_tod}): {_act_txt}{_dom_txt}{_rd_txt}{_sn},属{_inten}。"
 
                     for emp, device, wstart, wend, hashes, v in buf:
                         # explanation剥离思维链(2026-08-26唐方毅案例: 说明以"好,我现在需要分析"开头
                         # ——deep模型think未剥净即入库);同时清掉角色扮演残留
                         if not _expl_ok(emp, wstart, v, w):
                             _orig = str(v.get("explanation") or "").strip()
-                            _fact = _factual_expl(emp, w, wstart, v)
                             if len(_orig) >= 15 and "→→" not in _orig:
-                                # AI说明有内容但缺要素→追加事实(不整体覆盖,保留语义判断)
-                                v["explanation"] = _orig + " | 补充: " + _fact
-                            else:
-                                v["explanation"] = _fact
+                                _fact = _factual_expl(emp, w, wstart, v)
+                                if _fact and "窗口行为" not in _orig:
+                                    v["explanation"] = _orig + " | 补充: " + _fact
+                            elif len(_orig) < 15 or "→→" in _orig:
+                                v["explanation"] = _factual_expl(emp, w, wstart, v)
                         if v.get("explanation"):
                             _e2 = _lc2.strip_think(str(v["explanation"]))
                             for _bad in ("好，我现在", "好的，我现在", "首先，", "让我分析"):
