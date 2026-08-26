@@ -67,6 +67,7 @@ def update_memory():
     w = sqlite3.connect(DB, timeout=120)
     w.execute("DELETE FROM risk_memory")
     for (emp, scen), d in agg.items():
+        if not d["dates"]: continue  # 只有alert没有verdict的跳过
         d["dates"].sort(); d["scores"].sort()
         days = len({str(dt)[:10] for dt in d["dates"]})
         evt = " | ".join(f"{str(dt)[5:10]}: {exp[:80]}" for dt, exp in d["evidence"][-3:])
