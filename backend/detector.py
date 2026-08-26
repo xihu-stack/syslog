@@ -190,6 +190,9 @@ SYSTEM_PROMPT = (
 "  {\"tool\": \"domain_global\", \"args\": {}} — 查窗口内风险域名的全公司使用情况\n"
 "  {\"tool\": \"file_trace\", \"args\": {}} — 查窗口内外发文件在全公司的流转记录\n"
 "工具返回后你可以继续调用其他工具或直接输出最终研判JSON。最多追问2次。\n"
+    "\n【跨源上下文工具——看清完整故事线】"
+    "\n  {'tool\": \"nearby_activity\", \"args\": {}} — 查该员工窗口前后30分钟的全部行为时间线(含深信服浏览+IPG文档+搜索,跨源故事线)——判断上下文因果"
+    "\n  {'tool\": \"cross_source_dest\", \"args\": {}} — 当SEND/UPLOAD目的地未记录时,查深信服日志同时刻浏览的域名,推断文件去向\n"
 
 )
 
@@ -549,6 +552,61 @@ def _run_judge_tool(name: str, window, emp: str) -> str:
                 for r in rows:
                     parts.append(f"{f[:20]}: {r[0]}执行过{r[1]}")
             return "; ".join(parts[:6]) if parts else "这些文件近30天无其他人操作记录"
+
+        elif name == "nearby_activity":
+            _ws = window[0].occurred_at if window else bj_now()
+            _t0n = _ws - _td(minutes=30)
+            _t1n = (window[-1].occurred_at if len(window) > 1 else _ws) + _td(minutes=30)
+            evs = s.query(EventRow).filter(
+                EventRow.employee_id == emp,
+                EventRow.occurred_at >= _t0n, EventRow.occurred_at <= _t1n).order_by(EventRow.occurred_at).all()
+            if not evs:
+                return "窗口前后30分钟无其他行为记录"
+            _lines2 = []
+            for e in evs:
+                raw = e.raw or {}
+                _tt = str(e.occurred_at)[11:16]
+                if e.category == "WEB":
+                    d = (raw.get("domain") or "").lower()
+                    if d and not dicts.is_heartbeat(d) and not d.startswith(("ws.", "wss.", "statistic.", "tm.", "log.", "telemetry.")):
+                        rc = dicts.risk_class(d)
+                        if rc or len(_lines2) < 12:
+                            _lines2.append(f"{_tt} 浏览:{d[:30]}" + (f"[{rc}]" if rc else ""))
+                elif e.category == "DOC":
+                    _sz2 = f" {e.size_bytes / 1048576:.1f}MB" if (e.size_bytes or 0) > 10240 else ""
+                    _dh2 = dicts.dest_host(raw)
+                    _lines2.append(f"{_tt} {e.action}:{(e.target_value or '')[:24]}{_sz2}" + (f"→{_dh2[:24]}" if _dh2 else ""))
+                elif e.category == "SEARCH" and e.target_value:
+                    _lines2.append(f"{_tt} 搜索:{e.target_value[:18]}")
+            return " | ".join(_lines2[:18]) if _lines2 else "窗口前后30分钟无显著行为"
+
+        elif name == "cross_source_dest":
+            _sends3 = [e for e in window if e.category == "DOC" and e.action in ("SEND", "UPLOAD")
+                       and not dicts.dest_host(e.raw or {})]
+            if not _sends3:
+                return "所有SEND均有目的地记录,无需推断"
+            _webs3 = s.query(EventRow).filter(
+                EventRow.employee_id == emp, EventRow.category == "WEB",
+                EventRow.occurred_at >= bj_now() - _td(hours=2)).all()
+            _wmap = {}
+            for w3 in _webs3:
+                d = ((w3.raw or {}).get("domain") or "").lower()
+                if d:
+                    _wmap.setdefault(d, []).append(w3.occurred_at)
+            _wl3 = [x.lower() for x in (dicts.get("risk_whitelist_domains") or [])]
+            _results3 = []
+            for se in _sends3:
+                _near3 = sorted({d for d, ts3 in _wmap.items()
+                                 if any(abs((t3 - se.occurred_at).total_seconds()) <= 300 for t3 in ts3)
+                                 and not d.startswith(("ws.", "statistic.", "tm.", "log."))})[:3]
+                _wl_hit3 = any(any(d == x or d.endswith("." + x) for x in _wl3) for d in _near3)
+                if _wl_hit3:
+                    _results3.append(f"{(se.target_value or '')[:22]}→同时刻浏览为公司白名单通道(Teams/M365等)")
+                elif _near3:
+                    _results3.append(f"{(se.target_value or '')[:22]}→同时刻浏览{'/'.join(_near3[:2])}(非白名单)")
+                else:
+                    _results3.append(f"{(se.target_value or '')[:22]}→±5分钟无深信服浏览记录")
+            return "; ".join(_results3[:5])
 
         return f"未知工具: {name}"
     finally:
