@@ -88,7 +88,7 @@ def reconcile_late_evidence() -> dict:
                 AlertRow.scenario == "data_exfiltration", AlertRow.status == "NEW",
                 AlertRow.summary.like("%目的地未记录%"),
                 AlertRow.window_start >= _n - timedelta(hours=6)).all():
-            v = s.query(VerdictRow).get(a.verdict_id) if a.verdict_id else None
+            v = s.get(VerdictRow, a.verdict_id) if a.verdict_id else None
             if not v:
                 continue
             evs = s.query(EventRow).filter(EventRow.event_hash.in_(v.event_hashes or [])).all()
