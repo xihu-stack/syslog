@@ -67,7 +67,7 @@ DEFAULTS = {
         "sharepoint.net", "cloud.microsoft", "onenote.com", "sharepointonline.com",
         # 公司自有主域(2026-08-26金燕萍案例: lab.huashen.bio被当第三方外发——枚举子域永远漏,
         # 匹配器是后缀通配,挂主域即全子域生效: eln/lab/sftp/helixon集群等一律内部)
-        "huashen.bio", "helixon.com",
+        "huashen.bio", "helixon.com", "filez.com",  # FileZ公司网盘(客户端zbox,服务器fs.huashen.bio;IPG记www.filez.com为云端路径,2026-08-26管理员确认)
     ],
     "slack_sdk_domains": [],         # 心跳/埋点排除域名:客户端挂后台的规律上报,不算摸鱼(AI扫描建议+人工采纳维护)
     "slack_domains": {
