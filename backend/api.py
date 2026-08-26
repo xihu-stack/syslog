@@ -1493,7 +1493,7 @@ _ASK_TOOLS = {
     "alerts": "告警榜(全时段top10+今日清单)。args: {intent: 可选,按场景过滤: job_seeking(离职求职)|data_exfiltration(数据外发)|policy_violation(违规)|baseline_deviation(基线偏离)}",
     "slack": "摸鱼榜top10(近7天日均摸鱼时长)。args: {}",
     "attendance": "在岗情况(今日活跃/无活动名单/异常时段)。args: {}",
-    "who_risk": "近30天谁访问了某类风险网站。args: {category: 远程控制|网盘|邮箱|招聘|文件助手}",
+    "who_risk": "近N天谁访问了某类风险网站(次数=有活动的10分钟时段数,已排除心跳/遥测,豁免人员会标注)。args: {category: 远程控制|网盘|邮箱|招聘|文件助手, days: 可选,默认30;问今天传1,近一周传7}",
     "trend": "近14天每日告警数与研判数(趋势/环比对比类问题用)。args: {}",
     "sys_stats": "今日系统概览(研判数/告警数/活跃人数/事件量)。args: {}",
     "help": "系统的规则/风险分口径/摸鱼口径说明。args: {}",
@@ -1536,7 +1536,7 @@ def _ask_tool_run(name: str, args: dict) -> str:
     if name not in ("trend", "sys_stats"):
         emp = args.get("employee") or args.get("name") or args.get("emp") or ""
         cat = args.get("category") or args.get("cat") or args.get("type") or args.get("intent") or ""
-        return _ask_query(name, str(emp), str(cat))
+        return _ask_query(name, str(emp), str(cat), args.get("days"))
     if name == "trend":
         from sqlalchemy import func as _f
         s = Session()
@@ -1602,7 +1602,7 @@ def ask(body: dict = Body(...)):
              "data_exfiltration=数据外发(传文件/文件助手/网盘上传/邮箱发送/泄密);"
              "policy_violation=违反公司禁令(个人邮箱/禁止网盘或应用);"
              "baseline_deviation=行为异常(AI过度依赖/远程控制/异常时段)。\n"
-             "用户可能用任何说法(『跑路』『挖人』『偷偷传文件』『投简历』),你按语义自行映射到对应 intent;"
+             "问『今天/昨天/近一周』等时间范围时,who_risk工具传对应days参数(今天=1,近一周=7),回答里写清统计的是哪天/几天,严禁把30天总数说成今天;用户可能用任何说法(『跑路』『挖人』『偷偷传文件』『投简历』),你按语义自行映射到对应 intent;"
              "问某类风险时必须带 intent 过滤、严禁拿其他场景数据答非所问;该场景无告警就如实说明;"
              "问总体风险/可疑行为时不带 intent。问具体某员工用 employee_risk。\n"
              "4. 不需要数据的问题(闲聊/概念解释)直接 final;查不到数据就在 final 里说明并建议问法。\n"
@@ -1698,7 +1698,7 @@ def ask_history_clear():
         s.close()
 
 
-def _ask_query(action, employee, category=""):
+def _ask_query(action, employee, category="", days_arg=None):
     """按 action 复用现有查询逻辑,返回文本上下文喂总结 LLM。"""
     import detector
     from collections import Counter, defaultdict
@@ -1780,21 +1780,26 @@ def _ask_query(action, employee, category=""):
             return ("摸鱼榜 top10(近7天工作时段日均摸鱼时长,与效率监控页同口径):\n" +
                     "\n".join(f"{r['employee']} 日均{r['slack_avg']}分钟 · 娱乐占上班上网{r['pct']}%" for r in top))
         if action == "who_risk":
-            # category(远程控制/网盘/邮箱/招聘/文件助手) → risk_class 标签模糊匹配
+            # 2026-08-26重写: ①days参数(用户问"今天"时原30天口径冒充今日,黄春煜985次实为30天桶数);
+            # ②排除ws./statistic.等心跳遥测桶(展佳的ws.zhipin.com心跳全计入);
+            # ③豁免人员标注(HR等岗位需要,非求职风险,不再被建议关注)
             cat_map = {"远程控制": "远程控制", "网盘": "网盘", "邮箱": "个人邮箱", "招聘": "招聘", "文件助手": "微信文件助手"}
             key = next((k for k in cat_map if k in category), None)
             target = cat_map.get(key, category) if key else category
-            # 优化:SQL 只取 (employee,domain),Python 先对 distinct 域名算 risk_class(几千个),
-            # 再聚合——避免对 98 万行逐行调 risk_class 导致超时。
+            try:
+                days = max(1, min(30, int(days_arg or 30)))
+            except Exception:
+                days = 30
             rcnt = Counter()
             dom_expr = json_field(EventRow.raw, 'domain')
-            _since = bj_now() - timedelta(days=30)  # 问答看近期即可,避免全表扫描
+            _since = bj_now() - timedelta(days=days)
             rows = s.query(EventRow.employee_id, dom_expr).filter(
                 EventRow.category == 'WEB', EventRow.occurred_at >= _since).all()
+            _HEART = ("ws.", "wss.", "statistic.", "stat.", "log.", "telemetry.", "tm.", "abtest.", "sentry.")
             dom_cache = {}
             for emp_id, dom in rows:
                 d = (dom or "").lower()
-                if not d:
+                if not d or d.startswith(_HEART):
                     continue
                 rc = dom_cache.get(d)
                 if rc is None:
@@ -1803,8 +1808,18 @@ def _ask_query(action, employee, category=""):
                 if rc and target and (target in rc or rc in target):
                     rcnt[emp_id] += 1
             if not rcnt:
-                return f"近期无人访问{target or '该类'}网站。"
-            return f"访问{target}类网站的员工(访问次数):\n" + "\n".join(f"{emp} {n}次" for emp, n in rcnt.most_common(20))
+                return f"近{days}天无人访问{target or '该类'}网站。"
+            _sig_map = {"招聘": "job_seeking"}
+            _exc_emps = {}
+            if target in _sig_map:
+                for x in s.query(ExceptionRow).filter(ExceptionRow.signal_type == _sig_map[target]).all():
+                    _exc_emps[x.employee_id] = x.reason or "岗位需要"
+            lines = []
+            for emp, n in rcnt.most_common(20):
+                tag = f"(已豁免:{_exc_emps[emp]},岗位需要非求职风险)" if emp in _exc_emps else ""
+                lines.append(f"{emp} {n}个活跃时段{tag}")
+            tail = "(次数=有活动的10分钟时段数,非请求次数)" if days <= 1 else ""
+            return f"近{days}天访问{target}类网站的员工{tail}:" + "\n" + "\n".join(lines)
         if action == "attendance":
             # 优化:SQL 取 distinct (employee, date(occurred_at), hour) 聚合,避免逐行遍历98万事件。
             today = bj_now().date().isoformat()
