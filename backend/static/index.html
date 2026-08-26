@@ -853,7 +853,7 @@ function Dashboard({go, goProfile}){
       useEffect(()=>{ fetch('/api/ai-usage',{headers:_authHdr()}).then(r=>r.json()).then(setAu).catch(()=>{}); },[]);
       const genIns=()=>{ setIloading(true); fetch('/api/ai-usage/insight',{headers:_authHdr()}).then(r=>r.json()).then(r=>setIns(r.summary||'')).finally(()=>setIloading(false)); };
       if(!au) return <div style={{padding:20,textAlign:'center',color:'var(--ink3)',fontSize:12}}>加载中...</div>;
-      const mx=(au.platforms||[])[0]?.buckets||1;
+      const mx=((au.platforms||[])[0]&&((au.platforms||[])[0].buckets))||1;
       return (<div>
         <Row gutter={16}>
           <Col span={14}>
@@ -872,8 +872,7 @@ function Dashboard({go, goProfile}){
           <Col span={10}>
             <div style={{fontSize:11,color:'var(--ink3)',marginBottom:6}}>主要用AI做什么 <Button size="small" loading={iloading} onClick={genIns} style={{marginLeft:8}}>{ins?'重新分析':'AI归纳用途'}</Button></div>
             <div style={{background:'var(--bg)',borderRadius:8,padding:'8px 10px',fontSize:11.5,color:'var(--ink2)',lineHeight:1.85,minHeight:60,maxHeight:180,overflow:'auto',whiteSpace:'pre-wrap'}}>
-              {ins||(au.platforms||[]).slice(0,4).map(p2=>`【${p2.name}】${(p2.top_titles||[]).slice(0,3).join('; ')||'—'}`).join('
-')}
+              {ins||((au.platforms||[]).slice(0,4).map(p2=>('【'+p2.name+'】'+(((p2.top_titles||[]).slice(0,3)).join('; ')||'—'))).join(String.fromCharCode(10)))}
             </div>
             {(au.uploads&&au.uploads.length)?(<div style={{marginTop:8}}>
               <div style={{fontSize:11,color:'#ef4444',fontWeight:600}}><i className="fa-solid fa-triangle-exclamation"></i> 向AI上传文件(数据进入外部AI)</div>
