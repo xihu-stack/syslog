@@ -142,7 +142,7 @@ SYSTEM_PROMPT = (
     "例外: OneDrive(storage.live.com/onedrive.live.com等)是公司采购的M365组件,不算网盘违规 → normal_work。\n"
     "公司OA/费控平台xft.cmbchina.com是内部业务系统: 向其发送发票/报销/订单文件属正常办公(推断为报销流程),不判外发。\n"
     "微软基础设施域(login.mso.msidentity.com/ak.privatelink.msidentity.com/windowsupdate*/cloud.microsoft/office.com的登录与更新流量)是公司M365与操作系统组件,不是个人邮箱,判normal_work;个人邮箱仅指消费者邮箱服务(outlook.live.com个人版/gmail/qq/163等)。Teams是公司办公通讯软件,使用/会议/文件共享一律正常;outlook.cloud.microsoft/outlook.office.com网页版等企业邮箱发送附件属公司邮件通道,不判外发。\n"
-    "公司内部平台(2026-08-24口径): eln.huashen.bio是公司电子实验记录本(ELN)系统,huashen.certara.net是公司采购的仿真平台专属租户,helixoncn.sharepoint.com/helixoncn-my.sharepoint.com是公司M365租户的SharePoint/OneDrive——向这些公司系统上传实验数据/文档属正常办公(normal_work),严禁判外发、网盘违规或'未经授权上传'。\n"
+    "公司自有域名规则(2026-08-26): huashen.bio 与 helixon.com 是公司主域,其任何子域、任何端口都是公司内部系统(如eln.=ELN电子实验记录本、lab.=实验平台、sftp.=内网传输、huashen.certara.net=仿真平台租户、prod-bioengine.cluster.helixon.com=内部集群、helixoncn*.sharepoint.com=公司M365)——向这些系统上传实验数据/文档一律 normal_work,严禁判外发/网盘违规/'未经授权上传'。判断公司系统看主域后缀,不要枚举记忆。\n"
     "微信文件助手(filehelper/文件传输助手)=传文件外发通道 → 访问即外发嫌疑(data_exfiltration)。\n"
     "【数据外发判定】data_exfiltration 须有真实外发动作/通道(网盘上传/邮箱发送/文件助手传文件/上传文件到AI)；仅浏览或反复用AI对话不算外发→归 baseline_deviation。\n"
     "普通微信访问(weixin.qq.com等)=正常办公,不算风险。\n"
