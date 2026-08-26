@@ -290,6 +290,13 @@ def whitelisted_dest(raw: dict, webs=None, ts=None) -> bool:
     """外发目的地在公司白名单。空目的地(网页上传IPG不记域名)时,若给了webs
     [(时间,域名)]则按±3分钟推断(Teams/M365传附件不算外发)。"""
     d = dest_host(raw)
+    # 私网IP目的地(2026-08-26胡峰案例: 3.5GB"外发"实为传往10.4.128.9=IPG服务器自身通道)
+    # ——内网传输不构成数据外发
+    _pp = d.split(".")
+    if len(_pp) == 4 and all(x.isdigit() for x in _pp):
+        _a, _b2 = int(_pp[0]), int(_pp[1])
+        if _a == 10 or _a == 127 or (_a == 192 and _b2 == 168) or (_a == 172 and 16 <= _b2 <= 31):
+            return True
     wl = [w.lower() for w in (get("risk_whitelist_domains") or [])]
     if d:
         return any(d == w or d.endswith("." + w) for w in wl)
