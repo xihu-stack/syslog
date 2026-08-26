@@ -631,7 +631,6 @@ def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exempti
         _mem = memory_for_llm(window[0].employee_id if window else "")
     except Exception:
         _mem = ""
-    mem_txt = "
 " + _mem if _mem else ""
     # 源头注入深信服目的地(2026-08-26用户要求: 准确性>及时性,不等AI追问——
     # 空目的地SEND时主动查深信服浏览数据,30分钟证据等待已保证数据到齐)
