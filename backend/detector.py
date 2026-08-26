@@ -187,12 +187,12 @@ SYSTEM_PROMPT = (
     "输出 JSON 字段：intent(data_exfiltration|job_seeking|baseline_deviation|policy_violation|normal_work), "
     "deviation(none|minor|major|severe), risk_score(0-100整数), "
     "file_sensitivity(仅外发类窗口必填: high|mid|none)——按文件名+扩展名+上下文推断内容敏感性,与次数大小无关:high=实验/临床/项目数据(试验报告/测序/序列/数据包/文库)、合同财务、数据库导出、设计源文件——【必须文件名本身含明确证据(项目编号/试验术语/合同财务词),无语义默认名(SendPhotoes/微信图片/截图/新建文件/乱码哈希)一律none,严禁『可能包含/推断可能』式抬高】;mid=办公文档但含项目编号或内部术语;none=临时缓存/系统文件/私人生活文件(个人照片/购物/家人), "
-    "explanation格式(5W,严格执行):【谁】在【何时(日期+时段)】通过【通道(应用/域名/设备)】【干了什么(动作+对象:文件名或域名×次数+文件大小)】,属于【问题定性(场景+风险含义)】。例: 张三在08-20凌晨通过微信文件助手发送『HX15001试验手册.pdf』等3个文件(共2.1MB),属数据外发。"
+    "explanation格式(5W,严格执行):【谁】在【何时(日期+时段)】通过【通道(应用/域名/设备)】【干了什么(动作+对象:文件名或域名×次数+文件大小)】,属于【问题定性(场景+风险含义)】。格式示意: 张三在〔本窗口日期+时段〕通过〔通道〕发送『〔窗口内真实文件名』〕等〔N〕个文件(共〔大小〕),属数据外发。【示例防抄袭铁律】〔〕内为占位符,必须逐一替换为【本窗口时间】与行为序列里的真实值;严禁把示意的日期/文件名/次数/大小原样写进explanation(2026-08-26案例: 十余名员工的说明复读同一句『08-20凌晨发送HX15001试验手册.pdf等3个文件(共2.1MB)』,全是照抄示例)。"
     "【方向铁律】行为序列中标注[↓收]的动作(下载/接收)是数据**进入**本机——严禁在explanation里把下载/接收的文件定性为外发对象或外发内容;外发只能引用[↑发](SEND/UPLOAD/PRINT/BURN)动作的文件;下载仅可作为行为上下文提及。\n"
     "【通道具体性铁律】explanation的通道禁止写『网络/通过网络/网络通道』这类空泛词——必须用输入中给出的具体应用名(如msedgewebview2.exe/Weixin.exe/OUTLOOK.EXE)或域名;目的地未记录时如实写『目的地未记录(网页上传)』,不得省略去向;有大小必须写大小。"
 "【总次数口径】汇总『共N次访问/进行了N次』时,标注了(连接心跳)的ws./wss.等心跳域名【不计入】——总次数=各非心跳域名次数之和;心跳域名如需提及,单独表述为『另有WebSocket心跳连接』;严禁把心跳请求数加进总访问次数(2026-08-26高贯飞案例: 把心跳桶count加总成'1426次访问')。\n"
     "【数字精度铁律】explanation中的所有数字(次数/人数/天数/文件数/大小)必须与行为序列中标注的完全一致——窗口标注×13次你必须写13次,不得四舍五入/模糊化/写'多次'。当日累计N次须标注'今日累计N次'。引用行为史数据须标注'(近7天)'。"
-    "【说明时间铁律】explanation描述的必须是【当前窗口】内发生的行为——日期与时段一律以当前窗口时间为准。风险记忆/行为史里的历史行为严禁写成本次说明的主体(禁止『某旧日期凌晨发送了N个文件』式主句,那是别的窗口的事);历史背景只能以'(近7天累计N次/活跃N天)'格式附带一句(2026-08-26展佳案例: 说明写08-20凌晨行为,当前窗口实为08-26,时间与说明对不上)。"
+    "【说明时间铁律】explanation描述的必须是【当前窗口】内发生的行为——首句的日期+时段必须与输入首行【本窗口时间】完全一致(行为序列里没有日期的WEB窗口也以此为准,严禁用今天日期或记忆里的日期替代)。风险记忆/行为史里的历史行为严禁写成本次说明的主体(禁止『某旧日期凌晨发送了N个文件』式主句,那是别的窗口的事);历史背景只能以'(近7天累计N次/活跃N天)'格式附带一句(2026-08-26展佳案例: 说明写08-20凌晨行为,当前窗口实为08-26,时间与说明对不上)。行为序列里没有的文件名/域名/日期一律不得出现在explanation中。"
     "禁止泛泛套话,对象必须是具体文件名/域名, "
     "channels(数组,取自 usb|netdisk|personal_email|upload|local|remote_control)。"
 "【追问工具——信息不足时可主动查询】当你觉得当前窗口信息不够判断时,不要猜,输出工具调用JSON:\n"
@@ -271,6 +271,14 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
             normal.append((d, info))
 
     lines = []
+    # 窗口权威时间置顶(2026-08-26日期漂移修复): WEB行无时间戳,窗口里只有网页
+    # 访问时AI输入中没有任何日期→照抄prompt示例的"08-20"或记忆里的日期,导致
+    # 说明日期与窗口对不上(任莉/马越等12/68案例)。首行给出权威范围,AI以此为准。
+    if window:
+        _ws, _we = window[0].occurred_at, window[-1].occurred_at
+        if _ws and _we:
+            lines.append(f"【本窗口时间】{_ws.strftime('%m-%d %H:%M')} ~ {_we.strftime('%m-%d %H:%M')}"
+                         f"(explanation的日期时段必须与此一致)")
     # 时段提示
     hours = [e.occurred_at.hour for e in window if e.category == "WEB" and e.occurred_at]
     if hours and (min(hours) < 7 or max(hours) >= 22):
@@ -678,6 +686,7 @@ def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exempti
             pass
 
     user = (f"员工：{window[0].employee_id}（设备：{window[0].employee_id}）\n"
+            f"行为序列：\n{_fmt_window(window)}{_dest_hint}{g_txt}{profile_txt}{dev_txt}{exempt_txt}{hist_txt}{day_txt}{_mem}\n\n"
             f"写explanation时:域名次数优先『本窗口N次,今日累计M次』双口径(今日累计仅当序列标注了[当日累计]才可引用,未标注就只写窗口次数,严禁编造累计)。请输出 JSON。")
     try:
         # 工具循环(2026-08-26用户要求: AI信息不足时可主动查询关联日志再分析,
@@ -702,6 +711,12 @@ def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exempti
         v.setdefault("deviation", "none")
         v.setdefault("channels", [])
         v["ai_participated"] = True
+        # 占位符残留清理(2026-08-26盲判事故防御): 示例占位〔〕被照抄时机械替换为
+        # 窗口事实日期——日期是客观事实,归代码不归AI
+        _ex = v.get("explanation") or ""
+        if "〔" in _ex:
+            _w0s = window[0].occurred_at.strftime("%m-%d %H:%M") if window and window[0].occurred_at else ""
+            v["explanation"] = _ex.replace("〔本窗口日期+时段〕", _w0s).replace("〔", "").replace("〕", "")
         cap = _work_hours_cap(window, dev)
         if cap is not None and int(v.get("risk_score") or 0) > cap:
             v["risk_score"] = cap
