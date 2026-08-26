@@ -74,6 +74,70 @@ def scan_mass_deletes() -> dict:
         s.close()
 
 
+def reconcile_late_evidence() -> dict:
+    """晚到证据关联(2026-08-26朱亮案例的兜底): 深信服延迟批可能超过12分钟等待窗,
+    对已产生的"目的地未记录"外发告警,用现已完整的浏览数据重新推断:
+    全部上传都有白名单邻近 → 关闭(公司通道);发现非白名单邻近 → 回填[后到证据]。"""
+    from datetime import datetime as _dt
+    s = Session()
+    try:
+        _n = bj_now()
+        closed = enriched = 0
+        _wl = [w.lower() for w in dicts.get("risk_whitelist_domains") or []]
+        for a in s.query(AlertRow).filter(
+                AlertRow.scenario == "data_exfiltration", AlertRow.status == "NEW",
+                AlertRow.summary.like("%目的地未记录%"),
+                AlertRow.window_start >= _n - timedelta(hours=6)).all():
+            v = s.query(VerdictRow).get(a.verdict_id) if a.verdict_id else None
+            if not v:
+                continue
+            evs = s.query(EventRow).filter(EventRow.event_hash.in_(v.event_hashes or [])).all()
+            sends = [e for e in evs if e.category == "DOC" and e.action in ("SEND", "UPLOAD")
+                     and not dicts.dest_host(e.raw or {})]
+            if not sends:
+                continue
+            webs = [(_ts(e2.occurred_at), ((e2.raw or {}).get("domain") or "").lower())
+                    for e2 in s.query(EventRow).filter(
+                        EventRow.employee_id == a.employee_id, EventRow.category == "WEB",
+                        EventRow.occurred_at >= v.window_start - timedelta(minutes=30),
+                        EventRow.occurred_at <= (v.window_end or v.window_start) + timedelta(minutes=30)).all()
+                    if ((e2.raw or {}).get("domain") or "").lower()]
+            webs.sort()
+
+            def near(e):
+                hit_wl, others = False, []
+                for t, d in webs:
+                    if abs((t - _ts(e.occurred_at)).total_seconds()) > 300:
+                        continue
+                    if any(d == x or d.endswith("." + x) for x in _wl):
+                        hit_wl = True
+                    elif d and not d.startswith(("ws.", "statistic.", "stat.", "log.", "tm.")) and d not in others:
+                        others.append(d)
+                return hit_wl, others
+
+            results = [near(e) for e in sends]
+            if results and all(h for h, _ in results):
+                a.status = "CLOSED"
+                a.risk_score = 15
+                a.severity = "LOW"
+                a.summary = "[白名单更正: 晚到的深信服浏览证据显示上传时刻同期为公司M365/Teams等白名单域名,实为公司通道传附件] " + (a.summary or "")[:160]
+                closed += 1
+            else:
+                extra = sorted({d for _, o in results for d in o})[:2]
+                if extra and "[后到证据" not in (a.summary or ""):
+                    a.summary = (a.summary or "") + f" [后到证据:上传时刻同期浏览{'/'.join(extra)}]"
+                    enriched += 1
+        s.commit()
+        return {"closed": closed, "enriched": enriched}
+    finally:
+        s.close()
+
+
+def _ts(x):
+    from datetime import datetime as _dt2
+    return x if isinstance(x, _dt2) else _dt2.fromisoformat(str(x)[:19])
+
+
 def scan_mass_exfil(s) -> int:
     """外发量聚合: 单日历日非白名单SEND/UPLOAD≥15次 或 总量≥50MB → 告警。
     2026-08-26: 按日历日分组(原滚动24h跨日混键,周逸飞案例);同日数据增长时

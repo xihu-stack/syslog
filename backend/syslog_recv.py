@@ -219,6 +219,13 @@ def _flush_loop():
                 print(f"[massops] 新增聚合告警{_md['created']}条", flush=True)
         except Exception as _me:
             print(f"[massops] 失败: {_me}", flush=True)
+        try:  # 晚到证据关联(2026-08-26): 深信服延迟>12分钟等待窗的兜底
+            from massops import reconcile_late_evidence
+            _rl = reconcile_late_evidence()
+            if _rl.get("closed") or _rl.get("enriched"):
+                print(f"[late-evidence] 关闭误报{_rl['closed']}条/回填去向{_rl['enriched']}条", flush=True)
+        except Exception as _le:
+            print(f"[late-evidence] 失败: {_le}", flush=True)
         try:
             from selfheal import selfcheck
             _r = selfcheck()

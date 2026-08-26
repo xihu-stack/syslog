@@ -280,6 +280,9 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
             target_value=r.target_value or "", size_bytes=r.size_bytes or 0, count=r.count or 1,
             source=r.source or "", raw=r.raw or {}) for r in new_rows]
         max_id = max(r.id for r in new_rows)
+        _id_by_hash = {e.event_hash(): r.id for r, e in zip(new_rows, new_events)}
+        _held_min_id = None  # 证据等待(2026-08-26朱亮案例): 空目的地上传窗口扣留12分钟
+        _HOLD = timedelta(minutes=12)  # 等深信服延迟批(实测~7分钟)到齐再判,目的地可见
         gdomains = profiles.global_common_domains(rs)
         gctx = profiles.global_summary(rs)
         print(f"[detect] 全局参照完成 耗{_t0.time()-_T:.1f}s", flush=True)  # 全局参照：每轮算一次，喂给所有窗口的 AI
@@ -297,6 +300,17 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 baseline = _base_cache[_bk]
                 dev = detector.deviation(w, baseline, global_domains=gdomains)
                 if not detector.should_trigger(w, dev, baseline):
+                    continue
+                # 证据等待: 窗口含空目的地DOC上传(网页上传IPG不记目的地)且窗口刚结束
+                # → 深信服浏览数据延迟~7分钟,现在判只能写"目的地未记录";扣到下轮
+                # (水位线为扣留窗口让路,事件不会丢),等浏览证据到齐目的地可见再判
+                _unk = any(e.category == "DOC" and e.action in ("SEND", "UPLOAD")
+                           and not dicts.dest_host(e.raw or {}) for e in w)
+                if _unk and (bj_now() - w[-1].occurred_at) < _HOLD:
+                    _wids = [_id_by_hash.get(e.event_hash()) for e in w]
+                    _wids = [i for i in _wids if i]
+                    if _wids:
+                        _held_min_id = min(_held_min_id, min(_wids)) if _held_min_id else min(_wids)
                     continue
                 if rs.query(VerdictRow).filter_by(employee_id=emp, window_start=w[0].occurred_at,
                                                   window_end=w[-1].occurred_at).first():
@@ -711,11 +725,14 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
     with write_lock:  # 串行写，避免收尾时写锁冲突导致整轮研判前功尽弃
         ws = Session()
         try:
+            _wm_final = max_id
+            if _held_min_id:
+                _wm_final = min(max_id, _held_min_id - 1)  # 扣留窗口的事件不入水位,下轮重建重判
             wm_row = ws.query(SettingRow).filter_by(key="last_judged_event_id").first()
             if wm_row:
-                wm_row.value = str(max_id)
+                wm_row.value = str(_wm_final)
             else:
-                ws.add(SettingRow(key="last_judged_event_id", value=str(max_id)))
+                ws.add(SettingRow(key="last_judged_event_id", value=str(_wm_final)))
             ws.commit()
         finally:
             ws.close()
