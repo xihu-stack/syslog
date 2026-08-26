@@ -626,8 +626,44 @@ def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exempti
     g_txt = f"\n{global_ctx}" if global_ctx else ""
     hist_txt = f"\n{history}" if history else ""
     day_txt = f"\n{day_ctx}" if day_ctx else ""
-    user = (f"员工：{window[0].employee_id}（设备：{window[0].device_id}）\n"
-            f"行为序列：\n{_fmt_window(window)}{g_txt}{profile_txt}{dev_txt}{exempt_txt}{hist_txt}{day_txt}\n\n"
+    # 源头注入深信服目的地(2026-08-26用户要求: 准确性>及时性,不等AI追问——
+    # 空目的地SEND时主动查深信服浏览数据,30分钟证据等待已保证数据到齐)
+    _dest_hint = ""
+    _unk_sends = [e for e in window if e.category == "DOC" and e.action in ("SEND", "UPLOAD")
+                  and not dicts.dest_host(e.raw or {})]
+    if _unk_sends:
+        try:
+            from db import Session as _S2, EventRow as _E2
+            from datetime import timedelta as _td2
+            _s2 = _S2()
+            try:
+                _webs2 = _s2.query(_E2).filter(
+                    _E2.employee_id == window[0].employee_id,
+                    _E2.category == "WEB",
+                    _E2.occurred_at >= (_unk_sends[0].occurred_at - _td2(minutes=10)),
+                    _E2.occurred_at <= (_unk_sends[-1].occurred_at + _td2(minutes=10))).all()
+                _wdoms = {}
+                for w2 in _webs2:
+                    d = ((w2.raw or {}).get("domain") or "").lower()
+                    if d and not d.startswith(("ws.", "statistic.", "tm.", "log.", "telemetry.")):
+                        _wdoms[d] = _wdoms.get(d, 0) + 1
+                if _wdoms:
+                    _wl2 = [x.lower() for x in (dicts.get("risk_whitelist_domains") or [])]
+                    _top3 = sorted(_wdoms, key=_wdoms.get, reverse=True)[:3]
+                    _hints = []
+                    for d in _top3:
+                        if any(d == x or d.endswith("." + x) for x in _wl2):
+                            _hints.append(f"{d}=公司白名单通道")
+                        else:
+                            _hints.append(d)
+                    _dest_hint = f"\n【深信服目的地推断】上传时刻±10分钟浏览: {', '.join(_hints)}\n(据此判断文件去向;白名单通道=正常办公)"
+            finally:
+                _s2.close()
+        except Exception:
+            pass
+
+    user = (f"员工：{window[0].employee_id}（设备：{window[0].employee_id}）\n"
+            f"行为序列：\n{_fmt_window(window)}{_dest_hint}{g_txt}{profile_txt}{dev_txt}{exempt_txt}{hist_txt}{day_txt}\n\n"
             f"写explanation时:域名次数优先『本窗口N次,今日累计M次』双口径(今日累计仅当序列标注了[当日累计]才可引用,未标注就只写窗口次数,严禁编造累计)。请输出 JSON。")
     try:
         # 工具循环(2026-08-26用户要求: AI信息不足时可主动查询关联日志再分析,
