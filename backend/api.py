@@ -1792,7 +1792,13 @@ def _ask_query(action, employee, category="", days_arg=None):
                 days = 30
             rcnt = Counter()
             dom_expr = json_field(EventRow.raw, 'domain')
-            _since = bj_now() - timedelta(days=days)
+            if days == 1:  # 2026-08-26: 自然日边界——原滚动24h把昨天下午混进"今天"
+                # (黄春煜案例: 工具答65,实际今日仅15);days>1保持滚动窗口并如实标注"近N天"
+                _since = bj_now().replace(hour=0, minute=0, second=0, microsecond=0)
+                _label = f"今日({_since.strftime('%m-%d')})"
+            else:
+                _since = bj_now() - timedelta(days=days)
+                _label = f"近{days}天"
             rows = s.query(EventRow.employee_id, dom_expr).filter(
                 EventRow.category == 'WEB', EventRow.occurred_at >= _since).all()
             _HEART = ("ws.", "wss.", "statistic.", "stat.", "log.", "telemetry.", "tm.", "abtest.", "sentry.")
@@ -1808,7 +1814,7 @@ def _ask_query(action, employee, category="", days_arg=None):
                 if rc and target and (target in rc or rc in target):
                     rcnt[emp_id] += 1
             if not rcnt:
-                return f"近{days}天无人访问{target or '该类'}网站。"
+                return f"{_label}无人访问{target or '该类'}网站。"
             _sig_map = {"招聘": "job_seeking"}
             _exc_emps = {}
             if target in _sig_map:
@@ -1819,7 +1825,7 @@ def _ask_query(action, employee, category="", days_arg=None):
                 tag = f"(已豁免:{_exc_emps[emp]},岗位需要非求职风险)" if emp in _exc_emps else ""
                 lines.append(f"{emp} {n}个活跃时段{tag}")
             tail = "(次数=有活动的10分钟时段数,非请求次数)" if days <= 1 else ""
-            return f"近{days}天访问{target}类网站的员工{tail}:" + "\n" + "\n".join(lines)
+            return f"{_label}访问{target}类网站的员工{tail}:" + "\n" + "\n".join(lines)
         if action == "attendance":
             # 优化:SQL 取 distinct (employee, date(occurred_at), hour) 聚合,避免逐行遍历98万事件。
             today = bj_now().date().isoformat()
