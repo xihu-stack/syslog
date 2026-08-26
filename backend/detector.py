@@ -626,6 +626,13 @@ def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exempti
     g_txt = f"\n{global_ctx}" if global_ctx else ""
     hist_txt = f"\n{history}" if history else ""
     day_txt = f"\n{day_ctx}" if day_ctx else ""
+    try:
+        from riskmemory import memory_for_llm
+        _mem = memory_for_llm(window[0].employee_id if window else "")
+    except Exception:
+        _mem = ""
+    mem_txt = f"
+{_mem}" if _mem else ""
     # 源头注入深信服目的地(2026-08-26用户要求: 准确性>及时性,不等AI追问——
     # 空目的地SEND时主动查深信服浏览数据,30分钟证据等待已保证数据到齐)
     _dest_hint = ""
@@ -663,7 +670,7 @@ def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exempti
             pass
 
     user = (f"员工：{window[0].employee_id}（设备：{window[0].employee_id}）\n"
-            f"行为序列：\n{_fmt_window(window)}{_dest_hint}{g_txt}{profile_txt}{dev_txt}{exempt_txt}{hist_txt}{day_txt}\n\n"
+            f"行为序列：\n{_fmt_window(window)}{_dest_hint}{g_txt}{profile_txt}{dev_txt}{exempt_txt}{hist_txt}{day_txt}{mem_txt}\n\n"
             f"写explanation时:域名次数优先『本窗口N次,今日累计M次』双口径(今日累计仅当序列标注了[当日累计]才可引用,未标注就只写窗口次数,严禁编造累计)。请输出 JSON。")
     try:
         # 工具循环(2026-08-26用户要求: AI信息不足时可主动查询关联日志再分析,
