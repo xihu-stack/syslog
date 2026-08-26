@@ -185,6 +185,12 @@ SYSTEM_PROMPT = (
     "【数字精度铁律】explanation中的所有数字(次数/人数/天数/文件数/大小)必须与行为序列中标注的完全一致——窗口标注×13次你必须写13次,不得四舍五入/模糊化/写'多次'。当日累计N次须标注'今日累计N次'。引用行为史数据须标注'(近7天)'。"
     "禁止泛泛套话,对象必须是具体文件名/域名, "
     "channels(数组,取自 usb|netdisk|personal_email|upload|local|remote_control)。"
+"【追问工具——信息不足时可主动查询】当你觉得当前窗口信息不够判断时,不要猜,输出工具调用JSON:\n"
+"  {\"tool\": \"emp_history\", \"args\": {}} — 查该员工近7天行为史(外发/招聘/删除等)\n"
+"  {\"tool\": \"domain_global\", \"args\": {}} — 查窗口内风险域名的全公司使用情况\n"
+"  {\"tool\": \"file_trace\", \"args\": {}} — 查窗口内外发文件在全公司的流转记录\n"
+"工具返回后你可以继续调用其他工具或直接输出最终研判JSON。最多追问2次。\n"
+
 )
 
 
@@ -486,6 +492,69 @@ def _work_hours_cap(window, dev=None) -> int | None:
     return cap or None
 
 
+def _run_judge_tool(name: str, window, emp: str) -> str:
+    """执行研判AI的追问工具,返回文本上下文(2026-08-26)。"""
+    from db import Session, EventRow, bj_now
+    from datetime import timedelta as _td
+    s = Session()
+    try:
+        if name == "emp_history":
+            evs = s.query(EventRow).filter(
+                EventRow.employee_id == emp,
+                EventRow.occurred_at >= bj_now() - _td(days=7)).all()
+            from collections import Counter as _C2
+            doms = _C2()
+            sends = _C2()
+            for e in evs:
+                if e.category == "WEB":
+                    d = ((e.raw or {}).get("domain") or "").lower()
+                    rc = dicts.risk_class(d)
+                    if rc:
+                        doms[f"{rc}:{d[:30]}"] += e.count or 1
+                elif e.category == "DOC" and e.action in ("SEND", "UPLOAD"):
+                    sends[(e.target_value or "")[:30]] += 1
+            parts = []
+            if doms:
+                parts.append("近7天风险访问: " + "; ".join(f"{k}×{v}" for k, v in doms.most_common(8)))
+            if sends:
+                parts.append("近7天外发文件: " + "; ".join(f"{k}×{v}" for k, v in sends.most_common(6)))
+            return "; ".join(parts) if parts else "近7天无风险行为记录"
+
+        elif name == "domain_global":
+            doms = list({((e.raw or {}).get("domain") or "").lower()
+                         for e in window if e.category == "WEB"
+                         and dicts.risk_class(((e.raw or {}).get("domain") or "").lower())})[:5]
+            if not doms:
+                return "窗口内无风险域名"
+            parts = []
+            for d in doms:
+                users = s.query(EventRow.employee_id).filter(
+                    EventRow.category == "WEB", EventRow.occurred_at >= bj_now() - _td(days=7)).all()
+                # SQL LIKE 逐域查太慢,改为内存过滤
+                cnt = sum(1 for u in users if d in str(u))
+                parts.append(f"{d[:30]}: 约{cnt}人近7天访问过")
+            return "; ".join(parts)
+
+        elif name == "file_trace":
+            files = list({(e.target_value or "")[:36]
+                          for e in window if e.category == "DOC" and e.action in ("SEND", "UPLOAD")})[:3]
+            if not files:
+                return "窗口内无外发文件"
+            parts = []
+            for f in files:
+                rows = s.query(EventRow.employee_id, EventRow.action).filter(
+                    EventRow.category == "DOC",
+                    EventRow.target_value.like(f"{f[:20]}%"),
+                    EventRow.occurred_at >= bj_now() - _td(days=30)).limit(10).all()
+                for r in rows:
+                    parts.append(f"{f[:20]}: {r[0]}执行过{r[1]}")
+            return "; ".join(parts[:6]) if parts else "这些文件近30天无其他人操作记录"
+
+        return f"未知工具: {name}"
+    finally:
+        s.close()
+
+
 def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exemptions=None, global_ctx=None,
                    model=None, history=None, day_ctx=None) -> dict:
     if profile:
@@ -503,11 +572,21 @@ def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exempti
             f"行为序列：\n{_fmt_window(window)}{g_txt}{profile_txt}{dev_txt}{exempt_txt}{hist_txt}{day_txt}\n\n"
             f"写explanation时:域名次数优先『本窗口N次,今日累计M次』双口径(今日累计仅当序列标注了[当日累计]才可引用,未标注就只写窗口次数,严禁编造累计)。请输出 JSON。")
     try:
-        raw = llm_client.chat(
-            [{"role": "system", "content": SYSTEM_PROMPT},
-             {"role": "user", "content": user}],
-            max_tokens=800, timeout=120, model=model,
-        )
+        # 工具循环(2026-08-26用户要求: AI信息不足时可主动查询关联日志再分析,
+        # 最多追问2轮,防止无限循环)
+        _msgs = [{"role": "system", "content": SYSTEM_PROMPT},
+                 {"role": "user", "content": user}]
+        raw = ""
+        for _round in range(3):
+            raw = llm_client.chat(_msgs, max_tokens=800, timeout=120, model=model)
+            import re as _re4
+            _txt = llm_client.strip_think(raw)
+            _m2 = _re4.search(r'"tool":\s*"(\w+)"', _txt)
+            if not _m2 or _m2.group(1) not in ("emp_history", "domain_global", "file_trace"):
+                break
+            _tresult = _run_judge_tool(_m2.group(1), window, window[0].employee_id if window else "")
+            _msgs.append({"role": "assistant", "content": _txt[:300]})
+            _msgs.append({"role": "user", "content": "工具[" + _m2.group(1) + "]返回: " + _tresult[:800] + " 请基于补充信息给出最终研判JSON。"})
         v = llm_client.extract_json(raw)
         v.setdefault("explanation", raw[:120])
         v.setdefault("risk_score", 0)
