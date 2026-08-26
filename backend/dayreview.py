@@ -33,7 +33,7 @@ PROMPT = """你是企业行为安全分析师,做"次日复核":输入是某员�
 实时层的告警在全天下文里是孤立且可解释的正常业务(如单次报销后无后续)→downgrade;
 否则keep。只输出JSON。"""
 
-_TIERS = {"policy_violation": {75, 80, 85, 90}, "data_exfiltration": {75, 80, 85, 90},
+_TIERS = {"policy_violation": {75, 80, 85, 90}, "data_exfiltration": {75, 80, 85, 90, 95},
           "job_seeking": {55, 60, 65, 70, 75, 80, 85, 90, 95}}
 
 

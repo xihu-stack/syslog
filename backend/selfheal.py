@@ -26,7 +26,7 @@ _DOC_W = ("COPY", "MOVE", "DELETE", "UPLOAD", "SEND", "PRINT", "BURN")
 _SIG = {"policy_violation": ("网盘/云盘", "个人邮箱"),
         "data_exfiltration": ("微信文件助手", "网盘/云盘", "个人邮箱")}
 _ANCHOR_TIERS = {"policy_violation": {75, 80, 85, 90},
-                 "data_exfiltration": {75, 80, 85, 90},
+                 "data_exfiltration": {75, 80, 85, 90, 95},
                  "job_seeking": {55, 60, 65, 70, 75, 80, 85, 90, 95}}
 
 

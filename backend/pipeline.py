@@ -570,6 +570,12 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
             if _a is not None:
                 v = {**v, "risk_score": _a}
                 _anchored = _a
+                # 文件内容敏感性修正(2026-08-26用户要求: 外发判断不能只看大小个数,
+                # 要结合文件名上下文): AI定性file_sensitivity,程序按档加分——
+                # 发1份试验方案与发1张私人照片不再同分
+                _fs = str(v.get("file_sensitivity") or "").lower()
+                if v.get("intent") == "data_exfiltration" and _fs in ("high", "mid"):
+                    v = {**v, "risk_score": min(_a + (10 if _fs == "high" else 5), 95)}
         # ---- 招聘锚点: 程序化定分,AI只负责行为描述 ----
         # 重点站(BOSS/猎聘/51job/智联sndhr)——第一优先级场景(2026-08-20口径:
         # 求职分数必须≥邮箱/外发同档——单次65曾低于邮箱单次75,倒挂修正):

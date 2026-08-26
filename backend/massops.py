@@ -150,6 +150,25 @@ def scan_mass_exfil(s) -> int:
         big_txt = f",单文件最大{big / 1048576:.0f}MB" if big > 50 * 1048576 else ""
         risk = 85 if len(lst) >= 30 or total_mb >= 100 else 75
         sm = f"{emp}在{day}向非白名单目的地累计外发{len(lst)}次、共{total_mb:.1f}MB{big_txt}({mode})。样例: {sample}"
+        # 内容定性(2026-08-26用户要求: 外发不能只看次数大小,要结合文件名推断):
+        # 新建时由本地AI对文件清单做语义定性,敏感内容提分并写入说明;刷新时保留
+        if not existing:
+            try:
+                import llm_client
+                _files = list({(e.target_value or "") for e in lst if (e.target_value or "")})[:20]
+                _p2 = ("对以下员工外发文件名清单做内容定性,输出JSON {sensitivity: high|mid|none, desc: 一句话(引用代表性文件名)}。"
+                       "high=实验/临床/项目数据/合同财务/数据库;mid=含项目编号的办公文档;none=缓存/私人生活文件。只输出JSON。文件: "
+                       + "; ".join(_files))
+                _raw = llm_client.chat([{"role": "system", "content": _p2}], max_tokens=200, timeout=90)
+                _txt = llm_client.strip_think(_raw)
+                _j2 = json.loads(_txt[_txt.find("{"):_txt.rfind("}") + 1])
+                if _j2.get("sensitivity") == "high":
+                    risk = max(risk, 85)
+                    sm += f" [内容定性:{_j2.get('desc') or '敏感实验/项目数据'}]"
+                elif _j2.get("sensitivity") == "mid":
+                    sm += f" [内容定性:{_j2.get('desc') or '项目相关文档'}]"
+            except Exception:
+                pass
         sev = "CRITICAL" if risk >= 76 else "HIGH"
         if existing:
             existing.summary = sm
