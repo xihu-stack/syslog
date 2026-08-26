@@ -299,13 +299,15 @@ function ProfilePage({user, goBack, from}){
   const [tl,setTl]=useState(null);        // 行为时间线(同上,Hook必须在顶层)
   const [tlLoading,setTlLoading]=useState(false);
   const trendRef=useRef(), hoursRef=useRef(), actRef=useRef();
+  const trendCh=useRef(), hoursCh=useRef(), actCh=useRef();  // echarts实例复用(2026-08-26): 原每次刷新init新实例不dispose→内存泄漏
+  useEffect(()=>()=>{ [trendCh,hoursCh,actCh].forEach(r=>{ if(r.current){r.current.dispose(); r.current=null;} }); },[]);
   useEffect(()=>{ if(user) GET('/api/employees/'+encodeURIComponent(user)).then(setData); },[user]);
   useEffect(()=>{ if(user) fetch('/api/stories',{headers:_authHdr()}).then(r=>r.json()).then(r=>setStory((r.stories||{})[user])).catch(()=>{}); },[user]);
   useEffect(()=>{ if(user){ setTlLoading(true); fetch('/api/employees/'+encodeURIComponent(user)+'/timeline?days=7',{headers:_authHdr()}).then(r=>r.json()).then(r=>setTl(r.timeline||[])).catch(()=>setTl([])).finally(()=>setTlLoading(false)); } },[user]);
   useEffect(()=>{
     if(!data) return;
     const vs=data.verdicts||[];
-    if(vs.length&&trendRef.current){ const c=echarts.init(trendRef.current);
+    if(vs.length&&trendRef.current){ const c=trendCh.current||(trendCh.current=echarts.init(trendRef.current));
       const vsr=[...vs].reverse();  // 趋势图由远到近(旧→新);verdicts接口按时间倒序返回
       const riskColors=vsr.map(v=>v.risk_score>=76?'#ef4444':v.risk_score>=56?'#f97316':v.risk_score>=31?'#f59e0b':'#22c55e');
       c.setOption({tooltip:{trigger:'axis',formatter:p=>p[0].name+'<br/>风险分: <b>'+p[0].value+'</b>'},grid:{left:40,right:20,top:20,bottom:54},
@@ -313,7 +315,7 @@ function ProfilePage({user, goBack, from}){
         yAxis:{type:'value',max:100,axisLabel:{color:'#94a3b8'},splitLine:{lineStyle:{color:'#f1f5f9'}}},
         series:[{type:'line',data:vsr.map(v=>v.risk_score||0),smooth:true,areaStyle:{color:'rgba(99,102,241,.12)'},lineStyle:{color:'#6366f1'},itemStyle:{color:function(p){return riskColors[p.dataIndex]||'#6366f1';}}}]});}
     const hrs=(data.profile||{}).active_hours_top||[];
-    if(hrs.length&&hoursRef.current){ const c=echarts.init(hoursRef.current);
+    if(hrs.length&&hoursRef.current){ const c=hoursCh.current||(hoursCh.current=echarts.init(hoursRef.current));
       const full=Array.from({length:24},(_,h)=>hrs.includes(h)?1:0);
       c.setOption({tooltip:{},grid:{left:30,right:15,top:15,bottom:30},
         xAxis:{type:'category',data:Array.from({length:24},(_,h)=>h+'时'),axisLabel:{color:'#94a3b8',fontSize:11}},
@@ -321,7 +323,7 @@ function ProfilePage({user, goBack, from}){
         series:[{type:'bar',data:full,itemStyle:{color:full.map(f=>f?'#6366f1':'#e2e8f0'),borderRadius:[3,3,0,0]}}]});}
     const evs=data.events||[];
     const hasDoc=(data.category_counts||{}).DOC;
-    if(evs.length&&actRef.current&&hasDoc){ const c=echarts.init(actRef.current);
+    if(evs.length&&actRef.current&&hasDoc){ const c=actCh.current||(actCh.current=echarts.init(actRef.current));
       const actCnt={}; evs.forEach(e=>{ const a=e.action||'UNKNOWN'; actCnt[a]=(actCnt[a]||0)+1; });
       const top=Object.entries(actCnt).sort((a,b)=>b[1]-a[1]).slice(0,8);
       c.setOption({tooltip:{},grid:{left:80,right:20,top:15,bottom:30},
@@ -631,9 +633,11 @@ function App(){
   const [meName,setMeName]=useState('');
   // 全局搜索Hook(必须顶层,条件IIFE内调用会致#310;2026-08-21修复)
   const [sq,setSq]=useState(''); const [sres,setSres]=useState(null); const [sopen,setSopen]=useState(false);
+  // 搜索请求防抖(2026-08-26): 原先每击键一发/api/search,中文输入法逐字上屏时连打数发
+  const searchFetch=useRef(debounce(q2=>{ fetch('/api/search?q='+encodeURIComponent(q2.trim()),{headers:_authHdr()})
+      .then(r=>r.json()).then(r=>{setSres(r.results||[]);setSopen(true);}).catch(()=>{}); },350)).current;
   const doSearch=(v)=>{ setSq(v); if(v.trim().length<2){setSres(null);setSopen(false);return;}
-    fetch('/api/search?q='+encodeURIComponent(v.trim()),{headers:_authHdr()})
-      .then(r=>r.json()).then(r=>{setSres(r.results||[]);setSopen(true);}).catch(()=>{}); };
+    searchFetch(v); };
   useEffect(()=>{  // SSO回调落地: ?sso_token=一次性会话令牌 / ?sso_error=失败原因
     const q=new URLSearchParams(location.search);
     const t=q.get('sso_token');
@@ -896,25 +900,25 @@ function Dashboard({go, goProfile}){
           columns={[{title:'用户',dataIndex:'employee',width:96,render:v=><span className="uname" style={{cursor:'inherit'}}>{EMP_D(v)}</span>},
             {title:'风险场景',dataIndex:'scenario',width:130,render:(v,r)=>{const L=LVL(r.maxRisk);const st=SRCTAG(r.summary,r.scenario,r.latest);return <Space size={3}><Tooltip title={st.tip}><Tag style={{background:st.c+'14',color:st.c,border:'1px solid '+st.c+'44',fontSize:10}}>{st.t}</Tag></Tooltip><Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40'}}>{v}</Tag></Space>}},
             {title:'风险',dataIndex:'maxRisk',width:96,render:v=><RiskBadge s={v}/>},
-            {title:'状态',dataIndex:'status',width:84,render:v=><StatusTag s={v}/>},            {title:'状态',dataIndex:'status',width:84,render:v=><StatusTag s={v}/>},
+            {title:'状态',dataIndex:'status',width:84,render:v=><StatusTag s={v}/>},
             {title:'最近活动',dataIndex:'latest',width:110,render:v=><span style={{fontSize:11,color:'var(--ink3)'}}>{(v||'').slice(5,16).replace('T',' ')}</span>}]}/> : <Empty description="暂无告警" style={{padding:20}}/>}
       </Card>;
     })()}
       </Col>
       <Col span={7}>
         <Card className="card" size="small" title={<span><span className="brand-bar"></span>告警构成</span>} style={{height:'100%'}} bodyStyle={{padding:'16px 18px'}}>
-        <div style={{fontSize:11,color:'var(--ink3)',marginBottom:4}}>按场景·全时段</div>
+        <div style={{fontSize:11,color:'var(--ink3)',marginBottom:4}}>按场景·今日</div>
           {(()=>{const cnt=sysAl.today_by_scenario||{};const tot=Object.values(cnt).reduce((a,b)=>a+b,0)||1;const rows=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,5);
           return rows.length?<div>{rows.map(([k,v])=>{const L=LVL(k==='policy_violation'?80:k==='data_exfiltration'?70:50);const pct=Math.round(v/tot*100);return <div key={k} title={'点击查看「'+(INTENT[k]||k)+'」告警明细'} onClick={()=>go('alerts',{scenario:k})} style={{display:'flex',alignItems:'center',gap:10,padding:'11px 0',cursor:'pointer'}}>
             <span style={{width:72,fontSize:12,color:'var(--ink2)',fontWeight:500}}>{INTENT[k]||k}</span>
             <div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:L.c,borderRadius:4}}></div></div>
             <span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{v}</span></div>})}</div>:<Empty description="暂无告警" style={{padding:16}}/>;})()}
         <Divider style={{margin:'12px 0 8px'}}/>
-        <div style={{fontSize:11,color:'var(--ink3)',marginBottom:4}}>按状态·全时段</div>
+        <div style={{fontSize:11,color:'var(--ink3)',marginBottom:4}}>按状态·今日</div>
           {(()=>{const st_map={NEW:['#ef4444','待处理'],CONFIRMED:['#6366f1','已知晓'],FP:['#94a3b8','误报'],CLOSED:['#22c55e','已关闭']};const sc=sysAl.today_status||{};const tot=Object.values(sc).reduce((a,b)=>a+b,0)||1;const rows=Object.keys(st_map).filter(k=>sc[k]);if(!rows.length) return <Empty description="暂无" style={{padding:16}}/>;return <div>{rows.map(k=>{const pct=Math.round((sc[k]||0)/tot*100);const cc=st_map[k][0];return <div key={k} title={'点击查看「'+st_map[k][1]+'」告警'} onClick={()=>go('alerts',{status:k==='NEW'?'NEW':'handled'})} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 0',cursor:'pointer'}}><span style={{width:60,fontSize:12,color:'var(--ink2)'}}>{st_map[k][1]}</span><div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:cc,borderRadius:4}}></div></div><span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{sc[k]||0}</span></div>})}</div>;})()}
         <Divider style={{margin:'12px 0 8px'}}/>
-        <div style={{fontSize:11,color:'var(--ink3)',marginBottom:4}}>按级别·全时段</div>
-          {(()=>{const lv=[['crit',s=>s>=76,'严重76+','#ef4444'],['high',s=>s>=56&&s<76,'高危56-75','#f59e0b'],['mid',s=>s>=50&&s<56,'关注50-55','#eab308']];const tot=(sysAl.today||0);const crit_n=(sysAl.today_critical||0);const high_n=tot-crit_n-(sysAl.today_new||0)>=0?tot-crit_n:0;const rows=[['crit',s=>s>=76,'严重76+','#ef4444',crit_n],['high',s=>s>=50&&s<76,'高危50-75','#f59e0b',high_n>0?high_n:0]].filter(r=>r[4]>0);if(!rows.length) return <Empty description="暂无" style={{padding:16}}/>;return <div>{rows.map(([k,label,c,v])=>{const pct=Math.round(v/tot*100);return <div key={k} title={'点击查看「'+label+'」告警'} onClick={()=>go('alerts',{lvl:k==='low'?'all':k})} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 0',cursor:'pointer'}}><span style={{width:72,fontSize:12,color:'var(--ink2)'}}>{label}</span><div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:c,borderRadius:4}}></div></div><span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{v}</span></div>})}</div>;})()}
+        <div style={{fontSize:11,color:'var(--ink3)',marginBottom:4}}>按级别·今日</div>
+          {(()=>{const tot=(sysAl.today||0)||1;const rows=[['crit','严重76+','#ef4444',sysAl.today_critical||0,'crit'],['high','高危56-75','#f59e0b',sysAl.today_high||0,'high'],['mid','关注50-55','#eab308',sysAl.today_mid||0,'all']].filter(r=>r[3]>0);if(!rows.length) return <Empty description="暂无" style={{padding:16}}/>;return <div>{rows.map(([k,label,c,v,lk])=>{const pct=Math.round(v/tot*100);return <div key={k} title={'点击查看「'+label+'」告警'} onClick={()=>go('alerts',{lvl:lk})} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 0',cursor:'pointer'}}><span style={{width:72,fontSize:12,color:'var(--ink2)'}}>{label}</span><div style={{flex:1,height:8,background:'var(--ink4)',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:c,borderRadius:4}}></div></div><span className="num" style={{width:32,textAlign:'right',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{v}</span></div>})}</div>;})()}
         </Card>
       </Col>
     </Row>
@@ -1120,11 +1124,17 @@ function Alerts({goProfile,filter}){
   const [fpModal,setFpModal]=useState({open:false,vid:0,intent:'',emp:'',reason:'岗位需要',note:'',allScenarios:[]});
   const doFP=(e,r)=>{ e.stopPropagation(); setFpModal({open:true,vid:r.verdict_id,intent:r.intent,emp:r.employee,reason:'岗位需要',note:'',allScenarios:r.scenarios||[{label:r.intent}]}); };
   const submitFP=()=>{
+    // 豁免语义对齐UI文案(2026-08-26修复): 旧版除"临时项目"外一律expires_days=0(永久)
+    // ——"工作需要(90天)"实际建了永久豁免;"一般误报(不创建豁免)"更是建了永久豁免,
+    // 后续同类告警被静默吞掉。现在: 岗位类=永久 / 工作需要=90天 / 临时项目=30天 /
+    // 一般误报=不建豁免(只标FP留痕,同类行为复犯仍会告警)
     const fullReason=fpModal.reason+(fpModal.note.trim()?' | '+fpModal.note.trim():'');
-    POST('/api/verdicts/'+fpModal.vid+'/false_positive?reason='+encodeURIComponent(fullReason)+'&signal_type='+fpModal.intent+'&expires_days='+(fpModal.reason==='临时项目'?'30':'0')).then(()=>{ message.success('已标记误报，后续同类不再告警'); setFpModal({...fpModal,open:false}); load(); });
+    const days=fpModal.reason==='临时项目'?'30':(fpModal.reason==='工作需要'?'90':'0');
+    const st=fpModal.reason==='误报'?'':fpModal.intent;
+    POST('/api/verdicts/'+fpModal.vid+'/false_positive?reason='+encodeURIComponent(fullReason)+'&signal_type='+encodeURIComponent(st)+'&expires_days='+days).then(()=>{ message.success(st?('已标记误报，'+(days==='0'?'该场景永久豁免':'豁免'+days+'天')):'已标记误报(未创建豁免，同类复犯仍会提醒)'); setFpModal({...fpModal,open:false}); load(); });
   };
   const scenSet=[...new Set((rows||[]).map(r=>r.scenario).filter(Boolean))];
-  const agData=(()=>{const filtered=(rows||[]).filter(v=>{if(focusOnly&&v.priority!=='优先')return false;if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;if(lvl==='crit'&&v.risk_score<76)return false;if(lvl==='high'&&(v.risk_score<56||v.risk_score>75))return false;if(lvl==='mid'&&(v.risk_score<31||v.risk_score>55))return false;if(scenario!=='all'&&v.scenario!==scenario)return false;return true;});const ag={};filtered.forEach(v=>{if(!ag[v.employee])ag[v.employee]={key:v.employee,employee:v.employee,scenarios:[],maxRisk:0,count:0,latest:v.window_start,summary:'',verdict_id:v.verdict_id,intent:v.scenario};const g=ag[v.employee];const sc=INTENT[v.scenario]||v.scenario;if(!g.scenarios.find(s=>s.label===sc))g.scenarios.push({label:sc,risk:v.risk_score});if((v.risk_score||0)>g.maxRisk){g.maxRisk=v.risk_score;g.summary=v.summary;g.verdict_id=v.verdict_id;g.intent=v.scenario;g.status=v.status;}g.count++;if(v.window_start>g.latest)g.latest=v.window_start;g.reviewed=g.reviewed||((v.summary||'').indexOf('[次日复核')===0);});const arr=Object.values(ag);
+  const agData=(()=>{const filtered=(rows||[]).filter(v=>{if(focusOnly&&v.priority!=='优先')return false;if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;if(lvl==='crit'&&v.risk_score<76)return false;if(lvl==='high'&&(v.risk_score<56||v.risk_score>75))return false;if(lvl==='mid'&&(v.risk_score<31||v.risk_score>55))return false;if(scenario!=='all'&&v.scenario!==scenario)return false;return true;});const ag={};filtered.forEach(v=>{if(!ag[v.employee])ag[v.employee]={key:v.employee,employee:v.employee,scenarios:[],maxRisk:0,count:0,latest:v.window_start,first:v.created_at,summary:'',verdict_id:v.verdict_id,intent:v.scenario};const g=ag[v.employee];const sc=INTENT[v.scenario]||v.scenario;if(!g.scenarios.find(s=>s.label===sc))g.scenarios.push({label:sc,risk:v.risk_score});if((v.risk_score||0)>g.maxRisk){g.maxRisk=v.risk_score;g.summary=v.summary;g.verdict_id=v.verdict_id;g.intent=v.scenario;g.status=v.status;}g.count++;if(v.window_start>g.latest)g.latest=v.window_start;if(v.created_at&&(!g.first||v.created_at<g.first))g.first=v.created_at;g.reviewed=g.reviewed||((v.summary||'').indexOf('[次日复核')===0);});const arr=Object.values(ag);
     if(when==='today') arr.sort((a,b)=>(b.latest||'').localeCompare(a.latest||''));
     else if(when==='yesterday') arr.sort((a,b)=>(b.reviewed?1:0)-(a.reviewed?1:0)||b.maxRisk-a.maxRisk);
     else arr.sort((a,b)=>b.maxRisk-a.maxRisk);
@@ -1160,7 +1170,7 @@ function Alerts({goProfile,filter}){
           {title:<TH t="用户" />,dataIndex:'employee',width:150,render:(v,r)=><span><a className="uname" onClick={(e)=>{e.stopPropagation();goProfile(v);}}>{EMP_D(v)}</a>{r.priority==='优先'&&<Tag color="volcano" style={{marginLeft:4,fontSize:10,lineHeight:'16px'}}>优先</Tag>}</span>},
           {title:<TH t="风险场景" tip="该员工当前最高分告警的场景(主场景,加粗)。+N 表示还涉及N个其他场景,鼠标移上查看。" />,dataIndex:'scenarios',width:170,render:(v,r)=>{const mainL=INTENT[r.intent]||r.intent;const L=LVL(r.maxRisk);const subs=v.filter(s=>s.label!==mainL);const st=SRCTAG(r.summary,r.intent,r.latest);return <Space wrap size={[4,3]}><Tooltip title={st.tip}><Tag style={{background:st.c+'14',color:st.c,border:'1px solid '+st.c+'44',fontSize:10}}>{st.t}</Tag></Tooltip><Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40',fontWeight:600}}>{mainL} {r.maxRisk}</Tag>{subs.length>0&&<Tooltip title={'另涉及：'+subs.map(s=>s.label).join('、')}><Tag style={{fontSize:11,color:'var(--ink3)',background:'var(--bg)',border:'1px solid var(--ink4)'}}>+{subs.length}</Tag></Tooltip>}</Space>}},
           {title:<TH t="告警数" tip="该员工在当前筛选范围内的告警条数(合并前)。同一员工同意图会合并展示。" />,dataIndex:'count',width:80,render:v=><span className="num" style={{color:'var(--ink2)',fontWeight:600}}>{v}</span>},
-          {title:<TH t="最近告警" tip="该员工最近一次告警的行为发生时间。" />,dataIndex:'latest',width:135,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
+          {title:<TH t="最近告警" tip="上=最近一次告警的行为发生时间(研判窗口起点);下=首次告警日期——重判/复犯会刷新行为时间与说明,但首报时间不变(2026-08-26: 时间与说明对不上的困惑源于此,现在两时间都可见)。" />,dataIndex:'latest',width:135,render:(v,r)=><div title={'最近行为: '+(v||'').replace('T',' ').slice(0,16)+'\n首次告警: '+(r.first||'-')}><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>{r.first&&(r.first.slice(0,10)!==(v||'').slice(0,10))&&<div style={{fontSize:10,color:'var(--ink3)'}}>首报{r.first.slice(5,10)}</div>}</div>},
           {title:<TH t="风险" tip="该员工告警中的最高风险分(0-100)。76+严重/56+高危/31+关注。" />,dataIndex:'maxRisk',width:90,render:v=><RiskBadge s={v}/>},
           {title:<TH t="说明" tip="该员工当前最高分告警的AI判定说明。文字默认两行截断,悬浮可预览全文,点击展开/收起。" />,dataIndex:'summary',render:v=><SummaryTxt text={v}/>},
           {title:'操作',width:120,render:(_,r)=>r.status==='NEW'?(<Space size={4}>
@@ -1201,7 +1211,11 @@ function Alerts({goProfile,filter}){
         <Input placeholder="如：已线下核实，属客户交付需要" value={fpModal.note} onChange={e=>setFpModal({...fpModal,note:e.target.value})} style={{marginTop:4}}/>
       </div>
       <Alert type="info" showIcon style={{marginTop:12}}
-        message={"将豁免「"+(INTENT[fpModal.intent]||fpModal.intent)+"」场景，其他场景仍正常监控。AI会记住此标签。"} />
+        message={fpModal.reason==='误报'
+          ?"仅将本条标记为误报并留痕——不创建豁免，同类行为后续仍会正常告警。"
+          :("将豁免「"+(INTENT[fpModal.intent]||fpModal.intent)+"」场景"
+            +(fpModal.reason==='工作需要'?'（90天有效）':fpModal.reason==='临时项目'?'（30天有效）':'（永久，直至在豁免管理中删除）')
+            +"，其他场景仍正常监控。AI会记住此标签。")} />
     </Modal>
     <Modal open={cfModal.open} title="标记已知晓" okText="已知晓" cancelText="取消"
       onCancel={()=>setCfModal({...cfModal,open:false})} onOk={submitConfirm}>
@@ -1315,10 +1329,12 @@ function PipePage(){
   const [tr,setTr]=useState(null);
   const [tloading,setTloading]=useState(false);
   const funnelRef=useRef();
+  const funnelCh=useRef();  // 实例复用+卸载dispose(2026-08-26): 30s轮询每次init新实例→泄漏
+  useEffect(()=>()=>{ if(funnelCh.current){funnelCh.current.dispose(); funnelCh.current=null;} },[]);
   useEffect(()=>{ const load=()=>GET('/api/pipeline/overview').then(setOv); load(); const t=setInterval(load,30000); return ()=>clearInterval(t); },[]);
   useEffect(()=>{
     if(!ov||!funnelRef.current) return;
-    const c=echarts.init(funnelRef.current);
+    const c=funnelCh.current||(funnelCh.current=echarts.init(funnelRef.current));
     const st=ov.stat||{}, raw=ov.raw&&ov.raw.today||0;
     const noise=(st.noise_or_merged||0), cross=(st.cross_dedup||0);
     const ev=ov.events&&ov.events.today||0, vd=ov.verdicts&&ov.verdicts.today||0, al=ov.alerts_today||0;
@@ -1501,11 +1517,11 @@ function Handbook(){
       <li><b>误报</b>:选择原因(岗位/工作/时间正常等)后可创建<b>豁免</b>——该员工该场景后续研判时 AI 会看到豁免标签,且不再重复生成同类告警。豁免可在 系统设置→豁免管理 查看/删除(删除后恢复告警)。</li></ul>
       <p className="hb-tip">数字口径:用户视图"告警 N 条" = alerts 表条数;画像页顶部"告警明细"与之同源。研判次数(远大于告警数)是 AI 分析过的窗口总数,风险≥50 才升级为告警。</p></>},
     {id:'policy',icon:'fa-shield-halved',title:'4. 风险类型与当前策略',items:[
-      ['个人邮箱 / 网盘 / 微信文件助手','公司禁止,访问即违规(高危档 61-85),AI 判 data_exfiltration / policy_violation'],
+      ['个人邮箱 / 网盘 / 微信文件助手','公司禁止,访问即违规;AI 判 data_exfiltration / policy_violation(锚点75起步)'],
       ['翻墙 VPN/代理','【业务确认:不算违规,不告警】(2026-08 起)。字典里 vpn_domains 已停用,仅留档'],
       ['远程控制 / 代码仓库 / AI助手','降权(mid 档):工作时段正常使用不告警,凌晨或高频才研判'],
       ['招聘网站','单次低频=正常;反复访问(≥3次)或凌晨→求职意图'],
-      ['风险分档','0-30 正常 / 31-60 关注(蓝) / 61-85 高危(橙) / 86+ 严重(红),AI 按锚点打分+代码兜底校准'],
+      ['风险分档','0-30 正常 / 31-55 关注(蓝) / 56-75 高危(橙) / 76+ 严重(红);AI 按锚点打分+代码兜底校准,锚点封顶90'],
       ['双模型复核','告警级(≥50分)判定由智能任务模型(如 glm-5)独立重判:两模型一致才维持告警并标注"双模型一致";分歧则自动降级并保留双方意见——告警更经得起质疑。系统设置 llm_review 置 0 可关闭'],
     ]},
     {id:'dict',icon:'fa-book-bookmark',title:'5. 识别架构与字典维护',body:<><p><b>识别架构(2026-08 起:分类库为主,字典为辅)</b>:深信服给每条访问自带行业分类标签(覆盖率100%),娱乐/视频/游戏/购物类标签直接判定摸鱼——字典枚举不再是唯一来源,新增冷门娱乐站自动被分类库兜住。风险域名字典继续负责精确判定;分类标签同时喂给 AI 开集扫描提升判断质量。</p>
@@ -1584,6 +1600,8 @@ gunzip ipguard_XXXX.db.gz && docker cp ipguard_XXXX.db ipguard-ai:/app/data/ipgu
 }
 function PwdCard(){
   const [old,setOld]=useState(''); const [nw,setNw]=useState(''); const [nw2,setNw2]=useState(''); const [busy,setBusy]=useState(false);
+  const [isSso,setIsSso]=useState(false);
+  useEffect(()=>{ fetch('/api/me',{headers:_authHdr()}).then(r=>r.json()).then(m=>setIsSso(!!(m&&m.sso))).catch(()=>{}); },[]);
   const submit=async()=>{
     if(busy) return;
     if(!old||!nw){ message.warning('请填写旧密码和新密码'); return; }

@@ -1,7 +1,13 @@
 """临时辅助: paramiko 执行远程 docker 命令, 输出到本地文件"""
 import sys, paramiko
 
-HOST, USER, PWD = "10.0.20.249", "root", "LX2320**"
+try:
+    from _deploy_secret import HOST, USER, PWD  # 凭据不进git(2026-08-26)
+except ImportError:
+    import os
+    HOST = os.environ.get("DEPLOY_HOST", "10.0.20.249")
+    USER = os.environ.get("DEPLOY_USER", "root")
+    PWD = os.environ.get("DEPLOY_PWD", "")
 
 def run(cmd: str, out_path: str):
     t = paramiko.Transport((HOST, 22))

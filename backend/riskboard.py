@@ -23,9 +23,13 @@ def risk_board(days: int = 7) -> list:
     s = Session()
     try:
         since = bj_now() - timedelta(days=days)
-        # 豁免表: 员工→已豁免的场景(信号来源与豁免场景一致时剔除,2026-08-21产品审计)
+        # 豁免表: 员工→未到期豁免场景(到期豁免失效;selfheal 2026-08-24同口径)
+        from datetime import datetime as _dt
+        _now_u = _dt.utcnow()
         exempt_map = {}
         for x in s.query(ExceptionRow).all():
+            if x.expires_at and x.expires_at <= _now_u:
+                continue
             exempt_map.setdefault(x.employee_id, set()).add(x.signal_type)
 
         sig = defaultdict(lambda: {"job": 0, "exfil": 0, "delete": 0, "search": 0, "night": 0, "detail": {}})
@@ -46,11 +50,15 @@ def risk_board(days: int = 7) -> list:
                 continue
             sig[a.employee_id]["exfil"] = max(sig[a.employee_id]["exfil"], a.risk_score or 0)
             sig[a.employee_id]["detail"]["exfil"] = f"外发告警{a.risk_score}分"
-        # 也看原始事件(无告警但有SEND)
+        # 3.5) 也看原始事件(无告警但有SEND)
         for e in s.query(EventRow).filter(
                 EventRow.source == "ipguard", EventRow.occurred_at >= since,
                 EventRow.action.in_(("SEND", "UPLOAD"))).all():
-            dest = ((e.raw or {}).get("dest_path") or "").split("/")[0].lower()
+            # 2026-08-26修复: 旧版split("/")[0]对URL(https://host/path)只剩"https:",
+            # 白名单永不命中→整榜虚高;改用共享的dest_host(URL主机+剥端口)
+            if "data_exfiltration" in exempt_map.get(e.employee_id, set()):
+                continue
+            dest = dicts.dest_host(e.raw or {})
             if dest and not any(dest == w or dest.endswith("." + w) for w in dicts.get("risk_whitelist_domains") or []):
                 sig[e.employee_id]["exfil"] = max(sig[e.employee_id]["exfil"], 60)
                 sig[e.employee_id]["detail"].setdefault("exfil", "有非白名单外发行为")
@@ -58,6 +66,8 @@ def risk_board(days: int = 7) -> list:
         # 3) 大量删除
         for a in s.query(AlertRow).filter(
                 AlertRow.created_at >= since, AlertRow.scenario == "mass_delete").all():
+            if "mass_delete" in exempt_map.get(a.employee_id, set()):
+                continue
             sig[a.employee_id]["delete"] = a.risk_score or 70
             sig[a.employee_id]["detail"]["delete"] = f"删除{a.risk_score}分"
 
@@ -65,6 +75,8 @@ def risk_board(days: int = 7) -> list:
         for v in s.query(VerdictRow).filter(
                 VerdictRow.window_start >= since, VerdictRow.intent == "job_seeking",
                 VerdictRow.risk_score >= 30).all():  # 降低门槛,30+的求职搜索也算
+            if "job_seeking" in exempt_map.get(v.employee_id, set()):
+                continue  # 求职豁免同样覆盖搜索信号(HR日常搜简历)
             if "搜索" in (v.explanation or "") or "简历" in (v.explanation or ""):
                 sig[v.employee_id]["search"] = max(sig[v.employee_id]["search"], v.risk_score)
                 sig[v.employee_id]["detail"]["search"] = "有求职相关搜索"

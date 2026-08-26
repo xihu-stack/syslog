@@ -306,7 +306,12 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 # (水位线为扣留窗口让路,事件不会丢),等浏览证据到齐目的地可见再判
                 _unk = any(e.category == "DOC" and e.action in ("SEND", "UPLOAD")
                            and not dicts.dest_host(e.raw or {}) for e in w)
-                if _unk and (bj_now() - w[-1].occurred_at) < _HOLD:
+                # 扣留仅限"整个窗口都在12分钟内"的新鲜窗口(2026-08-26钉死修复):
+                # 全天持续上传的长窗口(首事件在数小时前)若也扣留,_held_min_id取到
+                # 窗口最老事件id,水位被永久钉死→每周期重读全天8万行反复重判。
+                # 长窗口直接判,晚到的目的地证据由reconcile_late_evidence 6小时兜底。
+                if _unk and (bj_now() - w[-1].occurred_at) < _HOLD \
+                        and (bj_now() - w[0].occurred_at) < _HOLD:
                     _wids = [_id_by_hash.get(e.event_hash()) for e in w]
                     _wids = [i for i in _wids if i]
                     if _wids:
@@ -441,12 +446,33 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                         # 生成告警);正常业务永不进告警队列
                         if v.get("intent") == "normal_work":
                             v["risk_score"] = min(int(v.get("risk_score", 0) or 0), 20)
-                        vr = VerdictRow(employee_id=emp, device=device, window_start=wstart, window_end=wend,
-                            intent=v.get("intent"), deviation=v.get("deviation"), risk_score=v.get("risk_score", 0),
-                            explanation=v.get("explanation"), channels=v.get("channels"),
-                            ai_participated=1 if v.get("ai_participated", True) else 0, event_hashes=hashes,
-                            model=(_lc.LAST_MODEL or "unknown") if v.get("ai_participated", True) else "rule-fallback")
-                        wsession.add(vr); wsession.flush()
+                        # 同窗口去重(2026-08-26): IPG夜间批量补传使同一window_start每隔
+                        # 10分钟追加晚到事件,旧版每轮都INSERT新行(展佳08:30窗口2小时+10
+                        # 条verdict,risk_memory的"累计N次"实为重判次数,verdicts表膨胀)。
+                        # 改为按(员工+意图+窗口)原地更新: 晚到事件hash并入、窗口延长,
+                        # 告警的verdict_id链接也保持有效。
+                        vr = wsession.query(VerdictRow).filter_by(
+                            employee_id=emp, intent=v.get("intent"), window_start=wstart).first()
+                        if vr is None:
+                            vr = VerdictRow(employee_id=emp, device=device, window_start=wstart, window_end=wend,
+                                intent=v.get("intent"), deviation=v.get("deviation"), risk_score=v.get("risk_score", 0),
+                                explanation=v.get("explanation"), channels=v.get("channels"),
+                                ai_participated=1 if v.get("ai_participated", True) else 0, event_hashes=hashes,
+                                model=(_lc.LAST_MODEL or "unknown") if v.get("ai_participated", True) else "rule-fallback")
+                            wsession.add(vr); wsession.flush()
+                        else:
+                            _oldh = list(vr.event_hashes or [])
+                            vr.window_end = max(wend, vr.window_end) if (vr.window_end and wend) else (wend or vr.window_end)
+                            vr.event_hashes = _oldh + [h for h in (hashes or []) if h not in _oldh]
+                            vr.risk_score = v.get("risk_score", 0) or vr.risk_score
+                            vr.explanation = v.get("explanation") or vr.explanation
+                            vr.deviation = v.get("deviation")
+                            vr.channels = v.get("channels")
+                            vr.ai_participated = 1 if v.get("ai_participated", True) else 0
+                            vr.model = (_lc.LAST_MODEL or "unknown") if v.get("ai_participated", True) else "rule-fallback"
+                            if device:
+                                vr.device = device
+                            wsession.flush()
                         if v.get("risk_score", 0) >= risk_threshold and v.get("intent") != "normal_work":
                             _exc = wsession.query(ExceptionRow).filter(
                                 ExceptionRow.employee_id == emp, ExceptionRow.signal_type == v.get("intent"),

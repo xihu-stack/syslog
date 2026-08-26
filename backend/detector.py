@@ -131,6 +131,15 @@ def anchor_score(intent, window, day_total=None) -> int | None:
         _floor = 85 if _rare else (75 if _single_img else 80)
         if _single_img and cnt >= 4:
             _floor = 80  # 高频(当日≥4次)吃回降分: 常发截图的人不降
+        # 默认名截图族(2026-08-26审计,任莉/姜苏泽案例): 整窗外发全是SendPhotoes/
+        # 微信图片/屏幕截图这类系统默认名(与file_sensitivity"无语义默认名"同口径)
+        # 且目的地非稀有通道时,不吃微信日常通道80档——单张75(用户拍板),高频
+        # 多张也只维持75,让频次/深夜修正自己说话;真落到网盘/邮箱(稀有通道)不降
+        _AUTO_NAME = ("sendphotoes", "微信图片", "屏幕截图", "screenshot", "mmexport")
+        _all_auto = all(any(k in str(e.target_value or "").lower() for k in _AUTO_NAME)
+                        for e in _send_evs)
+        if _all_auto and not _rare:
+            _floor = min(_floor, 75)
         score = max(score, _floor)
     if night:
         score += 5
@@ -183,6 +192,7 @@ SYSTEM_PROMPT = (
     "【通道具体性铁律】explanation的通道禁止写『网络/通过网络/网络通道』这类空泛词——必须用输入中给出的具体应用名(如msedgewebview2.exe/Weixin.exe/OUTLOOK.EXE)或域名;目的地未记录时如实写『目的地未记录(网页上传)』,不得省略去向;有大小必须写大小。"
 "【总次数口径】汇总『共N次访问/进行了N次』时,标注了(连接心跳)的ws./wss.等心跳域名【不计入】——总次数=各非心跳域名次数之和;心跳域名如需提及,单独表述为『另有WebSocket心跳连接』;严禁把心跳请求数加进总访问次数(2026-08-26高贯飞案例: 把心跳桶count加总成'1426次访问')。\n"
     "【数字精度铁律】explanation中的所有数字(次数/人数/天数/文件数/大小)必须与行为序列中标注的完全一致——窗口标注×13次你必须写13次,不得四舍五入/模糊化/写'多次'。当日累计N次须标注'今日累计N次'。引用行为史数据须标注'(近7天)'。"
+    "【说明时间铁律】explanation描述的必须是【当前窗口】内发生的行为——日期与时段一律以当前窗口时间为准。风险记忆/行为史里的历史行为严禁写成本次说明的主体(禁止『某旧日期凌晨发送了N个文件』式主句,那是别的窗口的事);历史背景只能以'(近7天累计N次/活跃N天)'格式附带一句(2026-08-26展佳案例: 说明写08-20凌晨行为,当前窗口实为08-26,时间与说明对不上)。"
     "禁止泛泛套话,对象必须是具体文件名/域名, "
     "channels(数组,取自 usb|netdisk|personal_email|upload|local|remote_control)。"
 "【追问工具——信息不足时可主动查询】当你觉得当前窗口信息不够判断时,不要猜,输出工具调用JSON:\n"

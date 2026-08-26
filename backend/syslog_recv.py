@@ -196,6 +196,147 @@ def _health_watchdog():
         pass
 
 
+_MAINT_RUNNING = set()
+_MAINT_LOCK = threading.Lock()
+
+
+def _bg_maint(fn, name):
+    """维护任务后台线程化(2026-08-26): 周级LLM任务(storyline多次长调用/docscan/
+    weekly/dayreview)与selfheal巡检原先内联在唯一的30s flush线程里——一轮跑几
+    分钟到数小时,期间事件入库完全停摆,UDP缓冲溢出丢包(08-21已发生一次)。
+    移入daemon线程,并加"上一轮未跑完则跳过"守卫防重叠。"""
+    with _MAINT_LOCK:
+        if name in _MAINT_RUNNING:
+            print(f"[maint] {name}上一轮仍在运行,本轮跳过", flush=True)
+            return
+        _MAINT_RUNNING.add(name)
+
+    def _wrap():
+        try:
+            fn()
+        except Exception as e:
+            print(f"[maint] {name}失败: {e}", flush=True)
+        finally:
+            with _MAINT_LOCK:
+                _MAINT_RUNNING.discard(name)
+    threading.Thread(target=_wrap, daemon=True).start()
+
+
+def _maint_10min():
+    """10分钟巡检(后台线程): patterns/massops/晚到关联/selfheal。"""
+    try:  # 行为模式(10分钟): 压缩外发/改名掩盖/环比突增(2026-08-21)
+        from patterns import run_all_patterns
+        _pat = run_all_patterns()
+        if any(_pat.values()):
+            print(f"[patterns] {_pat}", flush=True)
+    except Exception as _pe:
+        print(f"[patterns] 失败: {_pe}", flush=True)
+    try:  # 行为聚合(10分钟): 大量删除=离职前兆,实时化(2026-08-21用户要求)
+        from massops import scan_mass_deletes
+        _md = scan_mass_deletes()
+        if _md.get("created"):
+            print(f"[massops] 新增聚合告警{_md['created']}条", flush=True)
+    except Exception as _me:
+        print(f"[massops] 失败: {_me}", flush=True)
+    try:  # 晚到证据关联(2026-08-26): 深信服延迟>12分钟等待窗的兜底
+        from massops import reconcile_late_evidence
+        _rl = reconcile_late_evidence()
+        if _rl.get("closed") or _rl.get("enriched"):
+            print(f"[late-evidence] 关闭误报{_rl['closed']}条/回填去向{_rl['enriched']}条", flush=True)
+    except Exception as _le:
+        print(f"[late-evidence] 失败: {_le}", flush=True)
+    try:
+        from selfheal import selfcheck
+        _r = selfcheck()
+        if _r.get("fixes"):
+            print(f"[selfheal] 修复 {len(_r['fixes'])} 项: " + "; ".join(_r["fixes"][:6]), flush=True)
+        if _r.get("error"):
+            print(f"[selfheal] 失败: {_r['error']}", flush=True)
+    except Exception as _se:
+        print(f"[selfheal] 失败: {_se}", flush=True)
+
+
+def _maint_hourly():
+    """小时维护(后台线程): 清理/扫描/看门狗/周级任务 + 风险记忆重建。"""
+    try:
+        import pipeline, dicts
+        pipeline.cleanup_old_events(int(dicts.get_setting("retention_days", "90")))
+        pipeline.cleanup_old_raw_logs(int(dicts.get_setting("raw_logs_retention_days", "7")))
+        pipeline.auto_close_alerts()
+        _maybe_auto_scan()  # 每周自动开集扫描(到期才真正跑)
+        _health_watchdog()  # 数据流静默/兜底率/磁盘 主动告警(每项每天最多1次)
+        try:
+            from api import _alias_discover
+            _alias_discover()  # 用户名映射自动发现(拼音级自动,推测级进候选)
+        except Exception:
+            pass
+        try:
+            from deepaudit import run_deep_audit
+            _da = run_deep_audit()
+            _bad = {k: v for k, v in _da.items() if k.startswith("D") and isinstance(v, int) and v not in (0,)}
+            if _bad:
+                print(f"[deepaudit] 异常项: {_bad}", flush=True)
+        except Exception as _de:
+            print(f"[deepaudit] 失败: {_de}", flush=True)
+        try:  # 风险行为记忆小时重建(2026-08-26接线): commit 6f8927c宣称的"小时重建"
+            # 原先update_memory全仓零调用,表数据只靠手跑脚本,现在真正接入
+            from riskmemory import update_memory
+            _n = update_memory()
+            print(f"[riskmemory] 小时重建 {_n} 条档案", flush=True)
+        except Exception as _rme:
+            print(f"[riskmemory] 失败: {_rme}", flush=True)
+        try:  # 周报(每周五17点,R1): 风险综述+webhook(2026-08-21)
+            from db import bj_now as _bj9
+            _now9 = _bj9()
+            if _now9.weekday() == 4 and _now9.hour >= 17 and \
+                    dicts.get_setting("weekly_last", "") != _now9.strftime("%Y%m%d"):
+                dicts.set_setting("weekly_last", _now9.strftime("%Y%m%d"))
+                from weekly import gen_weekly
+                _wk = gen_weekly()
+                print(f"[weekly] 周报: {_wk.get('headline', '')[:40]}", flush=True)
+        except Exception as _we:
+            print(f"[weekly] 失败: {_we}", flush=True)
+        try:  # N+1日复核(每天凌晨,回看昨天全天): 修正实时结论(2026-08-21)
+            from db import bj_now as _bj8
+            _d8 = _bj8()
+            if _d8.hour >= 1 and dicts.get_setting("day_review_last", "") != _d8.strftime("%Y%m%d"):
+                dicts.set_setting("day_review_last", _d8.strftime("%Y%m%d"))
+                from dayreview import run_day_review
+                _r8 = run_day_review()
+                print(f"[dayreview] N+1完成(回看{_r8.get('day')}): 候选{_r8.get('candidates')} "
+                      f"升{_r8.get('upgraded')}降{_r8.get('downgraded')}", flush=True)
+        except Exception as _de8:
+            print(f"[dayreview] 失败: {_de8}", flush=True)
+        try:  # 风险故事线(每周,R1): 离职信号串成时间叙事(2026-08-21)
+            from datetime import timedelta as _td7
+            from db import bj_now as _bj7
+            _last7 = dicts.get_setting("risk_story_last", "")
+            _today7 = _bj7().strftime("%Y%m%d")
+            if _last7 != _today7 and (_last7 == "" or
+                    _bj7() - datetime.datetime.strptime(_last7, "%Y%m%d") >= _td7(days=7)):
+                dicts.set_setting("risk_story_last", _today7)
+                from storyline import build_stories
+                _r7 = build_stories()
+                print(f"[storyline] 周更完成: {_r7.get('stories')}条", flush=True)
+        except Exception as _se7:
+            print(f"[storyline] 失败: {_se7}", flush=True)
+        try:  # IPG文档AI深扫(每周,R1): 外发模式/敏感文件特征/建议(2026-08-20)
+            from datetime import timedelta as _td6
+            from db import bj_now as _bj6
+            _last = dicts.get_setting("ipg_doc_scan_last", "")
+            _today = _bj6().strftime("%Y%m%d")
+            if _last != _today and (_last == "" or
+                    _bj6() - datetime.datetime.strptime(_last, "%Y%m%d") >= _td6(days=7)):
+                dicts.set_setting("ipg_doc_scan_last", _today)
+                from docscan import run_doc_scan
+                _r6 = run_doc_scan()
+                print(f"[docscan] 周扫完成: findings={len(_r6.get('findings', []))}", flush=True)
+        except Exception as _dse:
+            print(f"[docscan] 失败: {_dse}", flush=True)
+    except Exception:
+        pass
+
+
 def _flush_loop():
     """每30秒刷新一次事件缓冲（收到 syslog 后近实时入库+研判）。每小时清理一次过期事件。"""
     print("[flush-loop] 启动", flush=True)
@@ -205,107 +346,9 @@ def _flush_loop():
     # 不变量自检自愈: 每10分钟独立跑一次(20×30s),不等小时级维护——
     # 用户要求循环检测加密(2026-08-20),纯程序检查零LLM成本
     if _flush_count % 20 == 0:
-        try:  # 行为模式(10分钟): 压缩外发/改名掩盖/环比突增(2026-08-21)
-            from patterns import run_all_patterns
-            _pat = run_all_patterns()
-            if any(_pat.values()):
-                print(f"[patterns] {_pat}", flush=True)
-        except Exception as _pe:
-            print(f"[patterns] 失败: {_pe}", flush=True)
-        try:  # 行为聚合(10分钟): 大量删除=离职前兆,实时化(2026-08-21用户要求)
-            from massops import scan_mass_deletes
-            _md = scan_mass_deletes()
-            if _md.get("created"):
-                print(f"[massops] 新增聚合告警{_md['created']}条", flush=True)
-        except Exception as _me:
-            print(f"[massops] 失败: {_me}", flush=True)
-        try:  # 晚到证据关联(2026-08-26): 深信服延迟>12分钟等待窗的兜底
-            from massops import reconcile_late_evidence
-            _rl = reconcile_late_evidence()
-            if _rl.get("closed") or _rl.get("enriched"):
-                print(f"[late-evidence] 关闭误报{_rl['closed']}条/回填去向{_rl['enriched']}条", flush=True)
-        except Exception as _le:
-            print(f"[late-evidence] 失败: {_le}", flush=True)
-        try:
-            from selfheal import selfcheck
-            _r = selfcheck()
-            if _r.get("fixes"):
-                print(f"[selfheal] 修复 {len(_r['fixes'])} 项: " + "; ".join(_r["fixes"][:6]), flush=True)
-            if _r.get("error"):
-                print(f"[selfheal] 失败: {_r['error']}", flush=True)
-        except Exception as _se:
-            print(f"[selfheal] 失败: {_se}", flush=True)
+        _bg_maint(_maint_10min, "10min")
     if _flush_count % 120 == 0:  # 约1小时维护一次
-        try:
-            import pipeline, dicts
-            pipeline.cleanup_old_events(int(dicts.get_setting("retention_days", "90")))
-            pipeline.cleanup_old_raw_logs(int(dicts.get_setting("raw_logs_retention_days", "7")))
-            pipeline.auto_close_alerts()
-            _maybe_auto_scan()  # 每周自动开集扫描(到期才真正跑)
-            _health_watchdog()  # 数据流静默/兜底率/磁盘 主动告警(每项每天最多1次)
-            try:
-                from api import _alias_discover
-                _alias_discover()  # 用户名映射自动发现(拼音级自动,推测级进候选)
-            except Exception:
-                pass
-            try:
-                from deepaudit import run_deep_audit
-                _da = run_deep_audit()
-                _bad = {k: v for k, v in _da.items() if k.startswith("D") and isinstance(v, int) and v not in (0,)}
-                if _bad:
-                    print(f"[deepaudit] 异常项: {_bad}", flush=True)
-            except Exception as _de:
-                print(f"[deepaudit] 失败: {_de}", flush=True)
-            try:  # 周报(每周五17点,R1): 风险综述+webhook(2026-08-21)
-                from db import bj_now as _bj9
-                _now9 = _bj9()
-                if _now9.weekday() == 4 and _now9.hour >= 17 and \
-                        dicts.get_setting("weekly_last", "") != _now9.strftime("%Y%m%d"):
-                    dicts.set_setting("weekly_last", _now9.strftime("%Y%m%d"))
-                    from weekly import gen_weekly
-                    _wk = gen_weekly()
-                    print(f"[weekly] 周报: {_wk.get('headline', '')[:40]}", flush=True)
-            except Exception as _we:
-                print(f"[weekly] 失败: {_we}", flush=True)
-            try:  # N+1日复核(每天凌晨,回看昨天全天): 修正实时结论(2026-08-21)
-                from db import bj_now as _bj8
-                _d8 = _bj8()
-                if _d8.hour >= 1 and dicts.get_setting("day_review_last", "") != _d8.strftime("%Y%m%d"):
-                    dicts.set_setting("day_review_last", _d8.strftime("%Y%m%d"))
-                    from dayreview import run_day_review
-                    _r8 = run_day_review()
-                    print(f"[dayreview] N+1完成(回看{_r8.get('day')}): 候选{_r8.get('candidates')} "
-                          f"升{_r8.get('upgraded')}降{_r8.get('downgraded')}", flush=True)
-            except Exception as _de8:
-                print(f"[dayreview] 失败: {_de8}", flush=True)
-            try:  # 风险故事线(每周,R1): 离职信号串成时间叙事(2026-08-21)
-                from datetime import timedelta as _td7
-                from db import bj_now as _bj7
-                _last7 = dicts.get_setting("risk_story_last", "")
-                _today7 = _bj7().strftime("%Y%m%d")
-                if _last7 != _today7 and (_last7 == "" or
-                        _bj7() - datetime.datetime.strptime(_last7, "%Y%m%d") >= _td7(days=7)):
-                    dicts.set_setting("risk_story_last", _today7)
-                    from storyline import build_stories
-                    _r7 = build_stories()
-                    print(f"[storyline] 周更完成: {_r7.get('stories')}条", flush=True)
-            except Exception as _se7:
-                print(f"[storyline] 失败: {_se7}", flush=True)
-            try:  # IPG文档AI深扫(每周,R1): 外发模式/敏感文件特征/建议(2026-08-20)
-                from datetime import timedelta as _td6
-                from db import bj_now as _bj6
-                _last = dicts.get_setting("ipg_doc_scan_last", "")
-                _today = _bj6().strftime("%Y%m%d")
-                if _last != _today and (_last == "" or
-                        _bj6() - datetime.datetime.strptime(_last, "%Y%m%d") >= _td6(days=7)):
-                    dicts.set_setting("ipg_doc_scan_last", _today)
-                    from docscan import run_doc_scan
-                    _r6 = run_doc_scan()
-                    print(f"[docscan] 周扫完成: findings={len(_r6.get('findings', []))}", flush=True)
-            except Exception as _dse:
-                print(f"[docscan] 失败: {_dse}", flush=True)
-        except Exception:
-            pass
+        _bg_maint(_maint_hourly, "hourly")
     if _state["enabled"]:
         _flush_timer = threading.Timer(30.0, _flush_loop)
         _flush_timer.daemon = True

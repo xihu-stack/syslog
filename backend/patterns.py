@@ -209,7 +209,9 @@ def run_all_patterns() -> dict:
         n1 = scan_archive_then_send(s)
         n2 = scan_rename_disguise(s)
         n3 = scan_trend_spike(s)
-        s.commit()
+        from db import write_lock as _wl
+        with _wl:  # 铁律: 写经统一写锁串行(2026-08-26补)
+            s.commit()
         return {"archive_send": n1, "rename_disguise": n2, "trend_spike": n3}
     finally:
         s.close()

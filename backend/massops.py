@@ -66,7 +66,9 @@ def scan_mass_deletes() -> dict:
                            window_start=lst[-1].occurred_at, created_at=bj_now(), status="NEW"))
             created += 1
             print(f"[massops] {emp} {day} 删除{len(lst)}次/{len(files)}文件 -> {risk}分", flush=True)
-        s.commit()
+        from db import write_lock as _wl
+        with _wl:  # 铁律: 写经统一写锁串行(2026-08-26补)
+            s.commit()
         # ---- 外发量聚合(蚂蚁搬家检测,2026-08-21): 单日≥15次或≥50MB ----
         created2 = scan_mass_exfil(s)
         return {"checked": len(by_emp), "created": created + created2, "skipped": skipped}
@@ -127,7 +129,9 @@ def reconcile_late_evidence() -> dict:
                 if extra and "[后到证据" not in (a.summary or ""):
                     a.summary = (a.summary or "") + f" [后到证据:上传时刻同期浏览{'/'.join(extra)}]"
                     enriched += 1
-        s.commit()
+        from db import write_lock as _wl
+        with _wl:  # 铁律: 写经统一写锁串行(2026-08-26补)
+            s.commit()
         return {"closed": closed, "enriched": enriched}
     finally:
         s.close()
@@ -249,5 +253,7 @@ def scan_mass_exfil(s) -> int:
                            dedup_key=key, window_start=lst[-1].occurred_at, created_at=bj_now(), status="NEW"))
             created += 1
         print(f"[massops-exfil] {emp} {day} 外发{len(lst)}次/{total_mb:.0f}MB -> {risk}分" + ("(刷新)" if existing else ""), flush=True)
-    s.commit()
+    from db import write_lock as _wl
+    with _wl:  # 铁律: 写经统一写锁串行(2026-08-26补)
+        s.commit()
     return created

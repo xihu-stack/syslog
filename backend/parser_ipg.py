@@ -44,6 +44,12 @@ _agt_map = None          # {str(agt_id): 账号} 机器级
 _usr_map = None          # {str(usr_id): 账号} 人员级(优先)——doc路径反推,跨机器稳定
 _agt_dirty = False
 _last_persist = 0.0
+_map_degraded = False    # settings加载失败→降级空映射(靠doc路径反推自愈),300s后重试
+_map_retry_at = 0.0
+
+# Windows系统级配置目录(非真实登录账号): C:\Users\Public|Default|All Users 是
+# 程序写入路径,当账号会污染员工表(2026-08-26运行时已出现员工"public"的告警)
+_SYS_PROFILES = {"public", "default", "default user", "all users"}
 
 
 def _clean_account(a: str) -> str:
@@ -59,17 +65,34 @@ def _clean_account(a: str) -> str:
 
 
 def _load_map():
-    global _agt_map, _usr_map
-    if _agt_map is not None:
+    global _agt_map, _usr_map, _map_degraded, _map_retry_at
+    if not _map_degraded and _agt_map is not None:
         return
+    import time as _time
+    if _map_degraded and _time.time() < _map_retry_at:
+        return  # 冷却期内: 继续用降级映射(doc路径反推在持续重建)
     try:
         import dicts
         raw = dicts.get_setting("ipg_agt_map") or "{}"
-        _agt_map = json.loads(raw) if isinstance(raw, str) else dict(raw or {})
+        am = json.loads(raw) if isinstance(raw, str) else dict(raw or {})
         raw2 = dicts.get_setting("ipg_usr_map") or "{}"
-        _usr_map = json.loads(raw2) if isinstance(raw2, str) else dict(raw2 or {})
-    except Exception:
-        _usr_map = {}
+        um = json.loads(raw2) if isinstance(raw2, str) else dict(raw2 or {})
+        # 合并不覆盖: 降级期间_remember新学的映射不能丢
+        if _agt_map:
+            am.update(_agt_map)
+        if _usr_map:
+            um.update(_usr_map)
+        _agt_map, _usr_map = am, um
+        _map_degraded = False
+    except Exception as _e:
+        # 2026-08-26修复: 旧版异常时_usr_map={}但_agt_map保持None→后续.agt上
+        # AttributeError,所有IPG报文静默解析失败且无日志。降级为空dict+定时重试,
+        # 身份先由doc路径反推(_remember)自愈重建
+        _map_degraded = True
+        _map_retry_at = _time.time() + 300
+        _agt_map = _agt_map if _agt_map is not None else {}
+        _usr_map = _usr_map if _usr_map is not None else {}
+        print(f"[parser_ipg] 账号映射加载失败,降级空映射靠路径反推(300s后重试): {_e}", flush=True)
 
 
 def _remember(agt_id, usr_id, account):
@@ -179,7 +202,10 @@ def parse_ipg_syslog(text: str):
         mu = _RE_USER_PATH.search(src_path) or _RE_USER_PATH.search(d.get("DOC_DEST_PATH") or "")
         if mu:
             hint = mu.group(1)
-            _remember(agt, usr, hint)
+            if hint.lower() in _SYS_PROFILES:
+                hint = None  # 系统配置目录不是登录账号,不建映射也不当员工名
+            else:
+                _remember(agt, usr, hint)
         dev = d.get("DOC_DEST_DEVICE")
         ch = _DEV_CH.get(dev if isinstance(dev, int) else int(dev or 0), "LOCAL")
         if act == "SEND" and ch == "LOCAL":

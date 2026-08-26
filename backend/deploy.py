@@ -19,11 +19,22 @@ import time
 
 import paramiko
 
-HOST, USER, PWD = "10.0.20.249", "root", "LX2320**"
+# 凭据不进git(2026-08-26): 从gitignored的_deploy_secret.py或环境变量取
+# (旧版root明文密码曾提交进仓库历史,按用户红线移除)
+try:
+    from _deploy_secret import HOST, USER, PWD
+except ImportError:
+    HOST = os.environ.get("DEPLOY_HOST", "10.0.20.249")
+    USER = os.environ.get("DEPLOY_USER", "root")
+    PWD = os.environ.get("DEPLOY_PWD", "")
+    if not PWD:
+        raise SystemExit("缺少部署凭据: 请创建 backend/_deploy_secret.py(已gitignore)或设置 DEPLOY_PWD 环境变量")
 HERE = os.path.dirname(os.path.abspath(__file__))
 REMOTE = "/root/syslog/backend"
 CONTAINER = "ipguard-ai"
-PY_FILES = ["api.py", "db.py", "dicts.py", "detector.py", "llm_client.py", "pipeline.py", "profiles.py", "syslog_recv.py", "selfheal.py", "parser_ipg.py", "docscan.py", "massops.py", "storyline.py", "dayreview.py", "timeline.py", "riskboard.py", "weekly.py", "patterns.py", "web_aggregator.py", "models.py", "deepaudit.py"]
+# 白名单(2026-08-26补全): 原缺 parser_ipguard/parser_sangfor(pipeline模块级import,
+# 新容器直接起不来)与 riskmemory(风险记忆,缺了内存注入静默失效)
+PY_FILES = ["api.py", "db.py", "dicts.py", "detector.py", "llm_client.py", "pipeline.py", "profiles.py", "syslog_recv.py", "selfheal.py", "parser_ipg.py", "parser_ipguard.py", "parser_sangfor.py", "riskmemory.py", "docscan.py", "massops.py", "storyline.py", "dayreview.py", "timeline.py", "riskboard.py", "weekly.py", "patterns.py", "web_aggregator.py", "models.py", "deepaudit.py"]
 
 
 def _node() -> str:

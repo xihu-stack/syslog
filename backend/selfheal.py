@@ -47,7 +47,7 @@ def _verdict_sig(s, v):
 def _reviewed(a):
     """带复核标记的告警: 分数由N+1复核结论决定(降分只写告警),对齐类不变量跳过。"""
     sm = a.summary or ""
-    return (sm.startswith(("[次日复核", "[N+1复核"))
+    return (sm.startswith(("[次日复核", "[N+1复核", "[重判后复核"))
             or "[研判已降至" in sm or "[白名单" in sm or "[巡检" in sm)
 
 
@@ -135,8 +135,11 @@ def _selfcheck_body() -> dict:
             sig, evs = _verdict_sig(s, v)
             ev_map[(v.employee_id, v.intent)].append((v, sig, bool(evs)))
         for a in s.query(AlertRow).filter(AlertRow.scenario.in_(_SIG)).all():
-            if a.status == "FP" or _reviewed(a):
-                continue  # 用户误报判定/复核结论优先,不对齐(防与N+1降分拉锯)
+            # CONFIRMED也跳过(2026-08-26): 用户已知晓的告警,其分数/说明是处置时
+            # 认可过的结论——重判后再对齐改写等于替用户翻案(massops同场景早已跳过,
+            # 两模块口径统一);复犯会生成新研判并经告警刷新逻辑另行提醒
+            if a.status in ("FP", "CONFIRMED") or _reviewed(a):
+                continue  # 用户处置/复核结论优先,不对齐(防与N+1降分拉锯)
             need = _SIG[a.scenario]
             cands = [t for t in ev_map.get((a.employee_id, a.scenario), [])
                      if any(t[1].get(k, 0) > 0 for k in need)
@@ -164,7 +167,9 @@ def _selfcheck_body() -> dict:
                             sig[rc] += (e.count or 1)
                 hit = {k: v2 for k, v2 in sig.items() if k in need and v2 > 0}
                 if hit:
-                    if (a.summary or "").startswith("近7天"):
+                    # 幂等(2026-08-26修复): 实际写入的前缀是"[重判后复核]",旧检查
+                    # startswith("近7天")永不命中→同批告警每10分钟被重写一遍
+                    if (a.summary or "").startswith(("[重判后复核", "近7天")):
                         continue  # 已恢复过,不重复处理
                     # 优先重建事实说明: 事件90天保留,窗口数据仍在——按告警窗口
                     # 前后取该员工风险行为,给出5W式模板(2026-08-21用户反馈模板句

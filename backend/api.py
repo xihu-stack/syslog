@@ -257,9 +257,17 @@ def sso_callback(code: str = "", state: str = "", error: str = ""):
 
 
 @app.post("/api/auth/logout-notify")
-def sso_logout_notify(body: dict = Body(...)):
+def sso_logout_notify(request: Request, body: dict = Body(...)):
     """门户反向登出通知(坑3): 门户退出时POST {username, logoutAt},吊销该用户全部本地会话。
-    登记地址: {本系统}/api/auth/logout-notify 。"""
+    登记地址: {本系统}/api/auth/logout-notify 。
+    防滥用(2026-08-26): 该端点免鉴权,内网任何人可POST指定username定向踢人下线——
+    设置了 sso_logout_secret 时必须带匹配的 x-logout-secret 头(或body.secret),
+    未设置则保持旧行为兼容已登记的门户回调。"""
+    sec = (dicts.get_setting("sso_logout_secret") or "").strip()
+    if sec:
+        got = request.headers.get("x-logout-secret", "") or str(body.get("secret") or "")
+        if got != sec:
+            raise HTTPException(403, "logout-notify 密钥不匹配")
     return {"ok": True, "revoked": _revoke_user_tokens(str(body.get("username") or ""))}
 
 
@@ -439,6 +447,7 @@ def list_alerts(severity: str | None = None, limit: int = 200, when: str | None 
             "severity": r.severity, "risk_score": r.risk_score, "summary": r.summary,
             "status": r.status, "priority": _prio(r),
             "window_start": r.window_start.isoformat() if r.window_start else None,
+            "created_at": r.created_at.isoformat()[:16].replace("T", " ") if r.created_at else None,
             "verdict_id": r.verdict_id,
         } for r in q.limit(limit).all()]
     finally:
@@ -1123,6 +1132,14 @@ def system_stats():
         # risk 排序 limit 的样本推算、超过样本量时漏算。
         al_today_critical = s.query(AlertRow).filter(
             AlertRow.window_start >= today_start, AlertRow.risk_score >= 76).count()
+        # 高危56-75/关注50-55分层计数(2026-08-26): 大屏"按级别"原先在前端用
+        # tot-crit-new 拼算,档线还写成50-75,与全站56-75/76+口径不符
+        al_today_high = s.query(AlertRow).filter(
+            AlertRow.window_start >= today_start, AlertRow.risk_score >= 56,
+            AlertRow.risk_score < 76).count()
+        al_today_mid = s.query(AlertRow).filter(
+            AlertRow.window_start >= today_start, AlertRow.risk_score >= 50,
+            AlertRow.risk_score < 56).count()
         # 告警按场景分布(全量 group_by，无 risk 排序截断)——供大屏饼图，避免前端用
         # risk 排序 limit 样本导致高风险场景被系统性放大。
         al_by_scenario = {r[0] or "未识别": r[1] for r in
@@ -1215,6 +1232,7 @@ def system_stats():
                 s.query(AlertRow.status, _f.count(AlertRow.id))
                 .filter(AlertRow.window_start >= today_start)
                 .group_by(AlertRow.status).all()}, "today_critical": al_today_critical,
+                "today_high": al_today_high, "today_mid": al_today_mid,
                 "by_scenario": al_by_scenario, "status": alert_status,
                 "list": [{
                     "employee": r.employee_id, "scenario": r.scenario,
@@ -1714,7 +1732,7 @@ def _ask_query(action, employee, category="", days_arg=None):
     """按 action 复用现有查询逻辑,返回文本上下文喂总结 LLM。"""
     import detector
     from collections import Counter, defaultdict
-    from datetime import timedelta
+    from datetime import datetime, timedelta  # datetime: 豁免到期过滤要用(2026-08-26修复NameError)
     s = Session()
     try:
         if action == "employee_risk" and employee:
