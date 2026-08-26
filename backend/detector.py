@@ -670,7 +670,7 @@ def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exempti
             pass
 
     user = (f"员工：{window[0].employee_id}（设备：{window[0].employee_id}）\n"
-            f"行为序列：\n{_fmt_window(window)}{_dest_hint}{g_txt}{profile_txt}{dev_txt}{exempt_txt}{hist_txt}{day_txt}{mem_txt}\n\n"
+    mem_txt = chr(10) + _mem if _mem else ""
             f"写explanation时:域名次数优先『本窗口N次,今日累计M次』双口径(今日累计仅当序列标注了[当日累计]才可引用,未标注就只写窗口次数,严禁编造累计)。请输出 JSON。")
     try:
         # 工具循环(2026-08-26用户要求: AI信息不足时可主动查询关联日志再分析,
