@@ -128,7 +128,10 @@ def anchor_score(intent, window, day_total=None) -> int | None:
         _IMG2 = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".heic")
         _single_img = (len(_send_evs) == 1
                        and str(_send_evs[0].target_value or "").lower().endswith(_IMG2))
-        score = max(score, 85 if _rare else (75 if _single_img else 80))
+        _floor = 85 if _rare else (75 if _single_img else 80)
+        if _single_img and cnt >= 4:
+            _floor = 80  # 高频(当日≥4次)吃回降分: 常发截图的人不降
+        score = max(score, _floor)
     if night:
         score += 5
     return min(score, 90)
