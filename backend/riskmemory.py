@@ -34,9 +34,13 @@ def _trend(scores):
 
 def _episodes(dates):
     if not dates: return 0
+    from datetime import datetime as _dt
+    def _p(x):
+        if isinstance(x, _dt): return x
+        return _dt.fromisoformat(str(x)[:19])
     eps = 1
     for i in range(1, len(dates)):
-        if (dates[i] - dates[i-1]).days > 3: eps += 1
+        if (_p(dates[i]) - _p(dates[i-1])).days > 3: eps += 1
     return eps
 
 
