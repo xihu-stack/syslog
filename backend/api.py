@@ -1792,13 +1792,14 @@ def _ask_query(action, employee, category="", days_arg=None):
                 days = 30
             rcnt = Counter()
             dom_expr = json_field(EventRow.raw, 'domain')
+            _nw2 = bj_now()  # 查询时刻的服务器时钟——"今天"以此刻日期解析,跨零点自动落到新的一天
             if days == 1:  # 2026-08-26: 自然日边界——原滚动24h把昨天下午混进"今天"
                 # (黄春煜案例: 工具答65,实际今日仅15);days>1保持滚动窗口并如实标注"近N天"
-                _since = bj_now().replace(hour=0, minute=0, second=0, microsecond=0)
-                _label = f"今日({_since.strftime('%m-%d')})"
+                _since = _nw2.replace(hour=0, minute=0, second=0, microsecond=0)
+                _label = f"今日({_since.strftime('%m-%d')}) 截至{_nw2.strftime('%H:%M')}"
             else:
-                _since = bj_now() - timedelta(days=days)
-                _label = f"近{days}天"
+                _since = _nw2 - timedelta(days=days)
+                _label = f"近{days}天(截至{_nw2.strftime('%m-%d %H:%M')})"
             rows = s.query(EventRow.employee_id, dom_expr).filter(
                 EventRow.category == 'WEB', EventRow.occurred_at >= _since).all()
             _HEART = ("ws.", "wss.", "statistic.", "stat.", "log.", "telemetry.", "tm.", "abtest.", "sentry.")
