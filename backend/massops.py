@@ -11,7 +11,7 @@ import json
 from collections import defaultdict
 from datetime import timedelta
 
-from db import Session, EventRow, AlertRow, bj_now
+from db import Session, EventRow, AlertRow, VerdictRow, bj_now
 import dicts
 import detector
 
