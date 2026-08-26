@@ -131,6 +131,44 @@ def _digest(s, emp, d0, d1, day):
     return "\n".join(lines)[:8000]
 
 
+def _thin(sm: str) -> bool:
+    """薄说明判定(2026-08-26): 长度不足/无通道词/半成品箭头/无具体对象。"""
+    sm = sm or ""
+    return (len(sm) < 60 or "→;" in sm or "→→" in sm
+            or not any(k in sm for k in ("通过", "经", "exe"))
+            or ("『" not in sm and "×" not in sm and "访问" not in sm))
+
+
+def _factual_rewrite(s, emp, d0, d1, direction, reason):
+    """用全天事件事实重写说明(2026-08-26优化3): 目的地/文件/次数取自现已完整的数据,
+    深信服延迟批在N+0时刻看不到的信息这里都能补上。"""
+    from collections import Counter as _C
+    sends, downs, doms = [], 0, _C()
+    for e in s.query(EventRow).filter(EventRow.employee_id == emp,
+                                       EventRow.occurred_at >= d0, EventRow.occurred_at < d1).all():
+        raw = e.raw or {}
+        if e.category == "DOC" and e.action in ("SEND", "UPLOAD"):
+            dh = dicts.dest_host(raw)[:30] or "未识别(网页上传)"
+            sends.append("『%s』→%s" % ((e.target_value or "未命名")[:32], dh))
+        elif e.category == "DOC" and e.action in ("DOWNLOAD", "RECV"):
+            downs += 1
+        elif e.category == "WEB":
+            d = (raw.get("domain") or "").lower()
+            if d and dicts.risk_class(d):
+                doms[d] += e.count or 1
+    day = str(d0)[5:10]
+    parts = []
+    if sends:
+        parts.append("全天外发%d次: %s%s" % (len(sends), ";".join(sends[:4]), "…" if len(sends) > 4 else ""))
+    if downs:
+        parts.append("另有下载/接收%d次(方向为收,不计入外发)" % downs)
+    if doms:
+        parts.append("风险访问: " + "、".join("%s×%d" % (d, n) for d, n in doms.most_common(3)))
+    body = ";".join(parts) if parts else "全天无明显风险行为"
+    tag = {"upgrade": "全天复核升级", "keep": "全天复核维持"}.get(direction, "全天复核")
+    return "[%s|事实重写] %s在%s %s (%s)" % (tag, emp, day, body, (reason or "")[:40])
+
+
 def _writeback(emp, r, d0, d1):
     direction = r.get("direction") or "keep"
     if direction == "keep":
@@ -144,7 +182,9 @@ def _writeback(emp, r, d0, d1):
                 if not (a.window_start and d0 <= a.window_start < d1):
                     continue
                 sm = (a.summary or "")
-                if not sm.startswith("[次日复核"):
+                if _thin(sm):  # 薄说明→全天事实重写(保留复核痕迹)
+                    a.summary = _factual_rewrite(s, emp, d0, d1, "keep", r.get("reason") or "")
+                elif not sm.startswith("[次日复核"):
                     a.summary = f"[次日复核:维持] {sm}"
             s.commit()
         except Exception:
@@ -165,7 +205,7 @@ def _writeback(emp, r, d0, d1):
             sm = re.sub(r"\[次日复核[^\]]*\]\s*", "", a.summary or "")
             if direction == "upgrade" and sug > (a.risk_score or 0) and a.scenario in _TIERS:
                 a.risk_score = _snap(a.scenario, sug)
-                a.summary = f"[次日复核↑{a.risk_score}分: {reason}] {review} | {sm}"
+                a.summary = f"[次日复核↑{a.risk_score}分] " + _factual_rewrite(s, emp, d0, d1, "upgrade", reason)
             elif direction == "downgrade":
                 # 2026-08-24 用户口径: N+1复核发现误报 → 自动关闭(不用人工确认)
                 # 行为持续 → 保留告警(keep方向处理)
