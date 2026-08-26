@@ -356,7 +356,16 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 wsession = Session()
                 try:
                     import llm_client as _lc
+                    import llm_client as _lc2
                     for emp, device, wstart, wend, hashes, v in buf:
+                        # explanation剥离思维链(2026-08-26唐方毅案例: 说明以"好,我现在需要分析"开头
+                        # ——deep模型think未剥净即入库);同时清掉角色扮演残留
+                        if v.get("explanation"):
+                            _e2 = _lc2.strip_think(str(v["explanation"]))
+                            for _bad in ("好，我现在", "好的，我现在", "首先，", "让我分析"):
+                                if _e2.startswith(_bad):
+                                    _e2 = _e2.split("。", 1)[-1].lstrip()
+                            v["explanation"] = _e2
                         # normal_work=系统认定正常业务: 分数钳制≤20,防LLM"结论正常
                         # 但分数80"的自相矛盾(2026-08-24展佳案例:normal_work 80分
                         # 生成告警);正常业务永不进告警队列
