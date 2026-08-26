@@ -175,7 +175,8 @@ SYSTEM_PROMPT = (
     "只输出 JSON：intent(data_exfiltration|job_seeking|baseline_deviation|policy_violation|normal_work), "
     "deviation(none|minor|major|severe), risk_score(0-100整数), "
     "explanation格式(5W,严格执行):【谁】在【何时(日期+时段)】通过【通道(应用/域名/设备)】【干了什么(动作+对象:文件名或域名×次数+文件大小)】,属于【问题定性(场景+风险含义)】。例: 张三在08-20凌晨通过微信文件助手发送『HX15001试验手册.pdf』等3个文件(共2.1MB),属数据外发。"
-    "【数字精度铁律】explanation中的所有数字(次数/人数/天数/文件数/大小)必须与行为序列中标注的完全一致——窗口标注×13次你必须写13次,不得四舍五入/模糊化/写'多次'。当日累计N次须标注'今日累计N次'。引用行为史数据须标注'(近7天)'。"
+    "【通道具体性铁律】explanation的通道禁止写『网络/通过网络/网络通道』这类空泛词——必须用输入中给出的具体应用名(如msedgewebview2.exe/Weixin.exe/OUTLOOK.EXE)或域名;目的地未记录时如实写『目的地未记录(网页上传)』,不得省略去向;有大小必须写大小。"
+"【数字精度铁律】explanation中的所有数字(次数/人数/天数/文件数/大小)必须与行为序列中标注的完全一致——窗口标注×13次你必须写13次,不得四舍五入/模糊化/写'多次'。当日累计N次须标注'今日累计N次'。引用行为史数据须标注'(近7天)'。"
     "禁止泛泛套话,对象必须是具体文件名/域名, "
     "channels(数组,取自 usb|netdisk|personal_email|upload|local|remote_control)。"
 )
@@ -303,8 +304,14 @@ def _fmt_window(window: list[CanonicalEvent]) -> str:
             lines.append(f"{t} [{src}] [搜索] \"{e.target_value}\"")
         else:
             _dp = (e.raw or {}).get("dest_path") or ""
-            _dest = f" → {_dp[:60]}" if _dp and e.action in ("SEND", "UPLOAD", "PRINT") else ""
-            lines.append(f"{t} [{src}] [{e.action}] {e.target_value}（通道={(e.raw or {}).get('channel')}, 应用={(e.raw or {}).get('app')}）{_dest}")
+            if _dp.startswith(("http:", "https:")):  # URL型目的地取主机名(srui案例: 整条URL太长且AI只抄前缀)
+                _pp = _dp.split("/")
+                _dp = _pp[2] if len(_pp) > 2 else _dp
+            # 2026-08-26 srui案例: 说明只剩"通过网络发送"——输入行缺大小、dest空时不标注,
+            # AI无从写具体;补大小与目的地缺失标注
+            _sz = f", {e.size_bytes / 1048576:.1f}MB" if (e.size_bytes or 0) > 10240 else ""
+            _dest = f" → {_dp[:60]}" if _dp and e.action in ("SEND", "UPLOAD", "PRINT") else (" → 目的地未记录(网页上传)" if e.action in ("SEND", "UPLOAD") else "")
+            lines.append(f"{t} [{src}] [{e.action}] {e.target_value}{_sz}（通道={(e.raw or {}).get('channel')}, 应用={(e.raw or {}).get('app')}）{_dest}")
     if n_other > 12:
         lines.append(f"…及另外 {n_other - 12} 条文档/搜索")
     # 常规访问压缩(2026-08-24欧阳清案例: 17个微软遥测/CDN噪声铺满15行,把唯一的
