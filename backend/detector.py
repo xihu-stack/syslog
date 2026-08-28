@@ -158,6 +158,7 @@ SYSTEM_PROMPT = (
     "微信文件助手(filehelper/文件传输助手)=传文件外发通道 → 访问即外发嫌疑(data_exfiltration)。\n"
     "【数据外发判定】data_exfiltration 须有真实外发动作/通道(网盘上传/邮箱发送/文件助手传文件/上传文件到AI)；仅浏览或反复用AI对话不算外发→归 baseline_deviation。\n"
     "普通微信访问(weixin.qq.com等)=正常办公,不算风险。\n"
+    "SendPhotoes.png是客户端工具自动生成的同名截图临时文件,全公司15+员工均被记录到同名文件经weixin.exe/浏览器高频重复发送(每人每天数十次,2026-08-20起持续)——属通道噪音而非个体外发:窗口只含它时按普通微信访问处理,不得作为外发依据单独打高分;仅当与敏感命名文件/大体量外发并存时如实计入。\n"
     "远程控制(todesk等)=工具使用,降权(凌晨/密集才告警)。\n\n"
     "【评分锚点——严格按此打分】\n"
     "⚠ policy_violation 与 data_exfiltration 两类的 risk_score 由系统按统一规则计算(访问即违规=75/70+频次/时段/写动作修正),你的 risk_score 仅作参考——请把精力放在 explanation 的具体性上。\n"
@@ -167,7 +168,7 @@ SYSTEM_PROMPT = (
     "• 微信文件助手(传文件) → 70-80（外发嫌疑）。但【访问文件助手页面≠已传输文件】:窗口若只标注了页面/轮询访问(URL路径为静态资源/poll/get类),未见上传特征 → 30-45;URL含发送/上传特征(send/upload/file API)或伴大流量 → 70-80\n"
     "• 招聘网站分两档(2026-08-19用户口径):\n"
     "  【重点站: BOSS直聘(zhipin)/猎聘(liepin)/前程无忧(51job)/智联招聘(zhaopin)】访问即关注(公司口径:重点站任何访问必须立马关注):分数由系统锚点统一定(单次75/反复3-9次85/高频≥10次90,凌晨+5/跨天+5,封顶95——全系统最高档,均不低于邮箱/外发同档),你的risk_score仅作参考;窗口含重点站访问→intent判job_seeking,explanation如实写域名+次数+时段+是否跨天。\n"
-    "  领英(linkedin)与苏州人才网(hrss.suzhou)经公司确认属正常业务行为,访问不算求职信号(normal_work),勿因它们判job_seeking。其他招聘平台(脉脉/看准/卓聘等):反复高频或凌晨才考虑求职(系统锚点定分,基础55)。严格按窗口标注的访问次数判断,不得脑补频次。\n"
+    "  领英(linkedin)与苏州人才网(hrss.suzhou)经公司确认属正常业务行为,访问不算求职信号(normal_work),勿因它们判job_seeking。北森italent.cn/icube.cn是HR用的招聘管理系统(看简历/约面试/传简历属HR岗位工作),同样不算求职信号——且italent不是猎聘,说明里别写『猎聘』二字(2026-08-28冉昊案例:cloud.italent.cn被标注成猎聘重点站)。其他招聘平台(脉脉/看准/卓聘等):反复高频或凌晨才考虑求职(系统锚点定分,基础55)。严格按窗口标注的访问次数判断,不得脑补频次。\n"
     "• 远程控制 + 凌晨 → 55-65；工作时段 → 30-40（降权）\n"
     "• AI助手(chatgpt/deepseek/豆包/kimi/copilot等) → 工作时段低频(1-3次) 5-15(正常使用)；反复高频(≥10次)或凌晨 → 35-48, baseline_deviation(重度依赖AI、异常,但纯对话无外发动作≠数据外发)；仅当窗口同时含真实外发(上传文件到AI/网盘/邮箱/文件助手) → 才判 data_exfiltration 60-75\n"
     "• 凌晨 + 仅常规网站(无外发通道) → 25-35\n"
@@ -695,11 +696,15 @@ def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exempti
                  {"role": "user", "content": user}]
         raw = ""
         for _round in range(3):
-            raw = llm_client.chat(_msgs, max_tokens=800, timeout=120, model=model)
+            raw = llm_client.chat(_msgs, max_tokens=800, timeout=180, model=model)
             import re as _re4
             _txt = llm_client.strip_think(raw)
             _m2 = _re4.search(r'"tool":\s*"(\w+)"', _txt)
-            if not _m2 or _m2.group(1) not in ("emp_history", "domain_global", "file_trace"):
+            # 白名单须与SYSTEM_PROMPT工具清单+_run_judge_tool实现同步(2026-08-28修:
+            # nearby/cross_source两工具08-26加了prompt却没进白名单,模型正确调用
+            # 也被break丢弃→verdict落unknown/0,新模型工具调用更积极暴露此bug)
+            if not _m2 or _m2.group(1) not in ("emp_history", "domain_global", "file_trace",
+                                               "nearby_activity", "cross_source_dest"):
                 break
             _tresult = _run_judge_tool(_m2.group(1), window, window[0].employee_id if window else "")
             _msgs.append({"role": "assistant", "content": _txt[:300]})

@@ -7,6 +7,8 @@ import re
 import sys
 import threading
 
+from sqlalchemy import or_
+
 from db import (AlertRow, EventRow, ExceptionRow, Session, SettingRow, VerdictRow,
                 bj_now, init_db, severity_of, write_lock)
 from models import CanonicalEvent
@@ -332,7 +334,22 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                     continue
                 if trig:
                     _run_seen.update((emp, d) for d in trig)
-                to_judge.append((emp, w, baseline, dev))
+                # ⑥跨周期窗口合并(2026-08-28): 增量批次只含新事件,build_windows切出的
+                # 起点与上一轮verdict断开——同一活动段每10分钟裂一个微窗口,而全量重判
+                # 又会合并它们(08-28审计:旧1391窗vs重判505窗,口径漂移+告警数量级波动)。
+                # 起点吸附: 批次首事件落在既有verdict窗口结束后WINDOW_GAP(60分钟,与
+                # 批内聚合同口径)内→起点并回该窗口,flush按(emp,intent,window_start)
+                # upsert即原地续判合并,行为与全量重判一致
+                _wstart_ov = None
+                if w[0].occurred_at > bj_now() - timedelta(days=7):
+                    _pv = rs.query(VerdictRow).filter(
+                        VerdictRow.employee_id == emp,
+                        VerdictRow.window_end >= w[0].occurred_at - detector.WINDOW_GAP,
+                        VerdictRow.window_end <= w[0].occurred_at,
+                    ).order_by(VerdictRow.window_end.desc()).first()
+                    if _pv is not None:
+                        _wstart_ov = _pv.window_start
+                to_judge.append((emp, w, baseline, dev, _wstart_ov))
         _pipestat(windows=len(to_judge), **{f"sup_{k}": v for k, v in _sup.items()})
     finally:
         rs.close()
@@ -476,35 +493,45 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                         if v.get("risk_score", 0) >= risk_threshold and v.get("intent") != "normal_work":
                             _exc = wsession.query(ExceptionRow).filter(
                                 ExceptionRow.employee_id == emp, ExceptionRow.signal_type == v.get("intent"),
-                                (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > datetime.utcnow())
+                                or_(ExceptionRow.expires_at.is_(None), ExceptionRow.expires_at > datetime.utcnow())
                             ).first()
                             if _exc:
                                 continue
                             key = f"{emp}|{v.get('intent')}"  # 同员工同意图只保留1条(跨日/跨窗口合并),取最高分+最新
                             existing = wsession.query(AlertRow).filter_by(dedup_key=key).first()
                             if not existing:
+                                # ①兜底标记(2026-08-28): LLM超时走规则兜底的告警带[待补判]
+                                # 前缀——80-90分是规则锚点不是AI研判,运营须能一眼识别
+                                _fb = not v.get("ai_participated", True)
                                 wsession.add(AlertRow(employee_id=emp, scenario=v.get("intent"),
                                     severity=severity_of(v.get("risk_score", 0)), risk_score=v.get("risk_score", 0),
-                                    verdict_id=vr.id, summary=v.get("explanation"), dedup_key=key, window_start=wstart))
+                                    verdict_id=vr.id,
+                                    summary=("[待补判] " if _fb else "") + (v.get("explanation") or ""),
+                                    dedup_key=key, window_start=wstart))
                                 # 推送门控(2026-08-26): 单次低价值不推,只推复合/高分/大体量——
-                                # 否则单张截图也轰炸webhook
+                                # 否则单张截图也轰炸webhook;兜底判定不推(2026-08-28:
+                                # 规则锚点分未经AI复核,补判成功后刷新时会再评估)
                                 _mb2 = sum((e.size_bytes or 0) for e in w
                                            if e.category == "DOC" and e.action in ("SEND", "UPLOAD")) / 1048576
-                                if (v.get("risk_score", 0) >= 85
+                                if not _fb and (v.get("risk_score", 0) >= 85
                                         or (v.get("risk_score", 0) >= 75 and _mb2 >= 5)
                                         or v.get("file_sensitivity") == "high"):
                                     _notify_webhook(emp, v.get("risk_score", 0), v.get("explanation", ""))
                             else:
                                 # 已有告警:当天再犯即刷新最近活动时间(window_start),让"今日告警"/趋势图
-                                # 如实反映当日复犯;分数只升不降(取峰值)。
+                                # 如实反映当日复犯。
                                 existing.window_start = wstart
-                                # 再犯重新待处理:已确认/误报的告警再次触发时重置为NEW——
-                                # 否则确认一次=对该意图永久静默,复犯永远不再提醒(2026-08-18用户发现)。
-                                # 处置历史不丢:确认/误报时都写了feedback表留痕。
+                                # 再犯重新待处理:【当日】再犯触发时重置为NEW——否则确认一次=对该
+                                # 意图永久静默,复犯永远不再提醒(2026-08-18用户发现)。处置历史不丢:
+                                # 确认/误报时都写了feedback表留痕。
+                                # ②历史重判不复活处置(2026-08-28): 全量重判会重放旧窗口,旧版无差别
+                                # 重置把8条已CLOSED/FP告警拉回NEW——历史行为重判≠再犯,只有触发窗口
+                                # 是今天的才是真再犯。
                                 _was = existing.status
-                                if _was and _was != "NEW":
+                                _today_recid = bool(wstart) and wstart.date() == bj_now().date()
+                                if _was and _was != "NEW" and _today_recid:
                                     existing.status = "NEW"
-                                    if v.get("risk_score", 0) >= 85:
+                                    if v.get("risk_score", 0) >= 85 and v.get("ai_participated", True):
                                         _notify_webhook(f"{emp}(复犯,原状态{_was})", v.get("risk_score", 0),
                                                         v.get("explanation", ""))
                                 # 内容与时间同步: verdict_id/summary 指向本次(最新)窗口的研判——
@@ -513,12 +540,15 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                                 # 若只在状态重置/破峰值时刷,会出现分数指向最新窗口、说明停留在旧文案
                                 # (2026-08-19夏玮案例: 75分告警挂着"复核降级35分"的过期说明)
                                 existing.verdict_id = vr.id
-                                existing.summary = v.get("explanation") or existing.summary
+                                _fb2 = not v.get("ai_participated", True)  # ①兜底刷新也带[待补判]标记
+                                existing.summary = (("[待补判] " if _fb2 else "") + (v.get("explanation") or "")) \
+                                    or existing.summary
                                 # 分数=最新告警级研判分,与说明/研判历史同源。废除"只升不降取峰值":
                                 # 峰值口径造成列表78分/说明里55分两个数字对不上(2026-08-19逐告警
                                 # 核对发现15条不一致);历史峰值在研判历史里仍可见
                                 existing.risk_score = v.get("risk_score", 0)
                                 existing.severity = severity_of(v.get("risk_score", 0))
+                                existing.refreshed_at = bj_now()  # ⑤刷新时间与created_at(首次)分离
                     wsession.commit()
                     break  # 提交成功
                 except _OpErr as e:
@@ -619,7 +649,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         return _judge(item)
 
     def _judge(item):
-        emp, w, baseline, dev = item
+        emp, w, baseline, dev, _wstart_ov = item
         summary = profiles.summarize_for_llm(baseline)  # 冷启动返回 None（由 analyze_window 喂全局参照）
         # 查该用户是否有豁免（已确认正常的行为），传给 AI 作为上下文
         exempt = None
@@ -630,7 +660,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 # expires_at 用 utcnow+days 写入，这里同源比较（不走 occurred_at 的北京时区）
                 exs = es.query(ExceptionRow).filter(
                     ExceptionRow.employee_id == emp,
-                    (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > _dt.utcnow())
+                    or_(ExceptionRow.expires_at.is_(None), ExceptionRow.expires_at > _dt.utcnow())
                 ).all()
             finally:
                 es.close()
@@ -849,7 +879,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                     v = {**v, "risk_score": max(rs, 30)}
         except Exception:
             pass  # 复核异常不影响主判
-        return (emp, w[0].device_id, w[0].occurred_at, w[-1].occurred_at, [e.event_hash() for e in w], v)
+        return (emp, w[0].device_id, _wstart_ov or w[0].occurred_at, w[-1].occurred_at, [e.event_hash() for e in w], v)
 
     def _lc_smart():
         import llm_client
@@ -857,10 +887,10 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
 
     done_count = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-        def _judge_auto(item):
+        def _judge_auto0(item):
             """超长窗口自动切分(2026-08-26用户要求: 本地AI不费钱,增加研判次数
             保证完整输入输出不截断丢风险)。子窗口各自送LLM取最高分。"""
-            emp, w, baseline, dev = item
+            emp, w, baseline, dev, wstart_ov = item
             _txt = detector._fmt_window(w)
             if len(_txt) <= 3500:
                 return _judge(item)
@@ -869,19 +899,37 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 return _judge(item)
             best = None
             for i, sub in enumerate(subs):
-                r = _judge((emp, sub, baseline, dev))
+                r = _judge((emp, sub, baseline, dev, wstart_ov))
                 if r is None:
                     continue
-                if best is None or (r.get("risk_score") or 0) > (best.get("risk_score") or 0):
+                if best is None or ((r[5] or {}).get("risk_score") or 0) > ((best[5] or {}).get("risk_score") or 0):
                     best = r
             if best and len(subs) > 1:
-                best = {**best, "explanation": f"[切分研判/{len(subs)}段取最高] " + str(best.get("explanation") or "")}
+                best = (*best[:5], {**best[5], "explanation": f"[切分研判/{len(subs)}段取最高] " + str((best[5] or {}).get("explanation") or "")})
             return best
+
+        def _judge_auto(item):
+            """①批次内兜底补判(2026-08-28): 4并发压满27B时偶发超时走规则兜底
+            (全量重判实测15/486),隔5秒重试一次——多数是瞬时拥塞可恢复,
+            仍失败才保留兜底(带[待补判]标记,不推webhook)"""
+            r = _judge_auto0(item)
+            if not (isinstance(r, tuple) and len(r) > 5 and isinstance(r[5], dict)
+                    and r[5].get("ai_participated") is False):
+                return r
+            import time as _t2
+            _t2.sleep(5)
+            r2 = _judge_auto0(item)
+            if isinstance(r2, tuple) and len(r2) > 5 and isinstance(r2[5], dict) \
+                    and r2[5].get("ai_participated") is not False:
+                return r2
+            return r
 
         futs = {pool.submit(_judge_auto, item): i for i, item in enumerate(to_judge)}
         for fut in concurrent.futures.as_completed(futs):
             try:
-                buf.append(fut.result())
+                _res = fut.result()
+                if _res:  # None(如切分全败)不入buf,否则_flush解包崩整批
+                    buf.append(_res)
             except Exception:
                 pass  # 单个窗口失败不影响整体
             done_count += 1

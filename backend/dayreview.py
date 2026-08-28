@@ -205,6 +205,7 @@ def _writeback(emp, r, d0, d1):
             sm = re.sub(r"\[次日复核[^\]]*\]\s*", "", a.summary or "")
             if direction == "upgrade" and sug > (a.risk_score or 0) and a.scenario in _TIERS:
                 a.risk_score = _snap(a.scenario, sug)
+                a.severity = severity_of(a.risk_score)  # ⑦(2026-08-28): 分数升级必须同步severity,否则85分挂MEDIUM徽章
                 a.summary = f"[次日复核↑{a.risk_score}分] " + _factual_rewrite(s, emp, d0, d1, "upgrade", reason)
             elif direction == "downgrade":
                 # 2026-08-24 用户口径: N+1复核发现误报 → 自动关闭(不用人工确认)

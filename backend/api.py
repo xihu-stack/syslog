@@ -448,6 +448,7 @@ def list_alerts(severity: str | None = None, limit: int = 200, when: str | None 
             "status": r.status, "priority": _prio(r),
             "window_start": r.window_start.isoformat() if r.window_start else None,
             "created_at": r.created_at.isoformat()[:16].replace("T", " ") if r.created_at else None,
+            "refreshed_at": r.refreshed_at.isoformat()[:16].replace("T", " ") if getattr(r, "refreshed_at", None) else None,
             "verdict_id": r.verdict_id,
         } for r in q.limit(limit).all()]
     finally:
@@ -687,7 +688,7 @@ def list_exceptions():
     s = Session()
     try:
         rows = s.query(ExceptionRow).filter(
-            (ExceptionRow.expires_at.is_(None)) | (ExceptionRow.expires_at > datetime.utcnow())
+            or_(ExceptionRow.expires_at.is_(None), ExceptionRow.expires_at > datetime.utcnow())
         ).all()
         return [{"id": r.id, "employee": r.employee_id, "signal_type": r.signal_type,
                  "reason": r.reason, "expires_at": r.expires_at.isoformat() if r.expires_at else None}

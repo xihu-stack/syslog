@@ -105,11 +105,25 @@ def _selfcheck_body() -> dict:
                 v.intent = "baseline_deviation"
                 v.risk_score = min(v.risk_score or 30, 45)
                 fixes.append(f"I4 求职无据压回: {v.employee_id}@{str(v.window_start)[:10]}")
+                # ③级联到挂靠告警(2026-08-28 id330): 告警是按旧intent(job_seeking)
+                # 立的案,压回后不跟着处理就变成scenario/分数错位悬挂。无招聘证据
+                # =立案件不成立 → 与I5"完全无据→关闭"同口径处理;已处置/已复核不动。
+                for _a in s.query(AlertRow).filter(AlertRow.verdict_id == v.id).all():
+                    if _a.status in ("FP", "CONFIRMED", "CLOSED") or _reviewed(_a):
+                        continue
+                    _a.status = "CLOSED"
+                    _a.risk_score = min(_a.risk_score or 0, v.risk_score or 0)
+                    _a.severity = severity_of(_a.risk_score or 0)
+                    _a.summary = "[I4压回:窗口无招聘域名证据,自动关闭] " + (_a.summary or "")
+                    fixes.append(f"I4 告警级联关闭: alert#{_a.id} {v.employee_id}/{_a.scenario}")
 
         # ---- I7: verdict_id链接完整性(先于I1,保证后续对齐建立在正确链接上) ----
         for a in s.query(AlertRow).filter(AlertRow.verdict_id.isnot(None)).all():
             v = s.get(VerdictRow, a.verdict_id)
-            if v is not None and v.employee_id == a.employee_id:
+            # ③intent必须一致(2026-08-28 id330案例): I4会把verdict的intent原地
+            # 压回(如job_seeking→baseline_deviation),只查employee放过了这种
+            # "job_seeking告警挂着baseline_deviation研判"的错位悬挂
+            if v is not None and v.employee_id == a.employee_id and v.intent == a.scenario:
                 continue  # 链接正确
             cand = None
             if a.window_start is not None:
@@ -224,6 +238,26 @@ def _selfcheck_body() -> dict:
                     fixes.append(f"I6 档位吸附: {a.employee_id}/{a.scenario} {a.risk_score}->{legal[0]}")
                     a.risk_score = legal[0]
                     a.severity = severity_of(legal[0])
+
+        # ---- I8: 僵尸告警关闭(2026-08-28) ----
+        # 全量重判删verdicts重建,只重触发活跃窗口;其余告警的verdict_id悬空
+        # (08-28实测333/419)或窗口超7天不复现——NEW态永久挂着误导运营
+        # (300条zombie里47条超出重判范围、206条重判前就已悬空)。处置态与
+        # 复核标记一律不动,只清NEW僵尸:
+        #  a) verdict_id悬空(verdict已删且未重触发) → 关
+        #  b) 窗口起点超7天未复现(含规则直出无verdict的告警) → 关
+        _stale_cut = bj_now() - timedelta(days=7)
+        for a in s.query(AlertRow).filter(AlertRow.status == "NEW").all():
+            if _reviewed(a):
+                continue
+            _dead = bool(a.verdict_id) and s.get(VerdictRow, a.verdict_id) is None
+            _old = bool(a.window_start) and a.window_start < _stale_cut
+            if not (_dead or _old):
+                continue
+            _why = "研判已失效(重判未复现)" if _dead else "窗口超7天未复现"
+            a.status = "CLOSED"
+            a.summary = f"[I8自动关闭:{_why}] " + (a.summary or "")[:500]
+            fixes.append(f"I8 关僵尸: alert#{a.id} {a.employee_id}/{a.scenario}({_why[:4]})")
 
         s.commit()
         return {"checked": "all", "fixes": fixes}

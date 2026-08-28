@@ -119,7 +119,8 @@ class AlertRow(Base):
     status = Column(String, default="NEW")  # NEW/TRIAGING/CONFIRMED/FP/CLOSED
     dedup_key = Column(String, index=True)
     window_start = Column(DateTime, index=True)
-    created_at = Column(DateTime, default=bj_now)  # 北京时间
+    created_at = Column(DateTime, default=bj_now)  # 北京时间,首次产生(趋势图历史柱锚点,勿在刷新时改)
+    refreshed_at = Column(DateTime)  # 最近一次复犯刷新时间(2026-08-28:与created_at"首次"语义分离)
 
 
 class ProfileRow(Base):
@@ -198,6 +199,18 @@ def init_db() -> None:
                 conn.execute(__import__("sqlalchemy").text("ALTER TABLE events ADD COLUMN source VARCHAR DEFAULT ''"))
                 conn.commit()
             print("DB: 已自动补 source 列")
+        except Exception:
+            pass
+    # 兼容旧库: 自动补 alerts.refreshed_at(2026-08-28 新增,created_at保持"首次"语义)
+    try:
+        with engine.connect() as conn:
+            conn.execute(__import__("sqlalchemy").text("SELECT refreshed_at FROM alerts LIMIT 1"))
+    except Exception:
+        try:
+            with engine.connect() as conn:
+                conn.execute(__import__("sqlalchemy").text("ALTER TABLE alerts ADD COLUMN refreshed_at DATETIME"))
+                conn.commit()
+            print("DB: 已自动补 alerts.refreshed_at 列")
         except Exception:
             pass
 
