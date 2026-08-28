@@ -792,7 +792,11 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                     _gn += (e.count or 1)
             if _mj or _gn:
                 _off = any(detector._is_off_hours(e.occurred_at) for e in w)
-                _xd = "跨天规则①命中" in (_hist or "")
+                # 跨天标记必须来自"招聘求职"那一行: 行为史里每类风险一行,规则①提示挂在
+                # 行尾(2026-08-28审计案例: 员工连用6天AI助手触发AI行的规则①,整段文本
+                # 搜索误给求职锚点+5,单次猎聘访问75被抬成80)
+                _xd = any("招聘求职" in ln and "跨天规则①命中" in ln
+                          for ln in (_hist or "").splitlines())
                 # 接管看窗口自身计数(含招聘域名才判job);定档用当日累计(高聪案例:
                 # 分散多窗口不降档)。万亮案例: 纯AI窗口被当日累计拔成job80,说明全是
                 # AI域名与场景矛盾(2026-08-20)——窗口无招聘域名的不判求职。

@@ -33,7 +33,9 @@ DEFAULTS = {
         # 全家域名走 risk_whitelist_domains 豁免
     ],
     "personal_email_domains": [
-        "mail.qq.com", "mail.163.com", "mail.126.com", "gmail.com", "outlook.live.com",
+        # outlook.live.com 移除(2026-08-28用户确认): 公司邮箱网页版就是这个地址,
+        # 不是个人邮箱——走 risk_whitelist_domains 豁免,曾致多名员工误报policy_violation
+        "mail.qq.com", "mail.163.com", "mail.126.com", "gmail.com",
         "mail.sina.com.cn", "mail.sohu.com", "mail.10086.cn", "mail.139.com",
         "mail.aliyun.com", "foxmail.com", "mail.yahoo.com",
     ],
@@ -59,6 +61,9 @@ DEFAULTS = {
         # Teams/M365企业通道(2026-08-21用户确认Teams是公司办公软件): 企业邮箱发附件/Teams共享不算外发
         "teams.cloud.microsoft", "teams.microsoft.com", "outlook.cloud.microsoft",
         "smtp.office365.com", "outlook.office365.com", "outlook.office.com",
+        # 公司邮箱网页版(2026-08-28用户确认): outlook.live.com不是个人邮箱,是本公司
+        # 邮箱网页版地址;login.live.com为其登录跳转域。邻近上传推断(±180s)依赖本白名单
+        "outlook.live.com", "login.live.com",
         # 公司内部平台(2026-08-24): ELN电子实验记录本/Certara仿真租户/公司M365租户SharePoint
         "eln.huashen.bio", "huashen.certara.net",
         "helixoncn.sharepoint.com", "helixoncn-my.sharepoint.com",
@@ -82,6 +87,7 @@ DEFAULTS = {
     },
     "work_domains": [
         "office.com", "outlook.com", "cloud.microsoft", "microsoftonline.com", "office365.com",
+        "outlook.live.com", "login.live.com",  # 公司邮箱网页版及其登录域(2026-08-28用户确认)
         "sharepoint.com", "onedrive.com", "azure.com",
         "bing.com", "baidu.com", "google.com", "so.com", "sogou.com",
         "cmbchina.com", "icbc.com.cn", "ccb.com", "boc.cn", "abchina.com", "unionpay.com",
