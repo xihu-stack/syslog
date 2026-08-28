@@ -14,7 +14,7 @@ from db import (AlertRow, EventRow, ExceptionRow, Session, SettingRow, VerdictRo
 from models import CanonicalEvent
 from parser_ipguard import parse_ipguard_excel
 from parser_sangfor import parse_sangfor
-from web_aggregator import aggregate
+from web_aggregator import aggregate, is_noise
 import dicts
 import detector
 import profiles
@@ -276,12 +276,18 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                     and (r.employee_id or '') not in ignored]
         if not new_rows:
             return 0, _alert_count()
+        max_id = max(r.id for r in new_rows)  # 水位按读取全量推进(含下面被滤的噪音行,防跳行)
+        # 存量噪音行过滤(2026-08-28审计): 噪音判定原只在入库聚合时生效,重判/回放读到的
+        # 旧行仍带msn.cn/遥测/ws.chatgpt.com等系统流量——在研判读取口再滤一道,
+        # 新旧事件同一口径;白名单域在is_noise内部豁免(±180s邻近推断依赖)
+        new_rows = [r for r in new_rows
+                    if r.category != "WEB"
+                    or not is_noise(((r.raw or {}).get("domain") or ""), r.target_value or "")]
         new_events = [CanonicalEvent(
             occurred_at=r.occurred_at, employee_id=r.employee_id, device_id=r.device_id,
             category=r.category, action=r.action, target_type=r.target_type or "FILE",
             target_value=r.target_value or "", size_bytes=r.size_bytes or 0, count=r.count or 1,
             source=r.source or "", raw=r.raw or {}) for r in new_rows]
-        max_id = max(r.id for r in new_rows)
         _id_by_hash = {e.event_hash(): r.id for r, e in zip(new_rows, new_events)}
         _held_min_id = None  # 证据等待(2026-08-26朱亮案例): 空目的地上传窗口扣留12分钟
         _HOLD = timedelta(minutes=12)  # 等深信服延迟批(实测~7分钟)到齐再判,目的地可见
@@ -595,7 +601,9 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                     if not occ:
                         continue
                     d = (dom or "").lower()
-                    if cat == "WEB" and d:
+                    # 按天计数滤噪(2026-08-28审计): ws.chatgpt.com心跳帧让"每天挂着
+                    # AI网页"变成AI助手跨天≥4天→规则①误触发,天数口径只数真实访问
+                    if cat == "WEB" and d and not is_noise(d, tv or ""):
                         rc = _dc.risk_class(d)
                         if rc:
                             by_day_label[rc][occ.strftime("%m-%d")] += 1

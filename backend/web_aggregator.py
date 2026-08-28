@@ -17,14 +17,46 @@ NOISE_HINTS = [
     "doubleclick", "googlesyndication", "googletagmanager", "google-analytics", "google.",
     "hm.baidu.com", "hmma.baidu.com", "px.ads", "adservice", "scorecardresearch",
     "cnzz", "umeng", "push", "telemetry", "sns-stat",
+    # 基础设施/后台流量(2026-08-28全量审计: 60人高分窗口被系统流量灌满,占窗口事件
+    # 大头却无风险语义): Win11小组件新闻流msn.cn / M365遥测svc / Windows推送更新 /
+    # 登录配置端点 / VSCode后台同步 / 阿里SDK遥测 / QQ心跳代理 / 广告交易平台 /
+    # md-prod-simcon(51人共用的Azure端点)
+    "msn.cn", "wns.notify", "onecdn", "ms-acdc", "msidentity.com", "windowsupdate",
+    "vscode-cdn", "vscode-sync", "adblockplus", "mqtt.aliyuncs", "log.aliyuncs",
+    "jsonproxy", "rubiconproject", "config.edge.skype", "md-prod-simcon",
 ]
 # 噪声资源扩展名（URL 路径后缀）
 NOISE_EXT = (".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".ico", ".woff", ".woff2",
              ".svg", ".ttf", ".otf", ".map", ".webp")
 
 
+def _wl_skip(d: str) -> bool:
+    """公司白名单域不滤: ±180s网页上传邻近推断依赖窗口内的白名单浏览事件
+    (如*.svc.cloud.microsoft虽属遥测族,但匹配cloud.microsoft白名单后缀,
+    滤掉会砍断'上传邻近公司M365通道'的推断锚点)。"""
+    try:
+        import dicts
+        for w in dicts.get("risk_whitelist_domains") or []:
+            if d == w or d.endswith("." + w):
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def is_noise(domain: str, url: str) -> bool:
     d = (domain or "").lower()
+    # 非域名占位(2026-08-28审计): sangfor把协议/应用名塞进domain字段
+    # (snmp 1727条/未识别应用 1012条出现在高分窗口),不是网站访问
+    if not d or "." not in d:
+        return True
+    if _wl_skip(d):
+        return False
+    # websocket传输帧域(ws.chatgpt.com等): 每条消息/心跳一条日志,把"挂了30分钟
+    # 网页"记成"访问数千次"(2026-08-28审计单人单日7326条),频次档/跨天计数全被
+    # 灌水——传输帧不是访问;主域(chatgpt.com等)事件保留,使用信号不丢
+    if d.startswith("ws.") or d.startswith("ab.chatgpt."):
+        return True
     if any(h in d for h in NOISE_HINTS):
         return True
     u = (url or "").lower()

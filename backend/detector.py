@@ -54,6 +54,8 @@ def anchor_score(intent, window, day_total=None) -> int | None:
     修正: 高频(≥10次)+10 / 中频(≥4次)+5(频次用当日累计day_total——窗口只是
     60分钟切片,单窗口3次但全天10次的情况按10次分层,2026-08-19);DOC写/外发
     动作+10;深夜(22-7点)+5;封顶90
+    2026-08-28收紧: 频次回退只数风险类WEB+DOC(旧版全窗口事件把系统噪音当高频);
+    预谋+10须同名文件链(写的文件==外发的文件);0字节空文件单发封顶75
     频次与偏离驱动的场景(job_seeking/baseline_deviation)不接管——输入不同分不同,
     属可理解的客观差异。窗口全是遥测子域时不接管(保留LLM低分例外)。"""
     if intent not in ("policy_violation", "data_exfiltration") or not window:
@@ -97,14 +99,30 @@ def anchor_score(intent, window, day_total=None) -> int | None:
         return None
     hours = [e.occurred_at.hour for e in window if e.occurred_at]
     night = any(h < 7 or h >= 22 for h in hours)
-    cnt = day_total if day_total else sum(e.count or 1 for e in window)
-    # 本地写+10=预谋信号(编辑/生成文档后外发)。但图片类排除(2026-08-24):
-    # 截图发送前必然先落盘保存,系统行为被误当预谋→所有截图外发机械顶到90,
-    # 与敏感文档外发同级,稀释最高档区分度(田纪元1张SendPhotoes.png=90案例)
+    # 频次口径(2026-08-28审计): 回退档只数风险类WEB+DOC——旧版数全窗口事件,
+    # msn/遥测等系统流量把外发窗口几乎必然抬进"≥10次"档白送+10(空『工作簿1.xlsx』
+    # 0MB上传=90分案例: 70+噪音频次10+预谋10,全程无真实高频)
+    if day_total:
+        cnt = day_total
+    else:
+        cnt = sum((e.count or 1) for e in window
+                  if e.category == "DOC"
+                  or (e.category == "WEB"
+                      and dicts.risk_class(((getattr(e, "raw", None) or {}).get("domain") or "").lower())))
+    # 本地写+10=预谋信号。图片类排除(2026-08-24): 截图发送前必然先落盘保存,
+    # 系统行为被误当预谋→所有截图外发机械顶到90,稀释最高档区分度(田纪元案例)。
+    # 链条收紧(2026-08-28审计): 须【写的文件==外发的文件】才算组装外发链——
+    # 旧版任意非图片写动作都+10,"先保存再上传"的正常办公流全被当预谋
     _IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".heic")
-    has_write = any(e.category == "DOC" and e.action in WRITE_ACTIONS
-                    and not str(e.target_value or "").lower().endswith(_IMG_EXT)
-                    for e in window)
+
+    def _base(n):
+        return str(n or "").rsplit("\\", 1)[-1].rsplit("/", 1)[-1].lower()
+    _wn = {_base(e.target_value) for e in window
+           if e.category == "DOC" and e.action in WRITE_ACTIONS
+           and not str(e.target_value or "").lower().endswith(_IMG_EXT)}
+    _sn = {_base(e.target_value) for e in window
+           if e.category == "DOC" and e.action in ("SEND", "UPLOAD")}
+    has_write = bool(_wn & _sn)
     score = 75 if intent == "policy_violation" else 70
     if intent == "data_exfiltration":
         if cnt >= 10:
@@ -121,6 +139,11 @@ def anchor_score(intent, window, day_total=None) -> int | None:
                  and (e.raw or {}).get("channel") not in (None, "", "LOCAL")
                  and not _wl_dest(e)]
     _send_dests = [dicts.dest_host(e.raw or {}) for e in _send_evs]
+    # 0字节空文件单发(2026-08-28审计): 无内容可泄,末尾统一封顶75,
+    # 预谋/频次/深夜修正不再抬档(空『工作簿1.xlsx』曾到90)
+    _zero_send = (len(_send_evs) == 1
+                  and not ((getattr(_send_evs[0], "size_bytes", 0) or 0)
+                           or ((_send_evs[0].raw or {}).get("size_bytes") or 0)))
     if _send_dests:
         _rare = any(dicts.risk_class(d) in ("网盘/云盘", "个人邮箱") for d in _send_dests)
         # 单次纯图片外发(2026-08-26用户拍板): 一张截图与一份试验方案不该同档——
@@ -134,8 +157,11 @@ def anchor_score(intent, window, day_total=None) -> int | None:
         # 默认名截图族(2026-08-26审计,任莉/姜苏泽案例): 整窗外发全是SendPhotoes/
         # 微信图片/屏幕截图这类系统默认名(与file_sensitivity"无语义默认名"同口径)
         # 且目的地非稀有通道时,不吃微信日常通道80档——单张75(用户拍板),高频
-        # 多张也只维持75,让频次/深夜修正自己说话;真落到网盘/邮箱(稀有通道)不降
-        _AUTO_NAME = ("sendphotoes", "微信图片", "屏幕截图", "screenshot", "mmexport")
+        # 多张也只维持75,让频次/深夜修正自己说话;真落到网盘/邮箱(稀有通道)不降。
+        # 族扩容(2026-08-28审计): Office默认名(工作簿1/新建…/演示文稿1/untitled)
+        # 与截图同性质——无语义、常为空壳或随手另存,不吃80档
+        _AUTO_NAME = ("sendphotoes", "微信图片", "屏幕截图", "screenshot", "mmexport",
+                      "工作簿", "演示文稿", "新建", "untitled", "未命名")
         _all_auto = all(any(k in str(e.target_value or "").lower() for k in _AUTO_NAME)
                         for e in _send_evs)
         if _all_auto and not _rare:
@@ -143,6 +169,8 @@ def anchor_score(intent, window, day_total=None) -> int | None:
         score = max(score, _floor)
     if night:
         score += 5
+    if _zero_send:
+        score = min(score, 75)  # 空文件无内容可泄: 各路修正后仍封顶75
     return min(score, 90)
 
 SYSTEM_PROMPT = (
@@ -173,7 +201,7 @@ SYSTEM_PROMPT = (
     "• AI助手(chatgpt/deepseek/豆包/kimi/copilot等) → 工作时段低频(1-3次) 5-15(正常使用)；反复高频(≥10次)或凌晨 → 35-48, baseline_deviation(重度依赖AI、异常,但纯对话无外发动作≠数据外发)；仅当窗口同时含真实外发(上传文件到AI/网盘/邮箱/文件助手) → 才判 data_exfiltration 60-75\n"
     "• 凌晨 + 仅常规网站(无外发通道) → 25-35\n"
     "• 工作时段 + 常规网站/普通微信 → 5-15\n\n"
-    "【跨天模式规则(结合近7天行为史判断)】①同类风险访问单日低频但累计≥4天(【每天仅1次也算】——累计天数是关键,不是单日频次) → 属进行中行为,招聘类【一律判 job_seeking 且分数≥50进告警】(重点站→60-70;一般站如领英→50-60,经常访问必须注意但分数不用太高;系统锚点已强制),explanation注明累计N天;②访问招聘网站+同期存在简历/离职类敏感文档操作 → job_seeking 65-80(强关联信号);③频率逐日爬坡 → 在①基础上再+5。孤立首次/单日低频不适用,严禁仅因行为史存在就无视当前窗口实际频次。\n"
+    "【跨天模式规则(结合近7天行为史判断)】①同类风险访问单日低频但累计≥4天(【每天仅1次也算】——累计天数是关键,不是单日频次) → 属进行中行为,招聘类【一律判 job_seeking 且分数≥50进告警】(重点站→60-70;一般站如领英→50-60,经常访问必须注意但分数不用太高;系统锚点已强制),explanation注明累计N天;②访问招聘网站+同期存在简历/离职类敏感文档操作 → job_seeking 65-80(强关联信号);③频率逐日爬坡 → 在①基础上再+5。孤立首次/单日低频不适用,严禁仅因行为史存在就无视当前窗口实际频次。【①的场景作用域铁律】行为史按风险类逐行给出,每行的跨天标记只对该类自身生效:判定某场景时只看同类那一行的累计天数(判求职只看招聘求职行、判邮箱违规只看个人邮箱行);其他场景(AI助手/远程控制等)的跨天标记仅作背景,严禁据此给当前场景升档或写进说明(2026-08-28审计: 多个邮箱/AI窗口引用了他场景的跨天行)。\n"
     "【风险域名不属于基线】招聘/网盘/邮箱/文件助手等风险类域名【永不计入个人基线或全局常见】——即使该员工天天访问、即使在其常用域名中,也绝不构成正常理由;天天访问恰是进行中风险信号(跨天模式)。\n"
     "【基线偏离的使用边界】'域名不在个人基线中'本身≠严重偏离——每人每天都会首次遇到大量新域名(见全局参照)。偏离档位必须综合:频次是否远超本人常态+时段(凌晨)+多外发通道叠加来判断;严禁仅以'首次出现/不在基线'把低频访问(≤5次)判为severe或抬进高危档。\n"
     "【intent 由窗口的主风险信号决定——勿被弱信号带偏】招聘网站【单次/低频夹杂在其他信号中≠job_seeking】:job_seeking 仅用于招聘网站反复高频(≥3次)/凌晨为主信号的窗口；若窗口主风险是邮箱/网盘/外发,按主风险定intent,不要因含1次领英/招聘就判求职。\n"
