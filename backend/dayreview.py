@@ -45,6 +45,16 @@ def _snap(scen, score):
     return legal[0] if legal else max(tiers)
 
 
+def _snap_down(scen, score):
+    """降档吸附(2026-08-28): 降分路径吸附到≤该分的最近合法档,与升级路径
+    _snap(向上吸)对称——否则出现78分非档位分却挂CRITICAL徽章(运营审计A5)。"""
+    tiers = _TIERS.get(scen)
+    if not tiers:
+        return score
+    legal = sorted((x for x in tiers if x <= score), reverse=True)
+    return legal[0] if legal else score
+
+
 def _day_bounds(days_ago=1):
     d0 = bj_now() - timedelta(days=days_ago)
     return d0.replace(hour=0, minute=0, second=0, microsecond=0), d0.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
@@ -171,11 +181,21 @@ def _factual_rewrite(s, emp, d0, d1, direction, reason):
 
 def _writeback(emp, r, d0, d1):
     direction = r.get("direction") or "keep"
-    if direction == "keep":
-        # 维持原判也标注(2026-08-21用户口径: 今日前的告警都应是复核过的,
-        # 不能全挂'实时'标签)——轻量前缀,不带理由长文
-        s = Session()
-        try:
+    s = Session()
+    try:
+        # ③(2026-08-28运营审计) 主导场景: 建议分只作用于当日最高风险研判对应
+        # 场景的告警行。原先对当窗所有行统一改分——job_seeking行被写上外发
+        # 升级理由的95分(2026-08-28审计案例),模式告警(mass_exfil等无对应
+        # 研判意图)也被误降分。非主导行只标注已复核,分数不动。
+        dom = None
+        vs = s.query(VerdictRow).filter(VerdictRow.employee_id == emp,
+                                        VerdictRow.window_start >= d0,
+                                        VerdictRow.window_start < d1).all()
+        if vs:
+            dom = max(vs, key=lambda x: x.risk_score or 0).intent
+        if direction == "keep":
+            # 维持原判也标注(2026-08-21用户口径: 今日前的告警都应是复核过的,
+            # 不能全挂'实时'标签)——轻量前缀,不带理由长文
             for a in s.query(AlertRow).filter(AlertRow.employee_id == emp).all():
                 if a.status in ("FP", "CLOSED"):
                     continue
@@ -187,22 +207,20 @@ def _writeback(emp, r, d0, d1):
                 elif not sm.startswith("[次日复核"):
                     a.summary = f"[次日复核:维持] {sm}"
             s.commit()
-        except Exception:
-            s.rollback()
-        finally:
-            s.close()
-        return
-    sug = int(r.get("suggested_score") or 0)
-    reason = (r.get("reason") or "")[:80]
-    review = (r.get("review") or "")[:160]
-    s = Session()
-    try:
+            return
+        sug = int(r.get("suggested_score") or 0)
+        reason = (r.get("reason") or "")[:80]
         for a in s.query(AlertRow).filter(AlertRow.employee_id == emp).all():
             if a.status in ("FP", "CLOSED"):
                 continue
             if not (a.window_start and d0 <= a.window_start < d1):
                 continue
             sm = re.sub(r"\[次日复核[^\]]*\]\s*", "", a.summary or "")
+            if dom is not None and a.scenario != dom:
+                # 非主导场景行: 只留复核痕迹,不改分不改结论
+                if not sm.startswith("[次日复核"):
+                    a.summary = f"[次日复核:维持] {sm}"
+                continue
             if direction == "upgrade" and sug > (a.risk_score or 0) and a.scenario in _TIERS:
                 a.risk_score = _snap(a.scenario, sug)
                 a.severity = severity_of(a.risk_score)  # ⑦(2026-08-28): 分数升级必须同步severity,否则85分挂MEDIUM徽章
@@ -218,8 +236,9 @@ def _writeback(emp, r, d0, d1):
                     print(f"[dayreview] 自动关闭: {emp}/{a.scenario} {a.risk_score}->{sug}分", flush=True)
                 else:
                     a.summary = f"[次日复核:疑误报——{reason}] {sm}"
-                    # 分数仍>=50: 对齐但不关闭(保留人工决策权)
-                    a.risk_score = min(a.risk_score or 0, sug)
+                    # 分数仍>=50: 对齐但不关闭(保留人工决策权);吸附到≤该分的
+                    # 合法档(2026-08-28),与升级路径对称
+                    a.risk_score = _snap_down(a.scenario, min(a.risk_score or 0, sug))
                     a.severity = severity_of(a.risk_score)
             else:
                 # upgrade但建议分未超过当前分/非锚点场景: 也标注已复核,

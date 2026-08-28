@@ -10,6 +10,10 @@
   I7 verdict_id必须指向本人研判: 全量重判会删旧verdicts重建,行号id被复用,
      老告警的verdict_id会指到别人的研判(2026-08-24审计99条错位)——错位/悬空
      时按(同人+同意图+窗口±3h)重连,找不到则置NULL让告警独立存在
+  I9 dedup_key归一化: 旧版代码产出过尾带空段的key(emp|intent|),pipeline
+     按干净key查重永远查不到→同人同意图双行NEW(2026-08-28运营审计发现)
+  I10 说明文本卫生: 存量幻觉占位符〔本窗口日期+时段〕照抄(生成侧08-26已
+     清理,旧行未清)、I5事实模板空目的地产出"→;"半成品箭头
 复核标记保护: 带[N+1复核/[次日复核/[研判已降至 前缀的告警,分数是复核结论
      (N+1降分只写告警不改研判),I1/I6对齐会把它改回研判分造成拉锯——一律跳过。
 """
@@ -20,7 +24,7 @@ from collections import Counter, defaultdict
 from datetime import timedelta
 
 import dicts
-from db import AlertRow, EventRow, ExceptionRow, Session, VerdictRow, bj_now, severity_of
+from db import AlertRow, EventRow, ExceptionRow, FeedbackRow, Session, VerdictRow, bj_now, severity_of
 
 _DOC_W = ("COPY", "MOVE", "DELETE", "UPLOAD", "SEND", "PRINT", "BURN")
 _SIG = {"policy_violation": ("网盘/云盘", "个人邮箱"),
@@ -239,6 +243,29 @@ def _selfcheck_body() -> dict:
                     a.risk_score = legal[0]
                     a.severity = severity_of(legal[0])
 
+        # ---- I9: dedup_key归一化+同键合并(2026-08-28) ----
+        # 旧版代码产出过尾带空段的key(emp|intent|),pipeline按干净key
+        # (emp|intent)查重永远查不到老行→同人同意图双行NEW(2026-08-28
+        # 运营审计: data_exfiltration双行并存)。归一化后与api改名修复同规则
+        # 合并;处置态/有反馈的行不删不归一(保留处置痕迹,且避免与干净行
+        # 同key造成下轮重复处理)。
+        _fb_ids = {r[0] for r in s.query(FeedbackRow.alert_id).all()}
+        for a in s.query(AlertRow).filter(AlertRow.dedup_key.like("%|")).all():
+            if not a.dedup_key:
+                continue
+            nk = a.dedup_key.rstrip("|")
+            if nk == a.dedup_key or not nk:
+                continue
+            dup = s.query(AlertRow).filter(AlertRow.dedup_key == nk).first()
+            if dup is not None:
+                if a.status in ("FP", "CONFIRMED") or a.id in _fb_ids:
+                    continue  # 有处置/反馈痕迹: 保留原key不合并
+                fixes.append(f"I9 合并变体key告警: alert#{a.id} {a.employee_id}/{a.scenario}(并入#{dup.id})")
+                s.delete(a)
+            else:
+                a.dedup_key = nk
+                fixes.append(f"I9 归一化key: alert#{a.id} {a.employee_id}/{a.scenario}")
+
         # ---- I8: 僵尸告警关闭(2026-08-28) ----
         # 全量重判删verdicts重建,只重触发活跃窗口;其余告警的verdict_id悬空
         # (08-28实测333/419)或窗口超7天不复现——NEW态永久挂着误导运营
@@ -248,7 +275,12 @@ def _selfcheck_body() -> dict:
         #  b) 窗口起点超7天未复现(含规则直出无verdict的告警) → 关
         _stale_cut = bj_now() - timedelta(days=7)
         for a in s.query(AlertRow).filter(AlertRow.status == "NEW").all():
-            if _reviewed(a):
+            # 死锁豁免(2026-08-28运营审计): [重判后复核]前缀是I5机械恢复的
+            # 事实改写,不是人/AI复核结论——但它让_reviewed()为真,I8永不关它,
+            # 90分"原窗口无留存明细"的行永久挂NEW(2026-08-28审计案例)。这类行
+            # (前缀+无verdict链接)超龄照关: 复犯会走dedup刷新复活,不丢信号。
+            _mech = (a.summary or "").startswith("[重判后复核") and not a.verdict_id
+            if _reviewed(a) and not _mech:
                 continue
             _dead = bool(a.verdict_id) and s.get(VerdictRow, a.verdict_id) is None
             _old = bool(a.window_start) and a.window_start < _stale_cut
@@ -258,6 +290,24 @@ def _selfcheck_body() -> dict:
             a.status = "CLOSED"
             a.summary = f"[I8自动关闭:{_why}] " + (a.summary or "")[:500]
             fixes.append(f"I8 关僵尸: alert#{a.id} {a.employee_id}/{a.scenario}({_why[:4]})")
+
+        # ---- I10: 说明文本卫生(2026-08-28) ----
+        # 存量残留: ①旧模型把示例占位符〔本窗口日期+时段〕照抄进说明
+        # (2026-08-28审计发现存量行,生成侧08-26已有清理);②I5事实模板
+        # 目的地为空时产出"xxx→;"半成品箭头。机械可修的两类就地清洗,
+        # 用户处置结论(FP/CONFIRMED)不动。
+        for a in s.query(AlertRow).filter(
+                AlertRow.status.notin_(("FP", "CONFIRMED"))).all():
+            sm = a.summary or ""
+            if "〔" in sm:
+                sm = sm.replace("〔本窗口日期+时段〕",
+                                str(a.window_start or "")[:10] or "当日")
+                sm = sm.replace("〔", "").replace("〕", "")
+                a.summary = sm
+                fixes.append(f"I10 清占位符: alert#{a.id} {a.employee_id}")
+            if "→;" in sm:
+                a.summary = sm.replace("→;", "→未识别;")
+                fixes.append(f"I10 补空目的地: alert#{a.id} {a.employee_id}")
 
         s.commit()
         return {"checked": "all", "fixes": fixes}
