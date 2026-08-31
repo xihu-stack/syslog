@@ -128,17 +128,35 @@ def scan_trend_spike(s) -> int:
         prev_send = sum(1 for e in prev if not _is_whitelisted_dest(e))
         # 外发次数突增: 上周≥3次,本周≥3倍
         if prev_send >= 3 and cur_send >= prev_send * 3:
-            day = now.strftime("%m-%d")
-            key = f"{emp}|trend_exfil|{day}"
-            if not s.query(AlertRow).filter_by(dedup_key=key).first():
+            # 周键(2026-08-31): 比较本身是"本周vs上周"的周级事实,原按日键在趋势
+            # 持续期间每天克隆一条75分NEW(当日审计: 同人4条并排且数字三天不变)。
+            # 同一ISO周只留一行,周内数据变化才刷新;处置态不复活不重置(08-28口径)。
+            iso = now.isocalendar()
+            key = f"{emp}|trend_exfil|{iso[0]}-W{iso[1]:02d}"
+            sm = (f"{emp}本周外发{cur_send}次(上周{prev_send}次),"
+                  f"环比增长{cur_send/max(prev_send,1):.0f}倍,属外发量突增")
+            existing = s.query(AlertRow).filter_by(dedup_key=key).first()
+            if not existing:
                 s.add(AlertRow(employee_id=emp, scenario="trend_spike",
                                severity="HIGH", risk_score=75,
-                               summary=(f"{emp}本周外发{cur_send}次(上周{prev_send}次),"
-                                        f"环比增长{cur_send/max(prev_send,1):.0f}倍,属外发量突增"),
-                               dedup_key=key,
+                               summary=sm, dedup_key=key,
                                window_start=now, created_at=bj_now(), status="NEW"))
                 created += 1
                 print(f"[pattern] {emp} 外发环比{cur_send}vs{prev_send} -> 75分", flush=True)
+            elif existing.status == "NEW" and (existing.summary or "") != sm:
+                existing.summary = sm  # 数字有变才刷说明/窗口,不变不无谓续命(否则永不超龄)
+                existing.window_start = now
+        # 日更键时代的旧快照收编(无条件): 同一趋势的按日克隆行结构上已被周键
+        # 取代,不收编则每人每天挂一条直到7天超龄,详情页并排数条同文案
+        for old in s.query(AlertRow).filter(AlertRow.employee_id == emp,
+                                            AlertRow.scenario == "trend_spike",
+                                            AlertRow.status == "NEW").all():
+            tail = (old.dedup_key or "").rsplit("|", 1)[-1]
+            if "-W" in tail or (old.summary or "").startswith("["):
+                continue  # 周键行/带标记的复核行不动
+            old.status = "CLOSED"
+            old.summary = "[周期合并:同一环比趋势已按周聚合,此日快照关闭] " + (old.summary or "")[:120]
+            print(f"[pattern] {emp} trend日快照并周键 alert#{old.id}", flush=True)
     return created
 
 
