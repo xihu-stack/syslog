@@ -259,6 +259,23 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
     3) 写入：一个短事务批量落 verdicts/alerts + 推进水位
     """
     init_db()
+    # 重判请求落盘为标志(2026-08-31): 直接回拨水位会被在跑增量run收尾盖章碾掉
+    # (LLM恢复后run分钟级,外部/按钮写水位几乎必撞在跑run)。改为run开头原子消费
+    # 标志——删verdicts+回拨发生在引擎自己手里,期间不可能有并发run(单飞锁外护)
+    if dicts.get_setting("rejudge_pending"):
+        dicts.set_setting("rejudge_pending", "")
+        with write_lock:
+            _rj = Session()
+            try:
+                _rj.query(VerdictRow).delete()
+                _row = (_rj.query(EventRow)
+                        .filter(EventRow.occurred_at >= bj_now() - timedelta(days=7))
+                        .order_by(EventRow.id).first())
+                dicts.set_setting("last_judged_event_id", str(_row.id) if _row else "0")
+                _rj.commit()
+            finally:
+                _rj.close()
+        print("[detect] 消费rejudge_pending: verdicts已清+水位回拨7天", flush=True)
     # ---- 1) 读取阶段（只读 session，不持写锁）----
     rs = Session()
     try:
@@ -1090,23 +1107,10 @@ def rejudge_all(risk_threshold: int = 50) -> dict:
     """重置研判水位到7天前 → 异步按当前规则重判近7天(修复模型/prompt后重跑用)。
     告警行保留: 重判后复犯刷新逻辑会更新分数/说明/verdict_id,而状态(已知晓/误报)
     不动——用户处置历史不丢(2026-08-19改造;旧版删告警导致处置状态全重置)。
-    范围限近7天: 全量历史回放窗口过万会拖死(2026-08-19实测),且告警/TOP均为7天口径。"""
-    from datetime import timedelta as _td5
-    init_db()
-    s = Session()
-    try:
-        s.query(VerdictRow).delete()
-        row = s.query(EventRow).filter(EventRow.occurred_at >= bj_now() - _td5(days=7)) \
-            .order_by(EventRow.id).first()
-        wm_val = str(row.id) if row else "0"
-        wm = s.query(SettingRow).filter_by(key="last_judged_event_id").first()
-        if wm:
-            wm.value = wm_val
-        else:
-            s.add(SettingRow(key="last_judged_event_id", value=wm_val))
-        s.commit()
-    finally:
-        s.close()
+    范围限近7天: 全量历史回放窗口过万会拖死(2026-08-19实测),且告警/TOP均为7天口径。
+    实现(2026-08-31): 只落rejudge_pending标志,由run_detection开头原子消费——
+    旧版直接改水位,与在跑增量run的收尾盖章竞态,LLM时代run分钟级几乎必被碾掉。"""
+    dicts.set_setting("rejudge_pending", "1")
     return start_detection(risk_threshold)
 
 
