@@ -49,9 +49,13 @@ def _verdict_sig(s, v):
 
 
 def _reviewed(a):
-    """带复核标记的告警: 分数由N+1复核结论决定(降分只写告警),对齐类不变量跳过。"""
+    """带复核标记的告警: 分数由N+1复核结论决定(降分只写告警),对齐类不变量跳过。
+    [重判后复核]不算(2026-08-31): 它是I5机械恢复的事实改写,不是人/AI复核结论
+    ——此前误列入保护,重判后这批行既不被I1对齐刷新、也不被I8关闭,terse模板
+    文案+旧锚点分数挂到窗口超7天才滚动清零。现交还I1对齐(有新verdict即刷
+    文案/分数)与I8处置(未复现即关)。"""
     sm = a.summary or ""
-    return (sm.startswith(("[次日复核", "[N+1复核", "[重判后复核"))
+    return (sm.startswith(("[次日复核", "[N+1复核"))
             or "[研判已降至" in sm or "[白名单" in sm or "[巡检" in sm)
 
 
@@ -173,6 +177,12 @@ def _selfcheck_body() -> dict:
                     a.verdict_id, a.risk_score = v.id, v.risk_score
                     a.severity = severity_of(v.risk_score or 0)
                     a.summary = v.explanation or a.summary
+                    # 对齐后低于告警门槛(2026-08-31): 最新口径已不构成告警的行
+                    # 关闭并留痕——否则NEW列表挂着25~45分的"非告警级告警"
+                    if (v.risk_score or 0) < 50 and a.status == "NEW":
+                        a.status = "CLOSED"
+                        a.summary = f"[重判对齐:{v.risk_score}分,已不构成告警] " + (a.summary or "")
+                        fixes.append(f"I1 降槛关闭: {a.employee_id}/{a.scenario} 对齐{v.risk_score}分")
             elif a.status == "NEW":
                 # I5: 查近7天真实行为
                 sig = Counter()
@@ -266,27 +276,41 @@ def _selfcheck_body() -> dict:
                 a.dedup_key = nk
                 fixes.append(f"I9 归一化key: alert#{a.id} {a.employee_id}/{a.scenario}")
 
-        # ---- I8: 僵尸告警关闭(2026-08-28) ----
+        # ---- I8: 僵尸告警关闭(2026-08-28; 2026-08-31二修) ----
         # 全量重判删verdicts重建,只重触发活跃窗口;其余告警的verdict_id悬空
-        # (08-28实测333/419)或窗口超7天不复现——NEW态永久挂着误导运营
-        # (300条zombie里47条超出重判范围、206条重判前就已悬空)。处置态与
-        # 复核标记一律不动,只清NEW僵尸:
+        # (08-28实测333/419)或窗口超7天不复现——NEW态永久挂着误导运营。
+        # 处置态(FP/CONFIRMED)不动,只清NEW僵尸:
         #  a) verdict_id悬空(verdict已删且未重触发) → 关
         #  b) 窗口起点超7天未复现(含规则直出无verdict的告警) → 关
+        #  c) 机械恢复行+窗口在全量重判覆盖范围内+研判链接已断 → 即刻关
+        # 二修(2026-08-31审计20条永不关闭的NEW):
+        #  ① 复核结论保护的本意是"分数/文案不被机械改写拉锯",不是永生——
+        #     超龄未复现照关(否则trend_spike日更类行每人每天挂一条,永不清理);
+        #  ② [重判后复核]前缀已从_reviewed剔除(它是I5机械恢复非复核结论),
+        #     机械行走正常a/b/c路径,重判完成后c)立即清,不等7天滚动。
         _stale_cut = bj_now() - timedelta(days=7)
+        _rjf_dt = None
+        try:
+            _rjf = dicts.get_setting("last_rejudge_from") or ""
+            if _rjf:
+                _rjf_dt = _dt.fromisoformat(_rjf)
+        except Exception:
+            _rjf_dt = None
         for a in s.query(AlertRow).filter(AlertRow.status == "NEW").all():
-            # 死锁豁免(2026-08-28运营审计): [重判后复核]前缀是I5机械恢复的
-            # 事实改写,不是人/AI复核结论——但它让_reviewed()为真,I8永不关它,
-            # 90分"原窗口无留存明细"的行永久挂NEW(2026-08-28审计案例)。这类行
-            # (前缀+无verdict链接)超龄照关: 复犯会走dedup刷新复活,不丢信号。
-            _mech = (a.summary or "").startswith("[重判后复核") and not a.verdict_id
-            if _reviewed(a) and not _mech:
-                continue
             _dead = bool(a.verdict_id) and s.get(VerdictRow, a.verdict_id) is None
             _old = bool(a.window_start) and a.window_start < _stale_cut
-            if not (_dead or _old):
+            # c) 重判已覆盖该窗口却未再触发 = 现行口径下不再告警;
+            #    -3h容差吸收跨覆盖起点的窗口;链接仍活的留给I1对齐刷新
+            _rjmiss = bool(
+                _rjf_dt and a.window_start and a.verdict_id is None
+                and a.window_start >= _rjf_dt - timedelta(hours=3)
+                and (a.summary or "").startswith("[重判后复核"))
+            if _reviewed(a) and not (_old or _rjmiss):
+                continue  # 真复核结论: 仅放行超龄/重判未复现两类关闭
+            if not (_dead or _old or _rjmiss):
                 continue
-            _why = "研判已失效(重判未复现)" if _dead else "窗口超7天未复现"
+            _why = ("全量重判未复现" if _rjmiss
+                    else "研判已失效(重判未复现)" if _dead else "窗口超7天未复现")
             a.status = "CLOSED"
             a.summary = f"[I8自动关闭:{_why}] " + (a.summary or "")[:500]
             fixes.append(f"I8 关僵尸: alert#{a.id} {a.employee_id}/{a.scenario}({_why[:4]})")

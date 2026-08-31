@@ -275,7 +275,12 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                             .filter(EventRow.occurred_at >= bj_now() - timedelta(days=7))
                             .order_by(EventRow.id).first())
                     _wmv = str(_row.id) if _row else "0"
-                    for _k, _v in (("rejudge_pending", ""), ("last_judged_event_id", _wmv)):
+                    # 重判覆盖起点暂存(2026-08-31): run收尾盖章时升格为last_rejudge_from,
+                    # selfheal据此立即关"范围内未复现"的机械恢复行——run中途失败不升格
+                    # (水位也未推进,下轮从回拨点重跑覆盖同样范围)
+                    _rjf = str(_row.occurred_at)[:19] if _row else ""
+                    for _k, _v in (("rejudge_pending", ""), ("last_judged_event_id", _wmv),
+                                   ("rejudge_from_pending", _rjf)):
                         _sr = _rj.query(SettingRow).filter_by(key=_k).first()
                         if _sr:
                             _sr.value = _v
@@ -991,6 +996,17 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 wm_row.value = str(_wm_final)
             else:
                 ws.add(SettingRow(key="last_judged_event_id", value=str(_wm_final)))
+            # 重判覆盖起点升格(2026-08-31): 与水位同事务——本轮跑完覆盖范围才生效,
+            # selfheal的"重判未复现即关"以它为准,中途失败不会误标已覆盖
+            _pend = ws.query(SettingRow).filter_by(key="rejudge_from_pending").first()
+            if _pend:
+                _val = _pend.value or ""
+                ws.delete(_pend)
+                _act = ws.query(SettingRow).filter_by(key="last_rejudge_from").first()
+                if _act:
+                    _act.value = _val
+                else:
+                    ws.add(SettingRow(key="last_rejudge_from", value=_val))
             ws.commit()
         finally:
             ws.close()
