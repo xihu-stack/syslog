@@ -3,7 +3,9 @@
 固化2026-08-19/20连续审计中用户发现的所有问题类型为不变量,自动巡检+修复。
 不变量清单(每条都源于真实案例):
   I1 告警场景必须与研判窗口证据一致(万亮: job告警窗口全是AI域名)
-  I2 告警分=研判分, verdict_id不悬空(告警挂在被删/改意图的研判上)
+  I2 告警分=研判分, verdict_id不悬空(告警挂在被删/改意图的研判上);
+     2026-08-31补兜底段: I1只盖_SIG两场景,其余场景(如baseline_deviation)
+     由I2段对齐最新研判分——重判降分后告警不再挂旧分
   I3 豁免场景无告警行, 豁免研判带[已豁免]前缀(展佳: HR豁免后研判高分可见)
   I4 求职研判窗口必须含招聘域名(纯AI窗口被当日累计裹挟)
   I5 无窗口证据但近7天有真实行为的告警→改写说明保留; 完全无据→关闭
@@ -233,6 +235,32 @@ def _selfcheck_body() -> dict:
                 else:
                     a.status = "CLOSED"
                     fixes.append(f"I5 关闭无据: {a.employee_id}/{a.scenario}")
+
+        # ---- I2全场景兜底(2026-08-31): 告警分=研判分不只_SIG两场景 ----
+        # I1只覆盖policy_violation/data_exfiltration,baseline_deviation等场景的
+        # 告警在重判降分后仍挂旧分(当日案例: 55分NEW而所挂研判已重判40,55>50
+        # auto_close也清不掉,永久挂待处理)。对齐目标=同人同意图最新窗口研判
+        # (与I1/pipeline"分数=最新研判分"同口径);改写说明保留行首[...]前缀串
+        # ——关闭原因tooltip依赖前缀,直接整段覆盖会抹掉。
+        for a in s.query(AlertRow).filter(~AlertRow.scenario.in_(_SIG)).all():
+            if a.status in ("FP", "CONFIRMED") or _reviewed(a):
+                continue
+            ts = ev_map.get((a.employee_id, a.scenario), [])
+            if not ts:
+                continue
+            v = max(ts, key=lambda t: (t[0].window_start, t[0].risk_score or 0))[0]
+            if v.risk_score is None or a.risk_score == v.risk_score:
+                continue
+            fixes.append(f"I2 对齐: {a.employee_id}/{a.scenario} 分 {a.risk_score}->{v.risk_score}")
+            a.verdict_id, a.risk_score = v.id, v.risk_score
+            a.severity = severity_of(v.risk_score or 0)
+            _m = re.match(r"(?:\[[^\]\n]{2,200}\]\s*)+", a.summary or "")
+            _pre = _m.group(0) if _m else ""
+            a.summary = _pre + (v.explanation or (a.summary or "")[len(_pre):])
+            if (v.risk_score or 0) < 50 and a.status == "NEW":
+                a.status = "CLOSED"
+                a.summary = f"[重判对齐:{v.risk_score}分,已不构成告警] " + (a.summary or "")
+                fixes.append(f"I2 降槛关闭: {a.employee_id}/{a.scenario} 对齐{v.risk_score}分")
 
         # ---- 锚点档位吸附: 先吸研判(源头)再吸告警——只吸告警会和I1对齐
         # 无限震荡(2026-08-20实测: 刘倩雯75->70(I1)->75(I6)每轮拉锯) ----
