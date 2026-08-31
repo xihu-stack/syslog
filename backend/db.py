@@ -239,6 +239,17 @@ def severity_of(score: int) -> str:
     return "LOW"
 
 
+def events_by_hashes(sess, hashes, batch: int = 400):
+    """按event_hash批量取事件(共享助手)。分批IN: SQLite单语句绑定变量有上限,
+    超大窗口verdict的event_hashes上千条会让整条IN炸掉too many SQL variables
+    (2026-08-31巡检因此整体失败,与pipeline的400分批保持一致)。"""
+    out = []
+    hs = list(hashes or [])
+    for i in range(0, len(hs), batch):
+        out.extend(sess.query(EventRow).filter(EventRow.event_hash.in_(hs[i:i + batch])).all())
+    return out
+
+
 def json_field(col, key: str):
     """安全取 JSON 列的文本字段。
 

@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import desc, func, or_
 
-from db import (AlertRow, AskHistoryRow, EventRow, ExceptionRow, FeedbackRow, ProfileRow, RawLogRow, Session, VerdictRow, bj_now, init_db, json_field)
+from db import (AlertRow, AskHistoryRow, EventRow, ExceptionRow, FeedbackRow, ProfileRow, RawLogRow, Session, VerdictRow, bj_now, events_by_hashes, init_db, json_field)
 import llm_client
 import pipeline
 import profiles
@@ -2313,7 +2313,7 @@ def pipeline_trace(q: str):
         emp = q if out.get("emp_mode") else (evs[0].employee_id if evs else "")
         v = s.query(VerdictRow).filter(VerdictRow.employee_id == emp)            .order_by(desc(VerdictRow.id)).first() if emp else None
         if v:
-            wevs = s.query(EventRow).filter(EventRow.event_hash.in_(v.event_hashes or [])).all()
+            wevs = events_by_hashes(s, v.event_hashes or [])
             wevs.sort(key=lambda x: x.occurred_at)
             out["stages"]["ai_input"] = {"window": _dt._fmt_window(wevs)[:1200], "verdict": {
                 "ts": str(v.window_start)[:16], "intent": v.intent, "score": v.risk_score,

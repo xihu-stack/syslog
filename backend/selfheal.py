@@ -24,7 +24,7 @@ from collections import Counter, defaultdict
 from datetime import timedelta
 
 import dicts
-from db import AlertRow, EventRow, ExceptionRow, FeedbackRow, Session, VerdictRow, bj_now, severity_of
+from db import AlertRow, EventRow, ExceptionRow, FeedbackRow, Session, VerdictRow, bj_now, events_by_hashes, severity_of
 
 _DOC_W = ("COPY", "MOVE", "DELETE", "UPLOAD", "SEND", "PRINT", "BURN")
 _SIG = {"policy_violation": ("网盘/云盘", "个人邮箱"),
@@ -36,7 +36,7 @@ _ANCHOR_TIERS = {"policy_violation": {75, 80, 85, 90},
 
 def _verdict_sig(s, v):
     hs = v.event_hashes or []
-    evs = s.query(EventRow).filter(EventRow.event_hash.in_(hs)).all() if hs else []
+    evs = events_by_hashes(s, hs) if hs else []
     sig = Counter()
     for e in evs:
         if e.category == "DOC" and e.action in _DOC_W:

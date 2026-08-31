@@ -11,7 +11,7 @@ import json
 from collections import defaultdict
 from datetime import timedelta
 
-from db import Session, EventRow, AlertRow, VerdictRow, bj_now
+from db import Session, EventRow, AlertRow, VerdictRow, bj_now, events_by_hashes
 import dicts
 import detector
 
@@ -93,7 +93,7 @@ def reconcile_late_evidence() -> dict:
             v = s.get(VerdictRow, a.verdict_id) if a.verdict_id else None
             if not v:
                 continue
-            evs = s.query(EventRow).filter(EventRow.event_hash.in_(v.event_hashes or [])).all()
+            evs = events_by_hashes(s, v.event_hashes or [])
             sends = [e for e in evs if e.category == "DOC" and e.action in ("SEND", "UPLOAD")
                      and not dicts.dest_host(e.raw or {})]
             if not sends:
