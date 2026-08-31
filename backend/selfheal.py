@@ -301,10 +301,14 @@ def _selfcheck_body() -> dict:
             _old = bool(a.window_start) and a.window_start < _stale_cut
             # c) 重判已覆盖该窗口却未再触发 = 现行口径下不再告警;
             #    -3h容差吸收跨覆盖起点的窗口;链接仍活的留给I1对齐刷新
+            #    2026-08-31补: 除I5模板前缀外再加结构判定——dedup为{emp}|{intent}
+            #    两段式(研判链键)且vid悬空的行同属"重判未复现"(旧字典误分类的
+            #    真文案化石行没模板前缀,前缀法漏网);规则键带|日期三段不受影响
             _rjmiss = bool(
                 _rjf_dt and a.window_start and a.verdict_id is None
                 and a.window_start >= _rjf_dt - timedelta(hours=3)
-                and (a.summary or "").startswith("[重判后复核"))
+                and ((a.summary or "").startswith("[重判后复核")
+                     or (a.dedup_key or "").count("|") == 1))
             if _reviewed(a) and not (_old or _rjmiss):
                 continue  # 真复核结论: 仅放行超龄/重判未复现两类关闭
             if not (_dead or _old or _rjmiss):
