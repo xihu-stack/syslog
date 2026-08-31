@@ -291,7 +291,11 @@ const DEL=(u)=>fetch(u,{method:'DELETE',headers:_authHdr()}).then(_handle401).th
 // 带说明的表头:鼠标悬停显示口径/单位说明,让每个数字可懂
 function TH({t, tip}){ const sp={whiteSpace:'nowrap'}; return tip ? <Tooltip title={tip}><span style={{...sp,cursor:'help',borderBottom:'1px dotted var(--ink3)'}}>{t} <i className="fa-solid fa-circle-info" style={{fontSize:10,color:'var(--ink3)',marginLeft:2}}/></span></Tooltip> : <span style={sp}>{t}</span>; }
 function RiskBadge({s}){ const v=LVL(s); return <span className="risk" style={{background:v.c+'1a',color:v.c,border:'1px solid '+v.c+'66'}}><i className="fa-solid fa-shield-halved" style={{marginRight:4,fontSize:11}}></i>{s==null?'-':s} {v.l}</span>; }
-function StatusTag({s}){ const v=STATUS_MAP[s]||{c:'#999',t:s}; return <span className="st-tag" style={{background:v.c+'1a',color:v.c}}>{v.i&&<i className={'fa-solid '+v.i} style={{marginRight:4,fontSize:11}}></i>}{v.t}</span>; }
+// 提取关闭/降级原因: 自愈巡检与人审把原因写在summary的[...]前缀里(I8自动关闭/重判对齐/研判已降至/白名单等)
+const closeWhy = sm => { const gs=String(sm||'').match(/\[[^\]\n]{2,200}\]/g)||[];
+  for(const g of gs){ const t=g.slice(1,-1); if(/关闭|降至|不构成|压回|失效|未复现|白名单|豁免|已出库/.test(t)) return t; }
+  return ''; };
+function StatusTag({s,why}){ const v=STATUS_MAP[s]||{c:'#999',t:s}; const tg=<span className="st-tag" style={{background:v.c+'1a',color:v.c}}>{v.i&&<i className={'fa-solid '+v.i} style={{marginRight:4,fontSize:11}}></i>}{v.t}</span>; return why?<Tooltip title={why}>{tg}</Tooltip>:tg; }
 const FROM_TITLE={computers:'用户视图',alerts:'告警工作台',verdicts:'研判记录',efficiency:'效率监控',dashboard:'安全总览'};
 function ProfilePage({user, goBack, from}){
   const [data,setData]=useState(null);
@@ -461,12 +465,13 @@ function ProfilePage({user, goBack, from}){
         {(story.signals||[]).length>0&&<div style={{marginTop:8}}>{story.signals.map((sg,i)=><div key={i} style={{fontSize:11.5,color:'var(--ink3)',paddingLeft:10,borderLeft:'2px solid '+sc+'33',marginBottom:3}}>{sg}</div>)}</div>}
       </Card>; })()}
     {(data.alerts||[]).length>0 && <Card className="card" title={<span><span className="brand-bar"></span>告警明细（{(data.alert_count||0)} 条 · 与用户视图同源）</span>} size="small" style={{marginTop:16}}>
-      <Table size="small" rowKey="window_start" pagination={false} dataSource={data.alerts||[]}
+      <Table size="small" rowKey="window_start" pagination={false}
+        dataSource={(data.alerts||[]).slice().sort((a,b)=>String(b.window_start||'').localeCompare(String(a.window_start||'')))}
         columns={[
           {title:<TH t="场景" />,dataIndex:'scenario',width:130,render:(v,r)=>{const L=INTENT[v]||v;const st=SRCTAG(r.summary,v,r.window_start);return <Space size={3}><Tooltip title={st.tip}><Tag style={{background:st.c+'14',color:st.c,border:'1px solid '+st.c+'44',fontSize:10}}>{st.t}</Tag></Tooltip><Tag style={{background:'var(--brand-soft)',color:'var(--brand)',border:'1px solid var(--brand)'+'33'}}>{L}</Tag></Space>}},
           {title:<TH t="风险" />,dataIndex:'risk_score',width:100,render:v=><RiskBadge s={v}/>},
-          {title:<TH t="状态" />,dataIndex:'status',width:80,render:v=><StatusTag s={v}/>},
-          {title:<TH t="时间" />,dataIndex:'window_start',width:130,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,10)}</span>},
+          {title:<TH t="状态" tip="悬浮查看状态说明;已关闭/误报的告警会显示关闭或降级原因(自愈巡检自动处理也会注明)。" />,dataIndex:'status',width:80,render:(v,r)=><StatusTag s={v} why={closeWhy(r.summary)}/>},
+          {title:<TH t="时间" tip="按时间倒序:最新告警在前(2026-08-31前按风险分排序,已改为时间序)。" />,dataIndex:'window_start',width:130,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,10)}</span>},
           {title:<TH t="说明" tip="AI判定说明。默认两行截断,悬浮可预览全文,点击展开/收起。" />,dataIndex:'summary',render:v=><SummaryTxt text={v}/>},
         ]}/>
     </Card>}
@@ -900,7 +905,7 @@ function Dashboard({go, goProfile}){
           columns={[{title:'用户',dataIndex:'employee',width:96,render:v=><span className="uname" style={{cursor:'inherit'}}>{EMP_D(v)}</span>},
             {title:'风险场景',dataIndex:'scenario',width:130,render:(v,r)=>{const L=LVL(r.maxRisk);const st=SRCTAG(r.summary,r.scenario,r.latest);return <Space size={3}><Tooltip title={st.tip}><Tag style={{background:st.c+'14',color:st.c,border:'1px solid '+st.c+'44',fontSize:10}}>{st.t}</Tag></Tooltip><Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40'}}>{v}</Tag></Space>}},
             {title:'风险',dataIndex:'maxRisk',width:96,render:v=><RiskBadge s={v}/>},
-            {title:'状态',dataIndex:'status',width:84,render:v=><StatusTag s={v}/>},
+            {title:'状态',dataIndex:'status',width:84,render:(v,r)=><StatusTag s={v} why={closeWhy(r.summary)}/>},
             {title:'最近活动',dataIndex:'latest',width:110,render:v=><span style={{fontSize:11,color:'var(--ink3)'}}>{(v||'').slice(5,16).replace('T',' ')}</span>}]}/> : <Empty description="暂无告警" style={{padding:20}}/>}
       </Card>;
     })()}
@@ -1176,7 +1181,7 @@ function Alerts({goProfile,filter}){
           {title:'操作',width:120,render:(_,r)=>r.status==='NEW'?(<Space size={4}>
             <Button size="small" type="primary" onClick={(e)=>doConfirm(e,r.verdict_id)}>已知晓</Button>
             <Button size="small" onClick={(e)=>doFP(e,r)} style={{color:'var(--danger)',border:'1px solid var(--danger)'+'55',background:'var(--danger-soft)'}}>误报</Button>
-          </Space>):(<Tag color={r.status==='CONFIRMED'?'green':r.status==='FP'?'default':'blue'}>{({CONFIRMED:'已知晓',FP:'误报',CLOSED:'已关闭',TRIAGING:'处理中'}[r.status])||r.status}</Tag>)}]}/>
+          </Space>):(()=>{const w=closeWhy(r.summary);const tg=<Tag color={r.status==='CONFIRMED'?'green':r.status==='FP'?'default':'blue'}>{({CONFIRMED:'已知晓',FP:'误报',CLOSED:'已关闭',TRIAGING:'处理中'}[r.status])||r.status}</Tag>;return w?<Tooltip title={w}>{tg}</Tooltip>:tg;})()}]}/>
     </Card>
     <Modal open={fpModal.open} title={'确认误报 — '+fpModal.emp} okText="确认误报" cancelText="取消" okType="danger"
       onCancel={()=>setFpModal({...fpModal,open:false})} onOk={submitFP}>
