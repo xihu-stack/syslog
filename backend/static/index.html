@@ -467,7 +467,7 @@ function ProfilePage({user, goBack, from}){
           {title:<TH t="风险" />,dataIndex:'risk_score',width:100,render:v=><RiskBadge s={v}/>},
           {title:<TH t="状态" />,dataIndex:'status',width:80,render:v=><StatusTag s={v}/>},
           {title:<TH t="时间" />,dataIndex:'window_start',width:130,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,10)}</span>},
-          {title:<TH t="说明" />,dataIndex:'summary',render:v=><span style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>},
+          {title:<TH t="说明" tip="AI判定说明。默认两行截断,悬浮可预览全文,点击展开/收起。" />,dataIndex:'summary',render:v=><SummaryTxt text={v}/>},
         ]}/>
     </Card>}
     <Card className="card" size="small" style={{marginTop:16}} title={<span><span className="brand-bar"></span>行为时间线（近7天 · 双源混排 · 仅显示风险相关行为）</span>}
@@ -489,7 +489,7 @@ function ProfilePage({user, goBack, from}){
         columns={[{title:'时间',dataIndex:'window_start',width:150,render:v=>(v||'').replace('T',' ').slice(0,16)},
           {title:'意图',dataIndex:'intent',width:120,render:v=><Tag style={{background:'var(--brand-soft)',color:'var(--brand)',border:'1px solid var(--brand)'+'40'}}>{INTENT[v]||v}</Tag>},
           {title:'风险',dataIndex:'risk_score',width:120,render:v=><RiskBadge s={v}/>},
-          {title:'说明',dataIndex:'explanation',ellipsis:true}]}/>
+          {title:'说明',dataIndex:'explanation',render:v=><SummaryTxt text={v}/>}]}/>
     </Card>
     <Card className="card" title={"风险行为（"+(data.risk_events||[]).length+"）"} size="small" style={{marginTop:16}}>
       <div className="tl" style={{maxHeight:350,overflow:'auto'}}>
@@ -1273,14 +1273,14 @@ function Verdicts({goProfile,filter}){
           {title:<TH t="研判次数" tip="该员工+该意图被AI研判的总次数(合并前)。≥10次标橙,提示重复性风险。" />,dataIndex:'count',width:90,render:v=><span className="num" style={{fontWeight:700,color:v>=10?'var(--orange)':'var(--ink)'}}>{v}</span>},
           {title:<TH t="最高风险" tip="这些研判中的最高风险分(0-100)。76+严重/56+高危/31+关注。" />,dataIndex:'maxRisk',width:100,render:v=><RiskBadge s={v}/>},
           {title:<TH t="最近" tip="最近一次研判的时间(行为发生时间)。" />,dataIndex:'latest',width:140,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
-          {title:<TH t="最近一次说明" />,dataIndex:'explanation',render:v=><span title={v} style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>},
+          {title:<TH t="最近一次说明" tip="默认两行截断,悬浮可预览全文,点击展开/收起。" />,dataIndex:'explanation',render:v=><SummaryTxt text={v}/>},
         ]:[
           {title:<TH t="用户" />,dataIndex:'employee',width:130,render:v=><span className="uname" style={{cursor:'inherit'}}>{EMP_D(v)}</span>},
           {title:<TH t="时间" tip="研判窗口的起始时间(行为发生时间)。" />,dataIndex:'window_start',width:140,render:v=><span style={{fontSize:11,color:'var(--ink2)'}}>{(v||'').replace('T',' ').slice(0,16)}</span>},
           {title:<TH t="意图" tip="AI判定的行为意图。" />,dataIndex:'intent',width:110,render:v=><Tag style={{background:'var(--brand-soft)',color:'var(--brand)',border:'1px solid var(--brand)'+'33'}}>{INTENT[v]||v}</Tag>},
           {title:<TH t="风险" tip="AI对该行为窗口的打分(0-100)。" />,dataIndex:'risk_score',width:90,render:v=><RiskBadge s={v}/>},
           {title:<TH t="来源" tip="AI=大模型判定;兜底=LLM不可用时规则引擎判定。" />,dataIndex:'ai_participated',width:80,render:v=><Tag color={v?'green':'default'}>{v?'AI':'兜底'}</Tag>},
-          {title:<TH t="说明" />,dataIndex:'explanation',render:v=><span title={v} style={{color:'var(--ink2)',fontSize:12,lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{v||'-'}</span>},
+          {title:<TH t="说明" tip="默认两行截断,悬浮可预览全文,点击展开/收起。" />,dataIndex:'explanation',render:v=><SummaryTxt text={v}/>},
         ]}/>
     </Card>
   </div>);
@@ -1716,11 +1716,11 @@ function Config(){
           <Form.Item label="活动模型" name="active"><Radio.Group><Radio value="qwen">Qwen</Radio><Radio value="deepseek">DeepSeek</Radio></Radio.Group></Form.Item>
           <Form.Item label={'Qwen 模型（Key: '+((cfg.qwen||{}).key_masked||'无')+'）'} name="qwen_model"><Input placeholder="Qwen3-32B"/></Form.Item>
           <Form.Item label="Qwen 密钥（留空不改）" name="qwen_key"><Input.Password placeholder="sk-..."/></Form.Item>
-          <Form.Item label={'DeepSeek 模型（Key: '+((cfg.deepseek||{}).key_masked||'无')+'）'} name="deepseek_model"><Input placeholder="deepseek"/></Form.Item>
+          <Form.Item label={'DeepSeek 模型（Key: '+((cfg.deepseek||{}).key_masked||'无')+'）· 已暂下线，恢复后填回即自动生效'} name="deepseek_model"><Input placeholder="暂留空"/></Form.Item>
           <Form.Item label="DeepSeek 接口地址" name="deepseek_base_url"><Input placeholder="http://10.0.20.249:4000/v1"/></Form.Item>
           <Form.Item label="DeepSeek 密钥（留空不改）" name="deepseek_key"><Input.Password placeholder="sk-..."/></Form.Item>
           <Form.Item label="问答专用模型" name="ask_model" extra="AI问答用的模型(要快,建议留空=Qwen)"><Input placeholder="留空=Qwen"/></Form.Item>
-          <Form.Item label="深度任务模型" name="smart_model" extra="摸鱼总结/规则扫描/告警复核用的深度模型(本地部署的思考型,如 DeepSeek-R1);留空=Qwen。外部模型勿填(数据不出内网)"><Input placeholder="DeepSeek-R1"/></Form.Item>
+          <Form.Item label="深度任务模型" name="smart_model" extra="双模型复核等深度任务用的第二模型(本地部署,如 DeepSeek-R1)。当前单模型测试期:留空=复核停用、深度任务跟随主力模型;模型恢复后填回即自动启用。外部模型勿填(数据不出内网)"><Input placeholder="留空=跟随主力"/></Form.Item>
           <Button type="primary" htmlType="submit" loading={saving}>保存</Button>
         </Form>
       </Card>},
