@@ -50,6 +50,10 @@ def is_noise(domain: str, url: str) -> bool:
     # (snmp 1727条/未识别应用 1012条出现在高分窗口),不是网站访问
     if not d or "." not in d:
         return True
+    # file:///浏览器本地打开(2026-08-31审计): 本地路径被塞进domain字段入库,
+    # 不是网站访问;本地文件读取DOC侧READ已有证据,域名口径剔除
+    if d.startswith("file:"):
+        return True
     if _wl_skip(d):
         return False
     # websocket传输帧域(ws.chatgpt.com等): 每条消息/心跳一条日志,把"挂了30分钟
