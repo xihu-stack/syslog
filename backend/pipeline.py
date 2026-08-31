@@ -260,22 +260,33 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
     """
     init_db()
     # 重判请求落盘为标志(2026-08-31): 直接回拨水位会被在跑增量run收尾盖章碾掉
-    # (LLM恢复后run分钟级,外部/按钮写水位几乎必撞在跑run)。改为run开头原子消费
-    # 标志——删verdicts+回拨发生在引擎自己手里,期间不可能有并发run(单飞锁外护)
+    # (LLM恢复后run分钟级,外部/按钮写水位几乎必撞)。改为run开头原子消费。
+    # 单事务版(2026-08-31二修): 初版先dicts.set_setting清标志(独立连接已提交)再
+    # 同事务删verdicts——块内第二次开连接写settings撞自身写锁,busy超时事务回滚,
+    # 标志却已清掉,重判请求静默丢失(实测flag=""但verdicts未清/水位未回拨)。
+    # 现在清标志/删verdicts/回拨同一事务全成全败;失败保留标志下次run重试。
     if dicts.get_setting("rejudge_pending"):
-        dicts.set_setting("rejudge_pending", "")
-        with write_lock:
-            _rj = Session()
-            try:
-                _rj.query(VerdictRow).delete()
-                _row = (_rj.query(EventRow)
-                        .filter(EventRow.occurred_at >= bj_now() - timedelta(days=7))
-                        .order_by(EventRow.id).first())
-                dicts.set_setting("last_judged_event_id", str(_row.id) if _row else "0")
-                _rj.commit()
-            finally:
-                _rj.close()
-        print("[detect] 消费rejudge_pending: verdicts已清+水位回拨7天", flush=True)
+        try:
+            with write_lock:
+                _rj = Session()
+                try:
+                    _rj.query(VerdictRow).delete()
+                    _row = (_rj.query(EventRow)
+                            .filter(EventRow.occurred_at >= bj_now() - timedelta(days=7))
+                            .order_by(EventRow.id).first())
+                    _wmv = str(_row.id) if _row else "0"
+                    for _k, _v in (("rejudge_pending", ""), ("last_judged_event_id", _wmv)):
+                        _sr = _rj.query(SettingRow).filter_by(key=_k).first()
+                        if _sr:
+                            _sr.value = _v
+                        else:
+                            _rj.add(SettingRow(key=_k, value=_v))
+                    _rj.commit()
+                finally:
+                    _rj.close()
+            print("[detect] 消费rejudge_pending: verdicts已清+水位回拨7天", flush=True)
+        except Exception as _rjex:
+            print(f"[detect] rejudge消费失败(标志保留待重试): {_rjex}", flush=True)
     # ---- 1) 读取阶段（只读 session，不持写锁）----
     rs = Session()
     try:
