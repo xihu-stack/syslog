@@ -6,6 +6,8 @@
 """
 from __future__ import annotations
 
+import re
+
 from db import DictRow, Session, SettingRow, init_db
 
 DEFAULTS = {
@@ -313,6 +315,17 @@ def whitelisted_dest(raw: dict, webs=None, ts=None) -> bool:
     return False
 
 
+# CDN包装/静态资产主机不算"访问"(2026-09-01): 昆仑/七牛等CDN把源站域名内嵌进
+# 边缘主机(如 img.某某.com.w.kunlunpi.com),img./static.等前缀是纯资产节点——
+# 子串匹配会误判成访问了招聘/网盘主站(复核案例: 求职锚点被图片CDN拉取触发,
+# 说明还自相矛盾)。资产拉取≠页面访问,分类层一律置None;触发/锚点/记忆/降噪
+# 全走本函数,同口径生效。
+_ASSET_CDN_RE = re.compile(
+    r"^(?:img|static|assets|res|css|js)\d*\."          # 静态资产子域前缀
+    r"|\.w\.kunlun"                                     # 昆仑CDN包装(源站内嵌)
+    r"|(?:\.kunlunpi|\.kunlunque|\.qiniudns|\.qbox|\.clouddn)\.com$")  # CDN边缘域
+
+
 def risk_class(domain: str):
     """域名 → 高风险类别中文标签（如"远程控制"/"网盘/云盘"）；非高风险返回 None。
     白名单 risk_whitelist_domains 命中直接豁免(公司采购的正规网盘/企业邮箱等)。"""
@@ -322,6 +335,8 @@ def risk_class(domain: str):
     for dom in get("risk_whitelist_domains") or []:
         if d == dom or d.endswith("." + dom):
             return None
+    if _ASSET_CDN_RE.search(d):
+        return None
     for label, pats in risk_patterns():
         for p in pats:
             if _match_domain(d, p):
