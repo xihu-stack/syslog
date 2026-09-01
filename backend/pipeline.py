@@ -10,7 +10,7 @@ import threading
 from sqlalchemy import or_
 
 from db import (AlertRow, EventRow, ExceptionRow, Session, SettingRow, VerdictRow,
-                bj_now, init_db, severity_of, write_lock)
+                bj_now, events_by_hashes, init_db, severity_of, write_lock)
 from models import CanonicalEvent
 from parser_ipguard import parse_ipguard_excel
 from parser_sangfor import parse_sangfor
@@ -48,7 +48,7 @@ def _window_trigger_domains(w) -> set:
 
 def _recently_judged(rs, emp: str, domains: set, hours: int) -> bool:
     """该员工对这些高危域名中的任一域名,在最近 hours 小时内是否已研判过。
-    用于抑制"VPN 后台持续连接"这类同域名反复研判(朱亮 228 次问题的根因)。
+    用于抑制"VPN 后台持续连接"这类同域名反复研判(某员工 228 次问题的根因)。
     event_hashes 命中即可——研判过的窗口其 event_hashes 已落库,反查这些 hash 是否属当前域名。"""
     if not domains or hours <= 0:
         return False
@@ -322,7 +322,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
             target_value=r.target_value or "", size_bytes=r.size_bytes or 0, count=r.count or 1,
             source=r.source or "", raw=r.raw or {}) for r in new_rows]
         _id_by_hash = {e.event_hash(): r.id for r, e in zip(new_rows, new_events)}
-        _held_min_id = None  # 证据等待(2026-08-26朱亮案例): 空目的地上传窗口扣留12分钟
+        _held_min_id = None  # 证据等待(2026-08-26审计案例): 空目的地上传窗口扣留12分钟
         _HOLD = timedelta(minutes=12)  # 等深信服延迟批(实测~7分钟)到齐再判,目的地可见
         gdomains = profiles.global_common_domains(rs)
         gctx = profiles.global_summary(rs)
@@ -422,7 +422,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                     def _expl_ok(emp, wstart, v, w):
                         """说明完整度自检(2026-08-26): 计分制,5项中≥4项即合格——
                         旧版all()过严(AI写'利用微信'无'通过'字样即被判缺,整条被模板
-                        覆盖成'存在相关行为'的空洞句,houshunan案例)。"""
+                        覆盖成'存在相关行为'的空洞句,早期案例)。"""
                         e = str(v.get("explanation") or "")
                         if len(e) < 25 or "系统按窗口事实生成" in e:
                             return False
@@ -481,7 +481,12 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                         return f"{emp}在{_t}({_tod}): {_act_txt}{_dom_txt}{_rd_txt}{_sn},属{_inten}。"
 
                     for emp, device, wstart, wend, hashes, v in buf:
-                        # explanation剥离思维链(2026-08-26唐方毅案例: 说明以"好,我现在需要分析"开头
+                        # 兜底说明必须用本条窗口自己的事件: buf元组不带事件集,旧版引用
+                        # 外层循环残留的w(窗口构建循环结束后的最后一个窗口)——LLM出错走
+                        # 规则兜底时,说明写的是"别的窗口"的行为事实(2026-09-01复核案例:
+                        # 求职告警说明只字未提猎聘域名,列的却是另一窗口的DOC/MODIFY×2)
+                        w = events_by_hashes(wsession, hashes) or w
+                        # explanation剥离思维链(2026-08-26审计案例: 说明以"好,我现在需要分析"开头
                         # ——deep模型think未剥净即入库);同时清掉角色扮演残留
                         if not _expl_ok(emp, wstart, v, w):
                             _orig = str(v.get("explanation") or "").strip()
@@ -498,12 +503,12 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                                     _e2 = _e2.split("。", 1)[-1].lstrip()
                             v["explanation"] = _e2
                         # normal_work=系统认定正常业务: 分数钳制≤20,防LLM"结论正常
-                        # 但分数80"的自相矛盾(2026-08-24展佳案例:normal_work 80分
+                        # 但分数80"的自相矛盾(2026-08-24审计案例:normal_work 80分
                         # 生成告警);正常业务永不进告警队列
                         if v.get("intent") == "normal_work":
                             v["risk_score"] = min(int(v.get("risk_score", 0) or 0), 20)
                         # 同窗口去重(2026-08-26): IPG夜间批量补传使同一window_start每隔
-                        # 10分钟追加晚到事件,旧版每轮都INSERT新行(展佳08:30窗口2小时+10
+                        # 10分钟追加晚到事件,旧版每轮都INSERT新行(某员工08:30窗口2小时+10
                         # 条verdict,risk_memory的"累计N次"实为重判次数,verdicts表膨胀)。
                         # 改为按(员工+意图+窗口)原地更新: 晚到事件hash并入、窗口延长,
                         # 告警的verdict_id链接也保持有效。
@@ -715,7 +720,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         day_ctx = None
         _day_tot = None
         _day_mj = _day_gn = 0  # 当日重点/一般招聘站累计(招聘锚点用当日口径定档,
-        # 高聪20次智联分散多窗口,单窗口9次只到70档,当日13次才到高频80档)
+        # 某员工20次智联分散多窗口,单窗口9次只到70档,当日13次才到高频80档)
         _MJ_KW = ("zhipin", "liepin", "51job", "zhaopin", "sndhr")
         try:
             _domset = {(((e.raw or {}).get("domain") or "")).lower() for e in w
@@ -742,7 +747,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                                 _day_mj += n
                             else:
                                 _day_gn += n
-                    # 家族(按风险类别)累计: AI按完整域名报数会漏子域(高聪sndhr
+                    # 家族(按风险类别)累计: AI按完整域名报数会漏子域(某员工sndhr
                     # 实际13次AI只报主域9次,2026-08-19复审发现),给类别合计供引用
                     _fam = {}
                     for d, n in _agg.items():
@@ -815,18 +820,22 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         # 招聘条同口径,废除旧"单次75平邮箱/反复85/高频90+凌晨5"三档):
         #   单次主信号=60(立马关注留痕档); 反复3-9次=80; 高频≥10或凌晨=85;
         #   跨天+5, 封顶95。凌晨是档位触发条件而非叠加修正。
+        #   ①单次/低频且非窗口主信号(他类风险访问≥10次且≥3倍求职次,如AI重度
+        #   依赖窗里夹1次重点站)→不强制job,按AI主信号结论(prompt三规合一①)。
         # 一般站(领英等)——"关注即可,分数不用太高":
         #   单次=15正常; 反复3-9次=55; 高频≥10次=60; 跨天(≥4天,每天1次也算)=55;
         # 修正: 一般站凌晨+5 / 两档跨天+5 / 封顶95(重点)、65(一般)。
-        # AI判job_seeking但一般站单次无凌晨无跨天 → 强制压回normal(叶珂祯案例防线)。
+        # AI判job_seeking但一般站单次无凌晨无跨天 → 强制压回normal(早期案例防线)。
         if isinstance(v, dict) and _anchored is None:
             _MAJOR = ("zhipin", "liepin", "51job", "zhaopin", "sndhr")
-            _mj, _gn = 0, 0
+            _mj, _gn, _oth = 0, 0, 0
             for e in w:
                 if e.category != "WEB":
                     continue
                 _d = (((e.raw or {}).get("domain") or "").lower())
                 if dicts.risk_tier(_d) != "job":
+                    if dicts.risk_class(_d):  # AI助手/远程控制等非求职风险类计数(①主信号判据)
+                        _oth += (e.count or 1)
                     continue
                 if any(m in _d for m in _MAJOR):
                     _mj += (e.count or 1)
@@ -839,8 +848,8 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 # 搜索误给求职锚点+5,单次猎聘访问75被抬成80)
                 _xd = any("招聘求职" in ln and "跨天规则①命中" in ln
                           for ln in (_hist or "").splitlines())
-                # 接管看窗口自身计数(含招聘域名才判job);定档用当日累计(高聪案例:
-                # 分散多窗口不降档)。万亮案例: 纯AI窗口被当日累计拔成job80,说明全是
+                # 接管看窗口自身计数(含招聘域名才判job);定档用当日累计(2026-08案例:
+                # 分散多窗口不降档)。另一案例: 纯AI窗口被当日累计拔成job80,说明全是
                 # AI域名与场景矛盾(2026-08-20)——窗口无招聘域名的不判求职。
                 _mj_lvl = max(_mj, _day_mj)
                 _gn_lvl = max(_gn, _day_gn)
@@ -849,11 +858,16 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                         _js = 85
                     elif _mj_lvl >= 3:
                         _js = 80
+                    elif _oth >= 10 and _oth >= 3 * _mj:
+                        # ①单次低频且非窗口主信号(AI/远控等他类风险≥10次且≥3倍
+                        # 求职次)→不强制job,尊重AI按主信号定的intent/分数
+                        _js = None
                     else:
                         _js = 60
-                    v = {**v, "intent": "job_seeking",
-                         "risk_score": min(_js + (5 if _xd else 0), 95)}
-                    _anchored = v["risk_score"]  # 客观计数定分,复核不推翻(见下)
+                    if _js is not None:
+                        v = {**v, "intent": "job_seeking",
+                             "risk_score": min(_js + (5 if _xd else 0), 95)}
+                        _anchored = v["risk_score"]  # 客观计数定分,复核不推翻(见下)
                 elif _gn >= 3 or (_gn >= 1 and _xd):
                     _js = 60 if _gn_lvl >= 10 else 55
                     v = {**v, "intent": "job_seeking",
@@ -862,12 +876,12 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 elif v.get("intent") == "job_seeking":
                     # 窗口内无任何招聘域名 → job_seeking结论无证据支撑,无条件压回。
                     # 行为史跨天标记+重度AI窗口曾让AI把纯AI使用误判成求职(2026-08-20
-                    # 重判发现: 万亮AI助手221次被判job 70)——求职结论必须由当前窗口
+                    # 重判发现: 某员工AI助手221次被判job 70)——求职结论必须由当前窗口
                     # 的招聘访问支撑,历史标记只能加档不能独立成立
                     v = {**v, "intent": "baseline_deviation",
                          "risk_score": min(v.get("risk_score") or 30, 45)}
         # 豁免场景的研判加显式标注: 豁免人员(如HR)的研判照常落库但告警被拦,
-        # 研判页/AI问答看到时必须能认出"这是已豁免的岗位行为"(2026-08-20展佳案例)
+        # 研判页/AI问答看到时必须能认出"这是已豁免的岗位行为"(2026-08-20审计案例)
         try:
             if isinstance(v, dict) and exs and any(e.signal_type == v.get("intent") for e in exs):
                 _exr = next(e.reason for e in exs if e.signal_type == v.get("intent"))
@@ -875,7 +889,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         except Exception:
             pass
         # ---- 锚点场景说明一致性: 锚点强制intent时,AI说明可能以窗口主信号(如AI)
-        # 为主而只字不提触发域名(鄢荣梅案例: job告警说明全是doubao,招聘2次没写,
+        # 为主而只字不提触发域名(2026-08-20案例: job告警说明全是doubao,招聘2次没写,
         # 2026-08-20)——说明不含触发域名的,前置事实摘要
         try:
             _SCEN_KW = {"job_seeking": ("招聘",),
