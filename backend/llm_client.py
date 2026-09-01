@@ -98,8 +98,12 @@ def strip_think(text: str) -> str:
 
 def chat(messages, model=None, temperature=0.1, max_tokens=1000, timeout=180):
     """调用 /chat/completions。活动模型优先，失败自动切换另一个兜底；都失败才抛异常。
-    model=指定深度模型(如 glm-5)时:指定模型优先,全失败(如限流429)自动回退活动模型,保可用性。"""
+    model=指定深度模型(如 glm-5)时:指定模型优先,全失败(如限流429)自动回退活动模型,保可用性。
+    2026-09-01: llm_enabled=0(本地AI暂停)快速失败——防各AI功能(日复核/周报/
+    摸鱼总结等)对着已关停的本地模型空等180s超时;调用方均有except兜底路径。"""
     global LAST_MODEL
+    if (dicts.get_setting("llm_enabled") or "1") == "0":
+        raise RuntimeError("AI已暂停(llm_enabled=0)")
     base_body = {"messages": messages, "temperature": temperature, "max_tokens": max_tokens}
     cands = _candidates()
     attempts = [(base, key, (model or mdl)) for base, key, mdl in cands]

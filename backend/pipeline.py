@@ -1024,7 +1024,13 @@ def detection_status() -> dict:
 
 
 def start_detection(risk_threshold: int = 50) -> dict:
-    """启动后台研判（单飞）。已在跑则返回 busy，不重复启动。"""
+    """启动后台研判（单飞）。已在跑则返回 busy，不重复启动。
+    2026-09-01: llm_enabled=0(本地AI暂停)时直接拒绝——窗口保持待判,
+    恢复=1后下一个30s批自动补判;否则暂停期间每批都产出规则兜底
+    [待补判]研判灌库,恢复后还得人工补判。"""
+    if (dicts.get_setting("llm_enabled") or "1") == "0":
+        return {"running": False, "paused": True,
+                "phase": "AI已暂停(llm_enabled=0),窗口保持待判"}
     if not _detect_lock.acquire(blocking=False):
         return {"running": True, "busy": True, **detection_status()}
 

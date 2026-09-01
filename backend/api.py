@@ -1000,6 +1000,7 @@ def get_config():
                      "base_url": dicts.get_setting("llm_deepseek_base_url") or "",
                      "key_masked": mask(dk), "has_key": bool(dk)},
         "syslog_enabled": dicts.get_setting("syslog_enabled", "0"),
+        "llm_enabled": dicts.get_setting("llm_enabled", "1"),
         "syslog_host": dicts.get_setting("syslog_host", "0.0.0.0"),
         "syslog_port": dicts.get_setting("syslog_port", "8514"),
         "notify_webhook": dicts.get_setting("notify_webhook", ""),
@@ -1021,7 +1022,7 @@ def get_config():
 @_ui_write
 def set_config(body: dict = Body(...)):
     for k in ("llm_base_url", "llm_active", "llm_qwen_model", "llm_deepseek_model",
-              "llm_deepseek_base_url", "syslog_enabled", "syslog_host", "syslog_port", "notify_webhook",
+              "llm_deepseek_base_url", "syslog_enabled", "llm_enabled", "syslog_host", "syslog_port", "notify_webhook",
               "retention_days", "raw_logs_retention_days", "llm_ask_model", "llm_smart_model",
               "sso_enabled", "sso_base", "sso_client_id", "sso_redirect_uri", "sso_username_field", "sso_whitelist"):
         if body.get(k) is not None:
