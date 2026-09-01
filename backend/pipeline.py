@@ -811,12 +811,13 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 if v.get("intent") == "data_exfiltration" and _fs in ("high", "mid"):
                     v = {**v, "risk_score": min(_a + (10 if _fs == "high" else 5), 95)}
         # ---- 招聘锚点: 程序化定分,AI只负责行为描述 ----
-        # 重点站(BOSS/猎聘/51job/智联sndhr)——第一优先级场景(2026-08-20口径:
-        # 求职分数必须≥邮箱/外发同档——单次65曾低于邮箱单次75,倒挂修正):
-        #   单次(1-2次)=75(平邮箱单次); 反复3-9次=85; 高频≥10次=90(高于外发85);
+        # 重点站(BOSS/猎聘/51job/智联sndhr)——2026-09-01三规合一(与提示词评分锚点
+        # 招聘条同口径,废除旧"单次75平邮箱/反复85/高频90+凌晨5"三档):
+        #   单次主信号=60(立马关注留痕档); 反复3-9次=80; 高频≥10或凌晨=85;
+        #   跨天+5, 封顶95。凌晨是档位触发条件而非叠加修正。
         # 一般站(领英等)——"关注即可,分数不用太高":
         #   单次=15正常; 反复3-9次=55; 高频≥10次=60; 跨天(≥4天,每天1次也算)=55;
-        # 修正: 凌晨+5 / 跨天+5 / 封顶95(重点)、65(一般)。
+        # 修正: 一般站凌晨+5 / 两档跨天+5 / 封顶95(重点)、65(一般)。
         # AI判job_seeking但一般站单次无凌晨无跨天 → 强制压回normal(叶珂祯案例防线)。
         if isinstance(v, dict) and _anchored is None:
             _MAJOR = ("zhipin", "liepin", "51job", "zhaopin", "sndhr")
@@ -844,14 +845,14 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                 _mj_lvl = max(_mj, _day_mj)
                 _gn_lvl = max(_gn, _day_gn)
                 if _mj >= 1:
-                    if _mj_lvl >= 10:
-                        _js = 90
-                    elif _mj_lvl >= 3:
+                    if _mj_lvl >= 10 or _off:
                         _js = 85
+                    elif _mj_lvl >= 3:
+                        _js = 80
                     else:
-                        _js = 75
+                        _js = 60
                     v = {**v, "intent": "job_seeking",
-                         "risk_score": min(_js + (5 if _off else 0) + (5 if _xd else 0), 95)}
+                         "risk_score": min(_js + (5 if _xd else 0), 95)}
                     _anchored = v["risk_score"]  # 客观计数定分,复核不推翻(见下)
                 elif _gn >= 3 or (_gn >= 1 and _xd):
                     _js = 60 if _gn_lvl >= 10 else 55
