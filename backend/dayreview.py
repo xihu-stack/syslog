@@ -149,6 +149,13 @@ def _thin(sm: str) -> bool:
             or ("『" not in sm and "×" not in sm and "访问" not in sm))
 
 
+# 模式/聚合类告警(代码事实,无对应研判意图): 全天复核不改写不标注——
+# 其说明是模式引擎的事实快照(次数/倍数),被"N+1事实重写"覆盖会出现
+# "75分外发突增却写'全天无明显风险行为'"的自相矛盾(2026-09-01审计);
+# 标[次日复核]前缀还会让patterns周键合并把它们当复核行跳过,日键行滞留NEW。
+_PATTERN = {"trend_spike", "mass_exfil", "mass_delete", "archive_exfil", "rename_exfil"}
+
+
 def _factual_rewrite(s, emp, d0, d1, direction, reason):
     """用全天事件事实重写说明(2026-08-26优化3): 目的地/文件/次数取自现已完整的数据,
     深信服延迟批在N+0时刻看不到的信息这里都能补上。"""
@@ -199,6 +206,8 @@ def _writeback(emp, r, d0, d1):
             for a in s.query(AlertRow).filter(AlertRow.employee_id == emp).all():
                 if a.status in ("FP", "CLOSED"):
                     continue
+                if a.scenario in _PATTERN:
+                    continue  # 模式类: 事实快照由模式引擎自维护,复核不碰
                 if not (a.window_start and d0 <= a.window_start < d1):
                     continue
                 sm = (a.summary or "")
@@ -213,6 +222,8 @@ def _writeback(emp, r, d0, d1):
         for a in s.query(AlertRow).filter(AlertRow.employee_id == emp).all():
             if a.status in ("FP", "CLOSED"):
                 continue
+            if a.scenario in _PATTERN:
+                continue  # 模式类: 事实快照由模式引擎自维护,复核不碰
             if not (a.window_start and d0 <= a.window_start < d1):
                 continue
             sm = re.sub(r"\[次日复核[^\]]*\]\s*", "", a.summary or "")

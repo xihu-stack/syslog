@@ -347,6 +347,31 @@ def _selfcheck_body() -> dict:
             a.summary = f"[I8自动关闭:{_why}] " + (a.summary or "")[:500]
             fixes.append(f"I8 关僵尸: alert#{a.id} {a.employee_id}/{a.scenario}({_why[:4]})")
 
+        # ---- I11: 关闭原因补记(2026-09-01) ----
+        # 旧版auto_close/历史关闭路径只翻状态不写原因(当日审计存量125条CLOSED
+        # 无任何标记): 工作台/详情页的关闭原因tooltip全部落空,"高分+已关闭+
+        # 零解释"最伤数据可信度。按可考证据补记;幂等——已有可识别关闭标记或
+        # 复核结论的行不动,宁可少补不可错补。
+        _CLOSE_HINT = re.compile(r"关闭|降至|不构成|压回|失效|未复现|白名单|豁免|已出库|合并|对齐|降噪")
+        for a in s.query(AlertRow).filter(AlertRow.status == "CLOSED").all():
+            sm = a.summary or ""
+            _marks = re.findall(r"\[[^\]\n]{2,200}\]", sm)
+            if _reviewed(a) or any(_CLOSE_HINT.search(m) for m in _marks):
+                continue
+            ts = ev_map.get((a.employee_id, a.scenario), [])
+            v = max(ts, key=lambda t: (t[0].window_start, t[0].risk_score or 0))[0] if ts else None
+            if v is not None and (v.risk_score or 0) < 50 < (a.risk_score or 0):
+                # 所挂意图最新研判已降到50下 → 与I2同口径同步降分再补记
+                a.risk_score, a.severity = v.risk_score, severity_of(v.risk_score or 0)
+                a.summary = f"[I11补记:重判对齐{v.risk_score}分,已不构成告警] " + sm[:400]
+            elif a.scenario == "baseline_deviation" and (a.risk_score or 0) < 50:
+                a.summary = "[I11补记:自动降噪关闭——偏离类低分] " + sm[:400]
+            elif a.scenario == "baseline_deviation":
+                a.summary = "[I11补记:自动降噪关闭——偏离类中分3天未升级] " + sm[:400]
+            else:
+                a.summary = "[I11补记:历史关闭,早于关闭原因规范,原因不可考] " + sm[:400]
+            fixes.append(f"I11 补记关闭原因: alert#{a.id}")
+
         # ---- I10: 说明文本卫生(2026-08-28) ----
         # 存量残留: ①旧模型把示例占位符〔本窗口日期+时段〕照抄进说明
         # (2026-08-28审计发现存量行,生成侧08-26已有清理);②I5事实模板

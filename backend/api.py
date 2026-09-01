@@ -418,7 +418,13 @@ def list_alerts(severity: str | None = None, limit: int = 200, when: str | None 
         _sig_cnt = {}
         for r2 in s.query(AlertRow.employee_id, AlertRow.scenario).filter(AlertRow.status == "NEW").all():
             _sig_cnt.setdefault(r2[0], set()).add(r2[1])
-        q = s.query(AlertRow).order_by(desc(AlertRow.risk_score), desc(AlertRow.created_at))
+        # 活跃优先(2026-09-01): 原"分数降序"下,历史高分已关闭行(95/90存量)
+        # 永远占满limit名额,低分但待处理的活跃告警在"全部"视图拉不到,
+        # 前端合并视图排序也救不回被截断的数据。活跃(NEW/TRIAGING/CONFIRMED)
+        # 整体排前,组内仍按分数降序。
+        q = s.query(AlertRow).order_by(
+            AlertRow.status.in_(("NEW", "TRIAGING", "CONFIRMED")).desc(),
+            desc(AlertRow.risk_score), desc(AlertRow.created_at))
         if severity:
             q = q.filter(AlertRow.severity == severity)
         if status == "NEW":

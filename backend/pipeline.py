@@ -1053,6 +1053,9 @@ def auto_close_alerts():
     - baseline_deviation + risk<50 → 立即关闭（噪音）
     - baseline_deviation + risk 50-65 + 超过3天 → 关闭（冷启动过期）
     - 其他 → 不动（需人工处理）
+    2026-09-01: 关闭必须写[自动降噪]原因——关闭原因tooltip靠summary前缀,
+    旧版只翻状态不写原因,存量125条无标记CLOSED只能靠selfheal I11回补;
+    写入统一经write_lock串行(铁律)。
     """
     from datetime import datetime, timedelta
     init_db()
@@ -1060,21 +1063,20 @@ def auto_close_alerts():
     try:
         now = bj_now()  # created_at 存的是北京时间,同源比较(旧版utcnow导致3天关闭晚8小时)
         cutoff_3d = now - timedelta(days=3)
-        # 立即关闭：偏离类 + 低分
-        n1 = s.query(AlertRow).filter(
-            AlertRow.scenario == "baseline_deviation",
-            AlertRow.risk_score < 50,
-            AlertRow.status == "NEW"
-        ).update({AlertRow.status: "CLOSED"}, synchronize_session=False)
-        # 3天后关闭：偏离类 + 中分 + 超时
-        n2 = s.query(AlertRow).filter(
-            AlertRow.scenario == "baseline_deviation",
-            AlertRow.risk_score >= 50,
-            AlertRow.risk_score < 66,
-            AlertRow.status == "NEW",
-            AlertRow.created_at < cutoff_3d
-        ).update({AlertRow.status: "CLOSED"}, synchronize_session=False)
-        s.commit()
+        n1 = n2 = 0
+        for a in s.query(AlertRow).filter(AlertRow.scenario == "baseline_deviation",
+                                          AlertRow.status == "NEW").all():
+            if (a.risk_score or 0) < 50:
+                a.status = "CLOSED"
+                a.summary = "[自动降噪:偏离类低分(<50),不构成告警] " + (a.summary or "")[:400]
+                n1 += 1
+            elif (a.risk_score or 0) < 66 and a.created_at and a.created_at < cutoff_3d:
+                a.status = "CLOSED"
+                a.summary = "[自动降噪:偏离类中分3天未升级,冷启动过期] " + (a.summary or "")[:400]
+                n2 += 1
+        from db import write_lock as _wl
+        with _wl:
+            s.commit()
         return n1 + n2
     finally:
         s.close()
