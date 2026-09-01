@@ -532,9 +532,13 @@ def employee(emp: str):
         vd_max = s.query(func.max(VerdictRow.risk_score)).filter(VerdictRow.employee_id == emp).scalar()
         # 该员工的告警明细(与用户视图'告警N条'同源,供画像对齐展示)
         emp_alerts = s.query(AlertRow).filter(AlertRow.employee_id == emp).order_by(desc(AlertRow.risk_score)).all()
-        # 当前风险=未处理/已知晓告警最高分(2026-08-24): 与列表页口径一致;
-        # max_risk保留为历史研判峰值(参考),复核降分/豁免不影响cur_risk
-        _open = [a.risk_score or 0 for a in emp_alerts if a.status in ("NEW", "CONFIRMED")]
+        # 当前风险=近7天未处理/已知晓告警最高分(2026-09-01对齐列表页7d窗口):
+        # 原无时间窗,已知晓(CONFIRMED)告警不会超龄关闭,历史高分在详情页永不
+        # 回落,与用户视图列表(近7天同口径)同屏出现两个数。max_risk保留为
+        # 历史研判峰值(参考),复核降分/豁免不影响cur_risk。
+        _wk_p = bj_now() - timedelta(days=7)
+        _open = [a.risk_score or 0 for a in emp_alerts
+                 if a.status in ("NEW", "CONFIRMED") and a.window_start and a.window_start >= _wk_p]
         cur_risk = max(_open) if _open else 0
         return {
             "employee": emp,

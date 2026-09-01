@@ -338,7 +338,7 @@ function ProfilePage({user, goBack, from}){
   if(!data) return <Card className="card"><div style={{padding:40,textAlign:'center',color:'var(--ink3)'}}>加载中...</div></Card>;
   const vs=data.verdicts||[];
   const evs=data.events||[];
-  const curRisk=data.cur_risk!=null?data.cur_risk:((data.alerts||[]).filter(a=>a.status==='NEW'||a.status==='CONFIRMED').reduce((m,a)=>Math.max(m,a.risk_score||0),0));const maxRisk=data.max_risk!=null?data.max_risk:(vs.length?Math.max(...vs.map(v=>v.risk_score||0)):0);
+  const _wkAgo=new Date(Date.now()-7*864e5).toISOString().slice(0,10);const curRisk=data.cur_risk!=null?data.cur_risk:((data.alerts||[]).filter(a=>(a.status==='NEW'||a.status==='CONFIRMED')&&a.window_start>=_wkAgo).reduce((m,a)=>Math.max(m,a.risk_score||0),0));const maxRisk=data.max_risk!=null?data.max_risk:(vs.length?Math.max(...vs.map(v=>v.risk_score||0)):0);
   const p=data.profile||{};
   const domains=p.common_domains||[];
   const _cc=data.category_counts||{}; const _sc=data.source_counts||{};
@@ -353,7 +353,7 @@ function ProfilePage({user, goBack, from}){
     <Row gutter={16}>
       <Col span={6}><Card className="card"><Statistic title={<TH t="历史事件" tip="降噪聚合后的全量事件条数(同域名10分钟内合并)。非原始日志行数。" />} value={catTot||p.sample_count||evs.length}/></Card></Col>
       <Col span={6}><Card className="card"><Statistic title={<TH t="研判次数" tip="AI对该员工可疑行为窗口的累计研判次数。风险≥50的会成为告警。" />} value={data.verdict_count!=null?data.verdict_count:vs.length}/></Card></Col>
-      <Col span={6}><Card className="card"><Statistic title={<TH t="当前风险" tip="未处理/已知晓告警的最高分——经N+1复核修正后的当前结论;误报与复核关闭不计入。历史研判峰值见风险趋势图。" />} value={curRisk} valueStyle={{color:LVL(curRisk).c}}/><div style={{fontSize:11,color:'var(--ink3)',marginTop:2}}>历史研判峰值 {maxRisk}</div></Card></Col>
+      <Col span={6}><Card className="card"><Statistic title={<TH t="当前风险" tip="近7天未处理/已知晓告警的最高分——经N+1复核修正后的当前结论,与用户视图列表同口径;误报与复核关闭不计入,超7天回落为0。历史研判峰值见风险趋势图。" />} value={curRisk} valueStyle={{color:LVL(curRisk).c}}/><div style={{fontSize:11,color:'var(--ink3)',marginTop:2}}>历史研判峰值 {maxRisk}</div></Card></Col>
       <Col span={6}><Card className="card"><Statistic title={<TH t="观察天数" tip="30天回看窗口内的活跃天数。" />} value={p.active_days||new Set(evs.map(e=>(e.occurred_at||'').slice(0,10))).size}/></Card></Col>
     </Row>
     <Row gutter={16} style={{marginTop:16}}>
