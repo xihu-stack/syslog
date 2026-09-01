@@ -1188,21 +1188,25 @@ def system_stats():
         _day[_today_key] = s.query(AlertRow).filter(AlertRow.window_start >= today_start).count()  # 今日活跃=KPI口径
         alerts_by_day = list(_day.items())
 
-        # TOP活跃风险(2026-08-20终版): 直接从未处理(NEW)告警派生,与告警页完全同源
-        # ——此前从研判计算,告警已删的孤儿研判(叶珂祯等3人)带着空summary混进TOP;
-        # 分数取该员工该场景最新告警级研判(告警分口径),同分按场景优先级: 求职>外发>其他
+        # TOP活跃风险(2026-09-01修正): 直接从未处理(NEW)告警派生,与告警页完全同源
+        # ——此前从研判计算,告警已删的孤儿研判带着空summary混进TOP;
+        # 每人取**最高分**那条(同分取窗口更新)。原取"最新窗口"条,模式类告警
+        # (trend/mass每日批量75分)会把员工手里更高的AI研判分盖住(2026-09-01实测
+        # 15人被低估: 有员工显示75分trend而挂着90分外发NEW,90分风险反被挤出TOP)。
+        # 与告警页合并视图"该员工告警中的最高风险分"同口径;
+        # 同分按场景优先级: 求职>外发>其他
         _PRIO = {"job_seeking": 0, "data_exfiltration": 1}
-        _a7 = bj_now() - timedelta(days=7)
         _new_alerts = s.query(AlertRow).filter(AlertRow.status == "NEW").all()
         _agg = {}
         for _a in _new_alerts:
             _ws = _a.window_start.isoformat() if _a.window_start else ''
             k = _a.employee_id
-            if k not in _agg or _ws > _agg[k]['latest']:
+            _c = _agg.get(k)
+            if _c is None or ((_a.risk_score or 0), _ws) > ((_c['risk_score'] or 0), _c['latest']):
                 _agg[k] = {'employee': k, 'scenario': _a.scenario, 'risk_score': _a.risk_score,
                            'status': _a.status, 'latest': _ws, 'summary': _a.summary or ''}
         top_active = sorted(_agg.values(),
-                            key=lambda x: (-(x['risk_score'] or 0), -len(x.get('signals') or set()), _PRIO.get(x['scenario'], 2)))[:10]
+                            key=lambda x: (-(x['risk_score'] or 0), _PRIO.get(x['scenario'], 2)))[:10]
         return {
             "events": {
                 "today": ev_today, "yesterday": ev_yesterday, "week": ev_week, "total": ev_total,

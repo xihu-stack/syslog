@@ -862,15 +862,17 @@ function Dashboard({go, goProfile}){
         <div style={{marginBottom:10}}><span className="brand-bar"></span><b style={{fontSize:14}}>告警日趋势</b><span style={{color:'var(--ink3)',fontSize:11,marginLeft:10}}>近7天每日告警数 · 点击查看明细</span></div>
         <Card className="card" size="small" hoverable style={{marginBottom:16,cursor:'pointer'}} bodyStyle={{padding:'14px 18px'}} onClick={()=>go('alerts',{when:'week'})}><div ref={alertTrend} style={{height:200}}></div></Card>
         {(()=>{
-      // TOP活跃风险: 后端聚合(近7天最高研判分,已确认/误报/关闭不参与,2026-08-19口径)
+      // TOP活跃风险: 后端聚合,每人取待处理(NEW)告警中最高分那条(同分取最新窗口)
+      // ——2026-09-01前取"最新窗口"条,模式类批量告警(75分)会盖住员工更高的研判分;
+      // 现与告警页合并视图/用户视图"最高分"同口径。已确认/误报/关闭不参与。
       const ga=(sys.top_active||[]).map(x=>({key:x.employee,employee:x.employee,scenario:INTENT[x.scenario]||x.scenario,scenarios:[INTENT[x.scenario]||x.scenario],maxRisk:x.risk_score,status:x.status,latest:x.latest,summary:x.summary}));
-      return <Card className="card" title={<span><span className="brand-bar"></span>高风险告警 TOP5</span>} size="small" extra={<a onClick={()=>go('alerts')}>全部 →</a>}>
+      return <Card className="card" title={<Tooltip title="每人取待处理(NEW)告警中的最高分,同分取最新窗口。与告警工作台「最高风险」同口径;已知晓/误报/已关闭不参与。"><span><span className="brand-bar"></span>高风险告警 TOP5</span></Tooltip>} size="small" extra={<a onClick={()=>go('alerts')}>全部 →</a>}>
         {ga.length? <Table size="small" rowKey="key" pagination={false} dataSource={ga.slice(0,5)} onRow={r=>({onClick:()=>goProfile(r.employee),title:r.summary,style:{cursor:'pointer'}})}
           columns={[{title:'用户',dataIndex:'employee',width:96,render:v=><span className="uname" style={{cursor:'inherit'}}>{EMP_D(v)}</span>},
             {title:'风险场景',dataIndex:'scenario',width:130,render:(v,r)=>{const L=LVL(r.maxRisk);const st=SRCTAG(r.summary,r.scenario,r.latest);return <Space size={3}><Tooltip title={st.tip}><Tag style={{background:st.c+'14',color:st.c,border:'1px solid '+st.c+'44',fontSize:10}}>{st.t}</Tag></Tooltip><Tag style={{background:L.c+'1a',color:L.c,border:'1px solid '+L.c+'40'}}>{v}</Tag></Space>}},
-            {title:'风险',dataIndex:'maxRisk',width:96,render:v=><RiskBadge s={v}/>},
+            {title:<TH t="风险" tip="每人待处理(NEW)告警的最高分(0-100)。76+严重/56+高危/31+关注。" />,dataIndex:'maxRisk',width:96,render:v=><RiskBadge s={v}/>},
             {title:'状态',dataIndex:'status',width:84,render:(v,r)=><StatusTag s={v} why={closeWhy(r.summary)}/>},
-            {title:'最近活动',dataIndex:'latest',width:110,render:v=><span style={{fontSize:11,color:'var(--ink3)'}}>{(v||'').slice(5,16).replace('T',' ')}</span>}]}/> : <Empty description="暂无告警" style={{padding:20}}/>}
+            {title:<TH t="告警时间" tip="该最高分告警的窗口起始时间(行为发生时间)。" />,dataIndex:'latest',width:110,render:v=><span style={{fontSize:11,color:'var(--ink3)'}}>{(v||'').slice(5,16).replace('T',' ')}</span>}]}/> : <Empty description="暂无告警" style={{padding:20}}/>}
       </Card>;
     })()}
       </Col>
