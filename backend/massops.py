@@ -8,6 +8,7 @@ Qwen 按文件名列表写5W说明(谁/何时/通过什么/删了什么/属什�
 from __future__ import annotations
 
 import json
+import re
 from collections import defaultdict
 from datetime import timedelta
 
@@ -23,28 +24,61 @@ PROMPT = """你是企业行为安全分析师。输入: 某员工一天内删除
 def scan_mass_deletes() -> dict:
     s = Session()
     try:
-        since = bj_now() - timedelta(days=1)
+        # 2026-09-01: 窗口1天→2天并按日历日分组(原滚动24h整桶按员工: 跨天事件混进同一天键,
+        # 且超过1天的行永远扫不到,计数停在首扫快照——存量25条中21条过期)
+        since = bj_now() - timedelta(days=2)
         evs = s.query(EventRow).filter(EventRow.source == "ipguard",
                                         EventRow.category == "DOC",
                                         EventRow.action == "DELETE",
                                         EventRow.occurred_at >= since).all()
-        by_emp = defaultdict(list)
+        by_emp_day = defaultdict(list)
         for e in evs:
             if detector.is_noise_doc(e):
                 continue
-            by_emp[e.employee_id].append(e)
-        created = skipped = 0
-        for emp, lst in by_emp.items():
+            by_emp_day[(e.employee_id, e.occurred_at.date())].append(e)
+        created = updated = closed = skipped = 0
+        for (emp, day_d), lst in by_emp_day.items():
             files = sorted({(e.target_value or "").strip() for e in lst if (e.target_value or "").strip()})
-            if len(lst) < 15 or len(files) < 8:
-                continue
-            day = lst[0].occurred_at.strftime("%Y-%m-%d")
+            n, nf = len(lst), len(files)
+            day = day_d.strftime("%Y-%m-%d")
             key = f"{emp}|mass_delete|{day}"
-            if s.query(AlertRow).filter_by(dedup_key=key).first():
-                skipped += 1
+            existing = s.query(AlertRow).filter_by(dedup_key=key).first()
+            if n < 15 or nf < 8:
+                # 复算低于阈值 → 降噪关闭(镜像scan_mass_exfil白名单更正分支;噪声口径收紧后旧告警可能失真)
+                if existing and existing.status == "NEW":
+                    existing.status = "CLOSED"
+                    existing.risk_score = 15
+                    existing.severity = "LOW"
+                    existing.summary = f"[复核更正: 按当前噪声口径复算当日有效删除仅{n}次/{nf}个,低于聚合阈值,降噪关闭] " + (existing.summary or "")[:140]
+                    closed += 1
+                continue
+            risk = 80 if n >= 40 else 70
+            sev = "CRITICAL" if risk >= 76 else "HIGH"
+            if existing:
+                if existing.status != "NEW":
+                    skipped += 1
+                    continue
+                # 刷新(2026-09-01,镜像scan_mass_exfil): 同日数据晚到增长时对齐计数/档位;
+                # AI写的5W定性不整体重写,由可原地更新的[复核]尾标携带最新计数
+                _tag = f"[复核{day[5:].replace('-', '')}:当日累计删除{n}次/{nf}个文件]"
+                sm = re.sub(r"\s*\[复核[^\]]*\]$", "", existing.summary or "")
+                if f"删除{n}次/{nf}个" not in sm:
+                    sm = sm + " " + _tag
+                existing.summary = sm
+                existing.risk_score = risk
+                existing.severity = sev
+                existing.window_start = max(e.occurred_at for e in lst)
+                updated += 1
+                print(f"[massops] {emp} {day} 刷新为{n}次/{nf}文件 -> {risk}分", flush=True)
                 continue
             hours = sorted({e.occurred_at.hour for e in lst})
-            digest = f"员工: {emp}\n日期: {lst[0].occurred_at.strftime('%Y-%m-%d')} 时段{hours[0]}-{hours[-1]}时\n共删除{len(lst)}次/{len(files)}个不同文件:\n" + "\n".join(files[:40])
+            # 类型分布喂给AI: 构建/文档构成是"环境清理vs敏感清理"的关键判据(2026-09-01 27万次环境擦除案例)
+            _ext = defaultdict(int)
+            for e in lst:
+                _m = re.search(r"\.([a-z0-9]{1,5})$", (e.target_value or "").lower())
+                _ext[_m.group(1) if _m else "无扩展"] += 1
+            ext_txt = ", ".join(f"{k}×{c}" for k, c in sorted(_ext.items(), key=lambda x: -x[1])[:6])
+            digest = f"员工: {emp}\n日期: {day} 时段{hours[0]}-{hours[-1]}时\n共删除{n}次/{nf}个不同文件(类型分布: {ext_txt}):\n" + "\n".join(files[:40])
             summary = ""
             try:
                 import llm_client
@@ -57,21 +91,23 @@ def scan_mass_deletes() -> dict:
             except Exception:
                 pass
             if not summary:
-                sample = "、".join(files[:4])
-                summary = f"{emp}在{day}通过本机删除{len(lst)}次/{len(files)}个文件(如{sample}),大量删除属疑似离职前清理,需核查"
-            risk = 80 if len(lst) >= 40 else 70
+                _meh = ("__init__", "__pycache__", "RECORD", "WHEEL", "METADATA", "LICENSE", "INSTALLER", "entry_points")
+                _picks = [f for f in files if not f.startswith(_meh)][:4] or files[:4]
+                sample = "、".join(_picks)
+                summary = f"{emp}在{day}通过本机删除{n}次/{nf}个文件(如{sample}),大量删除属疑似离职前清理,需核查"
             s.add(AlertRow(employee_id=emp, scenario="mass_delete",
-                           severity="CRITICAL" if risk >= 76 else "HIGH", risk_score=risk,
+                           severity=sev, risk_score=risk,
                            summary=summary, dedup_key=key,
-                           window_start=lst[-1].occurred_at, created_at=bj_now(), status="NEW"))
+                           window_start=max(e.occurred_at for e in lst), created_at=bj_now(), status="NEW"))
             created += 1
-            print(f"[massops] {emp} {day} 删除{len(lst)}次/{len(files)}文件 -> {risk}分", flush=True)
+            print(f"[massops] {emp} {day} 删除{n}次/{nf}文件 -> {risk}分", flush=True)
         from db import write_lock as _wl
         with _wl:  # 铁律: 写经统一写锁串行(2026-08-26补)
             s.commit()
         # ---- 外发量聚合(蚂蚁搬家检测,2026-08-21): 单日≥15次或≥50MB ----
         created2 = scan_mass_exfil(s)
-        return {"checked": len(by_emp), "created": created + created2, "skipped": skipped}
+        return {"checked": len(by_emp_day), "created": created + created2,
+                "updated": updated, "closed": closed, "skipped": skipped}
     finally:
         s.close()
 
