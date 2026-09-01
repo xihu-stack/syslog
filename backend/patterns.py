@@ -30,12 +30,24 @@ def scan_archive_then_send(s) -> int:
                  and not _is_whitelisted_dest(e, _webs.get(emp))]
         if not archives or not sends:
             continue
-        # 压缩文件名与外发文件名有关联(同名/包含关系)
+        # 压缩文件名与外发文件名有关联(同名/包含关系)。
+        # 2026-09-01审计: 旧版any()命中后摘要展示archives[0]而非命中的那条(证据张冠
+        # 李戴,压缩A却写成外发B的依据);且光杆日期名(如"20260825")子串命中一切带
+        # 当日日期的外发名。改为: 命中哪条展示哪条;纯数字/日期弱名只许强匹配(相等)。
+        _weak_name = re.compile(r"^[\d\s\-._]{4,}$")
         arch_names = {(e.target_value or "").lower() for e in archives}
         for send in sends:
             sn = (send.target_value or "").lower()
             base = re.sub(r"\.(zip|rar|7z|tar|gz)$", "", sn)
-            if any(an in sn or base in an or sn in an for an in arch_names):
+            hit = None
+            for an in arch_names:
+                if an == sn or an == base:
+                    hit = an
+                    break
+                if not _weak_name.fullmatch(an) and (an in sn or base in an or sn in an):
+                    hit = an
+                    break
+            if hit is not None:
                 day = send.occurred_at.strftime("%Y-%m-%d")
                 key = f"{emp}|archive_send|{day}"
                 if s.query(AlertRow).filter_by(dedup_key=key).first():
@@ -53,7 +65,7 @@ def scan_archive_then_send(s) -> int:
                 _app = (send.raw or {}).get("app") or ""
                 s.add(AlertRow(employee_id=emp, scenario="archive_exfil",
                                severity="CRITICAL", risk_score=85,
-                               summary=(f"{emp}在{day}先压缩『{(archives[0].target_value or '')[:30]}』"
+                               summary=(f"{emp}在{day}先压缩『{hit[:30]}』"
                                         f"再经{_app or '网络'}外发『{sn[:30]}』至{dest[:40]},属打包后蓄意带走模式"),
                                dedup_key=key,
                                window_start=send.occurred_at, created_at=bj_now(), status="NEW"))
@@ -64,8 +76,23 @@ def scan_archive_then_send(s) -> int:
 
 
 # ---------- 4) 改名掩盖检测 ----------
+# 2026-09-01审计: 旧规则只看"变短+新名无大写编号",两路误报——①下载件的哈希
+# 临时名改回有义英文名,是命名不是掩盖;②"新建文件夹(2)"改日期,默认名本无语义
+# 可掩。改为双侧语义判定: 原名真有语义且非默认名,新名真失去语义(默认名不算
+# 语义),才谈得上"掩盖"。另原名/新名此处均已lower(),大写类永不命中是死码,
+# 语义改用小写类(英文词/项目编号)匹配。
+_DEFAULT_NAME = re.compile(r"^新建(文件夹|压缩文件夹|文本文档)( ?\(\d+\))?"
+                           r"(\.[a-z0-9]{1,5})?$|^untitled", re.I)
+_HAS_SEMANTIC = re.compile(r"[一-鿿]|[a-z]{4,}|[a-z]{2,}[-_]\d")
+
+
+def _name_semantic(name: str) -> bool:
+    """文件名携带可丢失的语义(非默认名,且有中文/英文词/项目编号)。"""
+    return not _DEFAULT_NAME.match(name) and bool(_HAS_SEMANTIC.search(name))
+
+
 def scan_rename_disguise(s) -> int:
-    """RENAME 后文件名显著变短/失去语义 → 再外发 = 掩盖。"""
+    """原名有语义 → 改成显著更短且无语义的名字 → 再外发 = 掩盖。"""
     created = 0
     for emp in {r[0] for r in s.query(EventRow.employee_id).filter(
             EventRow.source == "ipguard",
@@ -84,8 +111,9 @@ def scan_rename_disguise(s) -> int:
             dest_name = ((rn.raw or {}).get("dest_path") or "").split("\\")[-1].lower()
             if not src or not dest_name:
                 continue
-            # 判定"掩盖": 改名后长度不到原名一半,且不含中文/项目编号特征
-            if len(dest_name) < len(src) * 0.5 and not re.search(r"[一-鿿]|[A-Z]{2,}[-_]\d", dest_name):
+            # 判定"掩盖": 原名有语义,新名失去语义,且长度不到原名一半
+            if _name_semantic(src) and not _name_semantic(dest_name) \
+                    and len(dest_name) < len(src) * 0.5:
                 # 该改名后的文件被外发
                 for send in sends:
                     if dest_name in (send.target_value or "").lower():

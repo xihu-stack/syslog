@@ -13,10 +13,24 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import timedelta
+import re
 
 from db import Session, EventRow, VerdictRow, AlertRow, ProfileRow, ExceptionRow, bj_now
 import dicts
 import detector
+
+# 2026-09-01审计: 信号取数原不看status——白名单更正/不构成等误报关闭的告警仍进
+# 榜当信号(工作台已判误报、风险榜还挂着95分,口径打架)。活跃告警与"真事已处理"
+# 的关闭照算(离职风险看事件真实发生过),仅误报类关闭剔除。
+_FP_CLOSE = re.compile(r"白名单|不构成|压回|失效|未复现|降噪|豁免|重判对齐")
+
+
+def _fp_closed(a) -> bool:
+    """告警是否以误报结论关闭(按说明头部标记判,活跃态永不命中)。"""
+    if a.status in ("NEW", "TRIAGING", "CONFIRMED"):
+        return False
+    m = re.match(r"^\[[^\]\n]{2,60}\]", a.summary or "")
+    return bool(m and _FP_CLOSE.search(m.group(0)))
 
 
 def risk_board(days: int = 7) -> list:
@@ -43,10 +57,12 @@ def risk_board(days: int = 7) -> list:
             sig[v.employee_id]["job"] = max(sig[v.employee_id]["job"], v.risk_score)
             sig[v.employee_id]["detail"]["job"] = f"求职研判{v.risk_score}分"
 
-        # 2) 外发信号(跳过data_exfiltration已豁免的人)
+        # 2) 外发信号(跳过data_exfiltration已豁免的人;误报关闭的不算信号)
         for a in s.query(AlertRow).filter(
                 AlertRow.created_at >= since, AlertRow.scenario == "data_exfiltration").all():
             if "data_exfiltration" in exempt_map.get(a.employee_id, set()):
+                continue
+            if _fp_closed(a):
                 continue
             sig[a.employee_id]["exfil"] = max(sig[a.employee_id]["exfil"], a.risk_score or 0)
             sig[a.employee_id]["detail"]["exfil"] = f"外发告警{a.risk_score}分"
@@ -63,10 +79,12 @@ def risk_board(days: int = 7) -> list:
                 sig[e.employee_id]["exfil"] = max(sig[e.employee_id]["exfil"], 60)
                 sig[e.employee_id]["detail"].setdefault("exfil", "有非白名单外发行为")
 
-        # 3) 大量删除
+        # 3) 大量删除(误报关闭的不算信号)
         for a in s.query(AlertRow).filter(
                 AlertRow.created_at >= since, AlertRow.scenario == "mass_delete").all():
             if "mass_delete" in exempt_map.get(a.employee_id, set()):
+                continue
+            if _fp_closed(a):
                 continue
             sig[a.employee_id]["delete"] = a.risk_score or 70
             sig[a.employee_id]["detail"]["delete"] = f"删除{a.risk_score}分"
