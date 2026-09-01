@@ -542,7 +542,7 @@ def employee(emp: str):
         # 原无时间窗,已知晓(CONFIRMED)告警不会超龄关闭,历史高分在详情页永不
         # 回落,与用户视图列表(近7天同口径)同屏出现两个数。max_risk保留为
         # 历史研判峰值(参考),复核降分/豁免不影响cur_risk。
-        _wk_p = bj_now() - timedelta(days=7)
+        _wk_p = bj_now() - _td(days=7)  # _td=timedelta,函数顶部局部导入(裸timedelta在该函数未定义→500)
         _open = [a.risk_score or 0 for a in emp_alerts
                  if a.status in ("NEW", "CONFIRMED") and a.window_start and a.window_start >= _wk_p]
         cur_risk = max(_open) if _open else 0
