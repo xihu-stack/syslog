@@ -154,8 +154,10 @@ def scan_trend_spike(s) -> int:
             EventRow.occurred_at < this_week,
             EventRow.action.in_(("SEND", "UPLOAD"))).all()]
         prev_send = sum(1 for e in prev if not _is_whitelisted_dest(e))
-        # 外发次数突增: 上周≥3次,本周≥3倍
-        if prev_send >= 3 and cur_send >= prev_send * 3:
+        # 外发次数突增: 上周≥3次,本周≥3倍且≥15次(绝对量下限+体量分档 2026-09-02:
+        # 原3→12次也顶75/HIGH与3→46同档,单日13条小基数洪峰占NEW趋势类1/3)
+        if prev_send >= 3 and cur_send >= max(prev_send * 3, 15):
+            tier = 75 if cur_send >= 40 else 60
             # 周键(2026-08-31): 比较本身是"本周vs上周"的周级事实,原按日键在趋势
             # 持续期间每天克隆一条75分NEW(当日审计: 同人4条并排且数字三天不变)。
             # 同一ISO周只留一行,周内数据变化才刷新;处置态不复活不重置(08-28口径)。
@@ -166,11 +168,11 @@ def scan_trend_spike(s) -> int:
             existing = s.query(AlertRow).filter_by(dedup_key=key).first()
             if not existing:
                 s.add(AlertRow(employee_id=emp, scenario="trend_spike",
-                               severity="HIGH", risk_score=75,
+                               severity="HIGH", risk_score=tier,
                                summary=sm, dedup_key=key,
                                window_start=now, created_at=bj_now(), status="NEW"))
                 created += 1
-                print(f"[pattern] {emp} 外发环比{cur_send}vs{prev_send} -> 75分", flush=True)
+                print(f"[pattern] {emp} 外发环比{cur_send}vs{prev_send} -> {tier}分", flush=True)
             elif existing.status == "NEW" and (existing.summary or "") != sm:
                 existing.summary = sm  # 数字有变才刷说明/窗口,不变不无谓续命(否则永不超龄)
                 existing.window_start = now
