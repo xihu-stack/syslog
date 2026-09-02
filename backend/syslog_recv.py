@@ -349,13 +349,15 @@ def _flush_loop():
     # 且无人重拉——每10分钟检查水位,超过500条未判事件自动拉起研判
     if _flush_count % 20 == 0:
         try:
-            _wm = int(dicts.get_setting("last_judged_event_id", "0") or "0")
-            import db as _db
-            _ms = Session().query(_db.EventRow.id).order_by(_db.EventRow.id.desc()).first()
-            if _ms and _ms[0] - _wm > 500:
+            import sqlite3 as _sq3
+            _dbc = _sq3.connect("/app/data/ipguard.db", timeout=30)
+            _wm = int(_dbc.execute("SELECT value FROM settings WHERE key='last_judged_event_id'").fetchone()[0] or "0")
+            _mx = _dbc.execute("SELECT MAX(id) FROM events").fetchone()[0] or 0
+            _dbc.close()
+            if _mx - _wm > 500:
                 import pipeline
                 pipeline.start_detection()
-                print(f"[watchdog] 水位差{_ms[0] - _wm}>500,自动拉起研判", flush=True)
+                print(f"[watchdog] 水位差{_mx - _wm}>500,自动拉起研判", flush=True)
         except Exception as _we:
             print(f"[watchdog] 水位检查失败: {_we}", flush=True)
     if _flush_count % 20 == 0:
