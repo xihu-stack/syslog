@@ -154,49 +154,55 @@ def scan_trend_spike(s) -> int:
             EventRow.occurred_at < this_week,
             EventRow.action.in_(("SEND", "UPLOAD"))).all()]
         prev_send = sum(1 for e in prev if not _is_whitelisted_dest(e))
+        # 让位判定(2026-09-02): 同周已有mass_exfil周行(非CLOSED)——绝对量视角已
+        # 覆盖同一批外发事实,trend不再另立行。二修: 判定必须在触发块外——触发是
+        # 随滚动窗消退的活条件(prev窗滑入高基数后3倍比自然消解),只在触发块内让位
+        # 会漏掉"触发已消、双行仍并排到超龄"的存量对(部署验证: 7对只让位1对)。
+        # CLOSED的周行不算(白名单复算已否掉,趋势视角仍独立有效)。
+        iso = now.isocalendar()
+        _mass = s.query(AlertRow).filter_by(
+                dedup_key=f"{emp}|mass_exfil|{iso[0]}-W{iso[1]:02d}").first()
+        _yield = _mass and _mass.status != "CLOSED"
         # 外发次数突增: 上周≥3次,本周≥3倍且≥15次(绝对量下限+体量分档 2026-09-02:
         # 原3→12次也顶75/HIGH与3→46同档,单日13条小基数洪峰占NEW趋势类1/3)
         # 豁免门(2026-09-02): 外发家族豁免(data_exfiltration)压制trend——
-        # 胡曦案例: 外发事实被豁免后trend换个场景名照报;不查则I3删/扫描器建对拉
-        if prev_send >= 3 and cur_send >= max(prev_send * 3, 15) \
-                and not dicts.exempt_suppresses(s, emp, "trend_spike"):
+        # 不查则I3删/扫描器建每10分钟对拉
+        _trig = prev_send >= 3 and cur_send >= max(prev_send * 3, 15)
+        if _trig and not _yield and not dicts.exempt_suppresses(s, emp, "trend_spike"):
             tier = 75 if cur_send >= 40 else 60
             # 周键(2026-08-31): 比较本身是"本周vs上周"的周级事实,原按日键在趋势
             # 持续期间每天克隆一条75分NEW(当日审计: 同人4条并排且数字三天不变)。
             # 同一ISO周只留一行,周内数据变化才刷新;处置态不复活不重置(08-28口径)。
-            iso = now.isocalendar()
             key = f"{emp}|trend_exfil|{iso[0]}-W{iso[1]:02d}"
             sm = (f"{emp}本周外发{cur_send}次(上周{prev_send}次),"
                   f"环比增长{cur_send/max(prev_send,1):.0f}倍,属外发量突增")
-            # 让位(2026-09-02): 同周已有mass_exfil周行(非CLOSED)——绝对量视角已
-            # 覆盖同一批外发事实,不另立trend行: 环比以注记并入周行,已立的trend周行
-            # 降噪关闭。CLOSED不算(白名单复算已否掉的周行,趋势视角仍独立有效)。
-            _mass = s.query(AlertRow).filter_by(
-                    dedup_key=f"{emp}|mass_exfil|{iso[0]}-W{iso[1]:02d}").first()
-            if _mass and _mass.status != "CLOSED":
+            existing = s.query(AlertRow).filter_by(dedup_key=key).first()
+            if not existing:
+                s.add(AlertRow(employee_id=emp, scenario="trend_spike",
+                               severity="HIGH", risk_score=tier,
+                               summary=sm, dedup_key=key,
+                               window_start=now, created_at=bj_now(), status="NEW"))
+                created += 1
+                print(f"[pattern] {emp} 外发环比{cur_send}vs{prev_send} -> {tier}分", flush=True)
+            elif existing.status == "NEW" and (existing.summary or "") != sm:
+                existing.summary = sm  # 数字有变才刷说明/窗口,不变不无谓续命(否则永不超龄)
+                existing.window_start = now
+        if _yield:
+            if _trig:
+                # 环比注记并入周行(仅原触发关系仍成立时写——触发已消的存量对
+                # cur/prev≈1:1,那种"环比1倍"注记是噪音,只关行不注记)
                 _note = f"[环比:本周{cur_send}次,上周{prev_send}次,{cur_send/max(prev_send,1):.0f}倍]"
                 _base = re.sub(r"\s*\[环比:[^\]]*\]", "", _mass.summary or "").rstrip()
                 if _base + " " + _note != (_mass.summary or ""):
                     _mass.summary = _base + " " + _note
-                _tk = s.query(AlertRow).filter_by(dedup_key=key).first()
-                if _tk and _tk.status == "NEW":
-                    _tk.status = "CLOSED"
-                    _tk.risk_score = 15
-                    _tk.severity = "LOW"
-                    _tk.summary = "[降噪合并:同周已有批量外发周行(同一事实集),趋势行让位,环比见周行注记] " + (_tk.summary or "")[:120]
-                    print(f"[pattern] {emp} trend让位并周行 alert#{_tk.id}", flush=True)
-            else:
-                existing = s.query(AlertRow).filter_by(dedup_key=key).first()
-                if not existing:
-                    s.add(AlertRow(employee_id=emp, scenario="trend_spike",
-                                   severity="HIGH", risk_score=tier,
-                                   summary=sm, dedup_key=key,
-                                   window_start=now, created_at=bj_now(), status="NEW"))
-                    created += 1
-                    print(f"[pattern] {emp} 外发环比{cur_send}vs{prev_send} -> {tier}分", flush=True)
-                elif existing.status == "NEW" and (existing.summary or "") != sm:
-                    existing.summary = sm  # 数字有变才刷说明/窗口,不变不无谓续命(否则永不超龄)
-                    existing.window_start = now
+            _tk = s.query(AlertRow).filter_by(
+                    dedup_key=f"{emp}|trend_exfil|{iso[0]}-W{iso[1]:02d}").first()
+            if _tk and _tk.status == "NEW":
+                _tk.status = "CLOSED"
+                _tk.risk_score = 15
+                _tk.severity = "LOW"
+                _tk.summary = "[降噪合并:同周已有批量外发周行(同一事实集),趋势行让位] " + (_tk.summary or "")[:120]
+                print(f"[pattern] {emp} trend让位并周行 alert#{_tk.id}", flush=True)
         # 日更键时代的旧快照收编(无条件): 同一趋势的按日克隆行结构上已被周键
         # 取代,不收编则每人每天挂一条直到7天超龄,详情页并排数条同文案
         for old in s.query(AlertRow).filter(AlertRow.employee_id == emp,
