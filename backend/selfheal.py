@@ -96,11 +96,16 @@ def _selfcheck_body() -> dict:
             exc[x.employee_id][x.signal_type] = x.reason or "岗位需要"
 
         # ---- I3: 豁免场景的告警行删除 + 研判补标注 ----
+        # 场景家族感知(2026-09-02): 删除面=dicts.exempt_signals(场景)——
+        # data_exfiltration豁免同时删trend_spike/mass_exfil(同一批外发事实的
+        # 不同触发器,扫描器建行侧已同步豁免门,不会这边删那边建对拉)。
         for a in s.query(AlertRow).all():
-            if a.scenario in (exc.get(a.employee_id) or {}):
+            if any(sig in (exc.get(a.employee_id) or {})
+                   for sig in dicts.exempt_signals(a.scenario or "")):
                 fixes.append(f"I3 删豁免告警: {a.employee_id}/{a.scenario}")
                 s.delete(a)
         for v in s.query(VerdictRow).all():
+            # verdict intent是AI意图名(无家族变体),维持精确匹配
             ex = exc.get(v.employee_id, {}).get(v.intent)
             if ex and not (v.explanation or "").startswith("[已豁免"):
                 v.explanation = f"[已豁免:{ex}] " + (v.explanation or "")

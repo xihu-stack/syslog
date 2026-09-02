@@ -45,6 +45,8 @@ def scan_mass_deletes() -> dict:
             by_emp[e.employee_id][e.occurred_at.date()].append(e)
         created = updated = closed = merged = 0
         for emp, days in by_emp.items():
+            if dicts.exempt_suppresses(s, emp, "mass_delete"):
+                continue  # 豁免门(2026-09-02): 不建行——否则I3删/这里建每10分钟对拉
             week_n = sum(len(v) for v in days.values())
             files = sorted({(e.target_value or "").strip() for v in days.values()
                             for e in v if (e.target_value or "").strip()})
@@ -278,6 +280,10 @@ def scan_mass_exfil(s) -> int:
     created = updated = closed = merged = 0
     iso = now.isocalendar()
     for emp, days in by_emp.items():
+        # 豁免门(2026-09-02,家族感知): data_exfiltration豁免压制mass_exfil——
+        # 同一批外发事实换个触发器照报;不查则I3删/这里建每10分钟对拉
+        if dicts.exempt_suppresses(s, emp, "mass_exfil"):
+            continue
         week_n = sum(len(v) for v in days.values())
         week_mb = sum((e.size_bytes or 0) for v in days.values() for e in v) / 1048576
         burst = max(days.values(), key=len) if days else []
@@ -307,11 +313,15 @@ def scan_mass_exfil(s) -> int:
         # 内容定性(2026-08-26用户要求: 外发不能只看次数大小,要结合文件名推断):
         # 新建时由本地AI对文件清单做语义定性,敏感内容提分并写入说明;刷新时原摘要
         # 会被整体重写,须把[内容定性:]标签携带到新摘要,否则定性证据丢失(2026-09-02)
+        # 刷新时原摘要整体重写,须把既有标签携带到新摘要——[内容定性:]是AI定性
+        # 证据(2026-09-02),[环比:...]是trend让位时并入的环比注记(2026-09-02),
+        # 丢了定性/环比信息就静默消失
         _carry = ""
         if existing:
-            i0 = (existing.summary or "").find("[内容定性:")
-            if i0 >= 0:
-                _carry = " " + (existing.summary or "")[i0:].split("]")[0] + "]"
+            for _tag0 in ("[内容定性:", "[环比:"):
+                i0 = (existing.summary or "").find(_tag0)
+                if i0 >= 0:
+                    _carry += " " + (existing.summary or "")[i0:].split("]")[0] + "]"
         if not existing:
             try:
                 import llm_client

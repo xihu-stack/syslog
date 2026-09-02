@@ -92,8 +92,12 @@ def run_deep_audit() -> dict:
         if gap > 5000:
             try:  # 自愈: 直接拉起一轮研判(单飞,卡死多为检测线程退出)
                 import pipeline
-                pipeline.start_detection()
-                _notify(f"研判水位落后 {gap} 条,已自动拉起一轮研判补救")
+                _r = pipeline.start_detection() or {}
+                if _r.get("paused"):
+                    # AI暂停期护栏会拒绝拉起(2026-09-01),如实报而非谎称已拉起
+                    _notify(f"研判水位落后 {gap} 条,AI暂停中(llm_enabled=0)不自动拉起,恢复后自动补判")
+                else:
+                    _notify(f"研判水位落后 {gap} 条,已自动拉起一轮研判补救")
             except Exception as _pe:
                 _notify(f"研判水位落后 {gap} 条且自动拉起失败: {_pe}")
 

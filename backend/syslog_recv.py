@@ -18,6 +18,7 @@ _buf_lock = threading.Lock()
 _flush_timer = None
 _last_profiles_ts = 0.0
 _flush_count = 0
+_wd_paused_at = None  # watchdog上次报"暂停期水位差"的时刻(限每小时1条,2026-09-02)
 
 
 def _flush_events():
@@ -356,8 +357,16 @@ def _flush_loop():
             _dbc.close()
             if _mx - _wm > 500:
                 import pipeline
-                pipeline.start_detection()
-                print(f"[watchdog] 水位差{_mx - _wm}>500,自动拉起研判", flush=True)
+                _r = pipeline.start_detection() or {}
+                if _r.get("paused"):
+                    # 暂停期水位差是预期状态(护栏拒绝拉起),如实报+每小时限一条防刷屏
+                    global _wd_paused_at
+                    _n2 = datetime.datetime.now()
+                    if not _wd_paused_at or (_n2 - _wd_paused_at).total_seconds() > 3600:
+                        _wd_paused_at = _n2
+                        print(f"[watchdog] 水位差{_mx - _wm}>500,AI暂停中不拉起(llm_enabled=0),恢复后自动补判", flush=True)
+                else:
+                    print(f"[watchdog] 水位差{_mx - _wm}>500,自动拉起研判", flush=True)
         except Exception as _we:
             print(f"[watchdog] 水位检查失败: {_we}", flush=True)
     if _flush_count % 20 == 0:

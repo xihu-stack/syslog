@@ -17,6 +17,37 @@ PRIO_SCORE = 85          # 优先告警分数线(任意场景)
 PRIO_TREND = 75          # trend_spike专用线(降档后60分不再整类优先)
 PRIO_SCENARIOS = ("mass_delete", "mass_exfil", "archive_exfil", "rename_exfil")  # 场景级优先
 
+# ---------------- 豁免场景家族(单一事实源,2026-09-02) ----------------
+# 豁免的signal_type映射到它应压制的全部场景: 同一批外发事实有三种触发器
+# (AI意图data_exfiltration/环比trend_spike/绝对量mass_exfil),豁免了事实
+# 就不该换个场景名继续报。mass_delete/archive/rename不并入外发家族——
+# 删除与改名掩盖是独立行为信号,外发豁免不等于这些也豁免。
+EXEMPT_FAMILY = {
+    "data_exfiltration": ("data_exfiltration", "trend_spike", "mass_exfil"),
+}
+
+
+def exempt_signals(scenario: str) -> tuple:
+    """反查: 哪些signal_type的豁免能压制该场景(不在家族里的场景只被同名压制)。"""
+    sigs = [sig for sig, scens in EXEMPT_FAMILY.items() if scenario in scens]
+    if scenario not in sigs:
+        sigs.append(scenario)
+    return tuple(sigs)
+
+
+def exempt_suppresses(s, emp: str, scenario: str):
+    """emp的未到期豁免是否压制scenario。返回命中的ExceptionRow或None。
+    扫描器建行前必须查——否则selfheal I3每10分钟删、扫描器每10分钟重建,
+    同一行永久对拉。"""
+    from datetime import datetime as _dt
+    from sqlalchemy import or_
+    from db import ExceptionRow
+    return s.query(ExceptionRow).filter(
+        ExceptionRow.employee_id == emp,
+        ExceptionRow.signal_type.in_(exempt_signals(scenario)),
+        or_(ExceptionRow.expires_at.is_(None), ExceptionRow.expires_at > _dt.utcnow())
+    ).first()
+
 DEFAULTS = {
     "sensitive_keywords": [
         "客户", "名单", "合同", "报价", "标书", "财务", "源码", "设计图", "设计",
