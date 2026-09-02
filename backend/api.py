@@ -442,7 +442,10 @@ def list_alerts(severity: str | None = None, limit: int = 200, when: str | None 
             else:                           # week 近7天
                 q = q.filter(AlertRow.window_start >= _today - timedelta(days=7))
         def _prio(r):
-            if r.risk_score >= 90 or r.scenario in ("mass_delete", "mass_exfil", "archive_exfil", "rename_exfil", "trend_spike"):
+            # 2026-09-02: 分数线对齐注释口径85(原实现90,85分外发被"只看优先"过滤隐藏);
+            # trend降档后60分档不再整类优先,仅75档(>=40次/周)保留场景优先
+            if r.risk_score >= 85 or r.scenario in ("mass_delete", "mass_exfil", "archive_exfil", "rename_exfil") \
+                    or (r.scenario == "trend_spike" and (r.risk_score or 0) >= 75):
                 return "优先"
             if len(_sig_cnt.get(r.employee_id, ())) >= 2:
                 return "优先"
@@ -546,6 +549,10 @@ def employee(emp: str):
         _open = [a.risk_score or 0 for a in emp_alerts
                  if a.status in ("NEW", "CONFIRMED") and a.window_start and a.window_start >= _wk_p]
         cur_risk = max(_open) if _open else 0
+        # 近7天告警条数(2026-09-02): 与用户视图列表"告警N条"同口径(7d窗口,含各状态)。
+        # 原alert_count是全史条数,列表页却是7d——详情标题写"与用户视图同源"却必然对不上
+        # (当日审计133人两数不等)。保留全史alert_count,新增7d口径供标题双数字展示。
+        _c7d = sum(1 for a in emp_alerts if a.window_start and a.window_start >= _wk_p)
         return {
             "employee": emp,
             "category_counts": cat_counts,
@@ -554,6 +561,7 @@ def employee(emp: str):
             "max_risk": vd_max,
             "cur_risk": cur_risk,
             "alert_count": len(emp_alerts),
+            "alert_count_7d": _c7d,
             "alerts": [{"scenario": a.scenario, "severity": a.severity, "risk_score": a.risk_score,
                         "status": a.status, "summary": a.summary,
                         "window_start": a.window_start.isoformat() if a.window_start else None} for a in emp_alerts],

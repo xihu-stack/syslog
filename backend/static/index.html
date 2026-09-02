@@ -464,7 +464,7 @@ function ProfilePage({user, goBack, from}){
         <div style={{fontSize:12.5,color:'var(--ink2)',lineHeight:1.8}}>{story.story}</div>
         {(story.signals||[]).length>0&&<div style={{marginTop:8}}>{story.signals.map((sg,i)=><div key={i} style={{fontSize:11.5,color:'var(--ink3)',paddingLeft:10,borderLeft:'2px solid '+sc+'33',marginBottom:3}}>{sg}</div>)}</div>}
       </Card>; })()}
-    {(data.alerts||[]).length>0 && <Card className="card" title={<span><span className="brand-bar"></span>告警明细（{(data.alert_count||0)} 条 · 与用户视图同源）</span>} size="small" style={{marginTop:16}}>
+    {(data.alerts||[]).length>0 && <Card className="card" title={<span><span className="brand-bar"></span>告警明细（近7天 {(data.alert_count_7d!=null?data.alert_count_7d:data.alert_count)||0} 条 · 共 {(data.alerts||[]).length} 条）</span>} size="small" style={{marginTop:16}}>
       <Table size="small" rowKey="window_start" pagination={false}
         dataSource={(data.alerts||[]).slice().sort((a,b)=>String(b.window_start||'').localeCompare(String(a.window_start||'')))}
         columns={[
