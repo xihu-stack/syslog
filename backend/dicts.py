@@ -48,6 +48,18 @@ def exempt_suppresses(s, emp: str, scenario: str):
         or_(ExceptionRow.expires_at.is_(None), ExceptionRow.expires_at > _dt.utcnow())
     ).first()
 
+
+# ---------------- 外发计数噪声产物(单一事实源,2026-09-02) ----------------
+# 客户端自动生成的机械文件名: 微信每次发图IPG记1条SEND且文件名恒定,单名刷量
+# 即可把mass_exfil/trend顶上阈值(取证: 单周1204条/109人,17条周行8条被主导,
+# 最重者74次里67次是它,剔后仅7次)。事件不删——发图截图也可能是泄密面,AI
+# 定性时仍可见——只是不计入体积触发;镜像mass_delete的is_noise_doc+多样性门槛。
+EXFIL_ARTIFACT_FILES = ("sendphotoes",)  # 小写子串匹配(微信发图自动文件名)
+
+
+def is_exfil_artifact_name(name: str) -> bool:
+    return any(a in (name or "").lower() for a in EXFIL_ARTIFACT_FILES)
+
 DEFAULTS = {
     "sensitive_keywords": [
         "客户", "名单", "合同", "报价", "标书", "财务", "源码", "设计图", "设计",

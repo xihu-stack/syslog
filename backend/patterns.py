@@ -147,13 +147,17 @@ def scan_trend_spike(s) -> int:
             EventRow.employee_id == emp,
             EventRow.occurred_at >= this_week,
             EventRow.action.in_(("SEND", "UPLOAD"))).all()]
-        cur_send = sum(1 for e in cur if not _is_whitelisted_dest(e))
+        # 发图artifact剔除(2026-09-02): 微信发图自动文件名单名刷量会把"聊天发图
+        # 洪峰"伪装成外发量突增(取证: 某人74次里67次是它)——口径与mass_exfil一致
+        cur_send = sum(1 for e in cur if not _is_whitelisted_dest(e)
+                       and not dicts.is_exfil_artifact_name(e.target_value))
         prev = [e for e in s.query(EventRow).filter(
             EventRow.employee_id == emp,
             EventRow.occurred_at >= last_week,
             EventRow.occurred_at < this_week,
             EventRow.action.in_(("SEND", "UPLOAD"))).all()]
-        prev_send = sum(1 for e in prev if not _is_whitelisted_dest(e))
+        prev_send = sum(1 for e in prev if not _is_whitelisted_dest(e)
+                        and not dicts.is_exfil_artifact_name(e.target_value))
         # 让位判定(2026-09-02): 同周已有mass_exfil周行(非CLOSED)——绝对量视角已
         # 覆盖同一批外发事实,trend不再另立行。二修: 判定必须在触发块外——触发是
         # 随滚动窗消退的活条件(prev窗滑入高基数后3倍比自然消解),只在触发块内让位

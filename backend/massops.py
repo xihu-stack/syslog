@@ -108,7 +108,9 @@ def scan_mass_deletes() -> dict:
                     _meh = ("__init__", "__pycache__", "RECORD", "WHEEL", "METADATA", "LICENSE", "INSTALLER", "entry_points")
                     _picks = [f for f in files if not f.startswith(_meh)][:4] or files[:4]
                     sample = "、".join(_picks)
-                    summary = f"{emp}本周({wk_start.strftime('%m-%d')}起)删除{week_n}次/{week_nf}个文件(如{sample}),大量删除属疑似离职前清理,需核查"
+                    # 模板分支=5W定性LLM不可用,分数是规则锚点(对齐[待补判]原则,2026-09-02)
+                    summary = (f"{emp}本周({wk_start.strftime('%m-%d')}起)删除{week_n}次/{week_nf}个文件(如{sample}),"
+                               f"大量删除属疑似离职前清理,需核查 [规则锚点分,未经AI定性]")
                 s.add(AlertRow(employee_id=emp, scenario="mass_delete",
                                severity=sev, risk_score=risk,
                                summary=summary, dedup_key=key,
@@ -219,11 +221,15 @@ def scan_mass_exfil(s) -> int:
     by_emp = defaultdict(lambda: defaultdict(list))
     _inferred = {}
     destless = []
+    _sp_n = defaultdict(int)  # 微信发图artifact次数: 不计入触发,说明如实注(2026-09-02)
     for e in s.query(EventRow).filter(EventRow.source == "ipguard",
                                        EventRow.occurred_at >= now - timedelta(days=7),
                                        EventRow.action.in_(("SEND", "UPLOAD"))).all():
         if e.occurred_at.date() < wk_start:
             continue  # 只统计本周: 跨周残留事件归上周行,避免周一换周时重复触发
+        if dicts.is_exfil_artifact_name(e.target_value):
+            _sp_n[e.employee_id] += 1
+            continue  # 客户端自动文件名不算外发体积(口径见dicts.EXFIL_ARTIFACT_FILES注)
         dest = _host(e)
         if dest and any(dest == w or dest.endswith("." + w) for w in _wl):
             continue
@@ -291,13 +297,15 @@ def scan_mass_exfil(s) -> int:
         key = f"{emp}|mass_exfil|{iso[0]}-W{iso[1]:02d}"
         existing = s.query(AlertRow).filter_by(dedup_key=key).first()
         if not (len(burst) >= 15 or burst_mb >= 50 or week_n >= 40 or week_mb >= 150):
-            # 白名单口径变化后重算低于阈值 → 关闭残留告警(2026-08-26周逸飞案例:
-            # filez.com加白当日,旧85分告警仍挂NEW)
-            if existing and existing.status == "NEW" and "[白名单" not in (existing.summary or ""):
+            # 口径变化后重算低于阈值 → 关闭残留告警。触发过两类(2026-08-26周逸飞
+            # 案例: filez.com加白当日旧85分仍挂NEW; 2026-09-02: 微信发图artifact
+            # 剔除后8条周行复算掉线)——文案统一"复核更正",按当次实际口径描述
+            if existing and existing.status == "NEW" and "[白名单" not in (existing.summary or "") \
+                    and "[复核更正" not in (existing.summary or ""):
                 existing.status = "CLOSED"
                 existing.risk_score = 15
                 existing.severity = "LOW"
-                existing.summary = "[白名单更正: 按当前白名单口径重算本周低于聚合阈值(目的地实为公司通道/白名单域)] " + (existing.summary or "")[:140]
+                existing.summary = f"[复核更正: 按当前口径(白名单/发图artifact剔除)复算本周有效外发仅{week_n}次,低于聚合阈值,降噪关闭] " + (existing.summary or "")[:140]
                 closed += 1
             continue
         if existing and existing.status in ("FP", "CONFIRMED"):
@@ -341,6 +349,13 @@ def scan_mass_exfil(s) -> int:
                 pass
         elif _carry:
             sm += _carry
+        if _sp_n.get(emp):
+            # 发图事实保留给AI定性(截图也可能是泄密面),只是不灌体积触发
+            sm += f" [微信发图{_sp_n[emp]}次未计入体积]"
+        if "[内容定性:" not in sm:
+            # LLM不可用/暂停期: 分数是规则锚点非AI定性,运营须能一眼识别
+            # (对齐2026-08-28[待补判]原则);AI恢复后定性标签出现,标识自动消失
+            sm += " [规则锚点分,未经AI定性]"
         sev = severity_of(risk)
         last_ts = max(e.occurred_at for v in days.values() for e in v)
         if existing:
