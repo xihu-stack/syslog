@@ -281,6 +281,11 @@ def scan_mass_exfil(s) -> int:
         if inf:
             return inf + "(同期浏览)"
         ch = (e.raw or {}).get("channel") or ""
+        app = ((e.raw or {}).get("app") or "").lower()
+        if "webview2" in app:
+            # 2026-09-02: webview2=客户端内嵌浏览器(ELN类桌面端/IM),IPG不记URL也
+            # 无浏览事件可推断——与普通网页上传的"未识别"是两种盲区,如实区分
+            return "客户端内嵌浏览器·目的地未记录"
         return (ch + "·未识别目的地") if ch and ch != "LOCAL" else "网络通道·未识别目的地"
 
     created = updated = closed = merged = 0
