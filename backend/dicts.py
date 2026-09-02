@@ -10,6 +10,13 @@ import re
 
 from db import DictRow, Session, SettingRow, init_db
 
+# ---------------- 告警优先级口径(单一事实源,2026-09-02) ----------------
+# 改优先级线只改这里,api._prio引用;禁止在调用方再写数字
+# (教训: 代码写90注释写85漂移数月,85分外发被"只看优先"过滤隐藏无人察觉)
+PRIO_SCORE = 85          # 优先告警分数线(任意场景)
+PRIO_TREND = 75          # trend_spike专用线(降档后60分不再整类优先)
+PRIO_SCENARIOS = ("mass_delete", "mass_exfil", "archive_exfil", "rename_exfil")  # 场景级优先
+
 DEFAULTS = {
     "sensitive_keywords": [
         "客户", "名单", "合同", "报价", "标书", "财务", "源码", "设计图", "设计",

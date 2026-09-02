@@ -232,10 +232,18 @@ def upsert_event(session, ev) -> bool:
     return True
 
 
+# ---- 级别档线(单一事实源,2026-09-02): 后端SQL过滤/判定一律引用,不再散写数字 ----
+# (审计教训: _prio代码90注释85漂移数月无人察觉;前端index.html的LVL色阶是唯一
+# 允许的副本,改档线时两处同步)
+SEV_CRIT = 76
+SEV_HIGH = 56
+SEV_MED = 31
+
+
 def severity_of(score: int) -> str:
-    if score >= 76: return "CRITICAL"
-    if score >= 56: return "HIGH"
-    if score >= 31: return "MEDIUM"
+    if score >= SEV_CRIT: return "CRITICAL"
+    if score >= SEV_HIGH: return "HIGH"
+    if score >= SEV_MED: return "MEDIUM"
     return "LOW"
 
 

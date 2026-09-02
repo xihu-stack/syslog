@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import desc, func, or_
 
-from db import (AlertRow, AskHistoryRow, EventRow, ExceptionRow, FeedbackRow, ProfileRow, RawLogRow, Session, VerdictRow, bj_now, events_by_hashes, init_db, json_field)
+from db import (AlertRow, AskHistoryRow, EventRow, ExceptionRow, FeedbackRow, ProfileRow, RawLogRow, Session, VerdictRow, bj_now, events_by_hashes, init_db, json_field, SEV_CRIT, SEV_HIGH)
 import llm_client
 import pipeline
 import profiles
@@ -442,10 +442,10 @@ def list_alerts(severity: str | None = None, limit: int = 200, when: str | None 
             else:                           # week 近7天
                 q = q.filter(AlertRow.window_start >= _today - timedelta(days=7))
         def _prio(r):
-            # 2026-09-02: 分数线对齐注释口径85(原实现90,85分外发被"只看优先"过滤隐藏);
-            # trend降档后60分档不再整类优先,仅75档(>=40次/周)保留场景优先
-            if r.risk_score >= 85 or r.scenario in ("mass_delete", "mass_exfil", "archive_exfil", "rename_exfil") \
-                    or (r.scenario == "trend_spike" and (r.risk_score or 0) >= 75):
+            # 口径单源(2026-09-02): 分数线/场景/trend线一律取自dicts策略块,改线只动dicts
+            # (原实现90与注释85漂移数月,85分外发被"只看优先"过滤隐藏)
+            if (r.risk_score or 0) >= dicts.PRIO_SCORE or r.scenario in dicts.PRIO_SCENARIOS \
+                    or (r.scenario == "trend_spike" and (r.risk_score or 0) >= dicts.PRIO_TREND):
                 return "优先"
             if len(_sig_cnt.get(r.employee_id, ())) >= 2:
                 return "优先"
@@ -1151,12 +1151,12 @@ def system_stats():
         # 今日严重告警(76+)条数——供大屏"今日严重告警"N 值。SQL 层计数，避免前端从
         # risk 排序 limit 的样本推算、超过样本量时漏算。
         al_today_critical = s.query(AlertRow).filter(
-            AlertRow.window_start >= today_start, AlertRow.risk_score >= 76).count()
+            AlertRow.window_start >= today_start, AlertRow.risk_score >= SEV_CRIT).count()
         # 高危56-75/关注50-55分层计数(2026-08-26): 大屏"按级别"原先在前端用
         # tot-crit-new 拼算,档线还写成50-75,与全站56-75/76+口径不符
         al_today_high = s.query(AlertRow).filter(
-            AlertRow.window_start >= today_start, AlertRow.risk_score >= 56,
-            AlertRow.risk_score < 76).count()
+            AlertRow.window_start >= today_start, AlertRow.risk_score >= SEV_HIGH,
+            AlertRow.risk_score < SEV_CRIT).count()
         al_today_mid = s.query(AlertRow).filter(
             AlertRow.window_start >= today_start, AlertRow.risk_score >= 50,
             AlertRow.risk_score < 56).count()
@@ -1247,7 +1247,7 @@ def system_stats():
                 "today_new": s.query(AlertRow).filter(AlertRow.window_start >= today_start,
                                                        AlertRow.status == "NEW").count(),
                 "crit_new_total": s.query(AlertRow).filter(
-                    AlertRow.risk_score >= 76, AlertRow.status == "NEW").count(),
+                    AlertRow.risk_score >= SEV_CRIT, AlertRow.status == "NEW").count(),
                 "today_by_scenario": {r[0] or "未识别": r[1] for r in
                 s.query(AlertRow.scenario, _f.count(AlertRow.id))
                 .filter(AlertRow.window_start >= today_start)

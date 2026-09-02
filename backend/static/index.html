@@ -261,6 +261,7 @@ const _askSend=async(question)=>{
 const _askLoad=async()=>{ const r=await GET('/api/ask/history'); if(r&&r.items) _askSet({msgs:r.items.flatMap(h=>[{role:'user',text:h.question},{role:'ai',text:h.answer}])}); };
 const _askClear=async()=>{ await fetch('/api/ask/history',{method:'DELETE',headers:_authHdr()}); _askSet({msgs:[]}); };
 
+// 级别色阶: 档线76/56/31须与后端db.py的SEV_CRIT/SEV_HIGH/SEV_MED同步(2026-09-02口径单源化)
 const LVL = s => (s==null)?{c:'#94a3b8',l:'-'} : s>=76?{c:'#ef4444',l:'严重'} : s>=56?{c:'#f97316',l:'高危'} : s>=31?{c:'#3b82f6',l:'关注'} : {c:'#22c55e',l:'正常'};
 const INTENT = {data_exfiltration:'数据外发', job_seeking:'求职离职', baseline_deviation:'行为偏离', policy_violation:'违规', normal_work:'正常', unknown:'未知', mass_delete:'大量删除', mass_exfil:'批量外发', archive_exfil:'压缩外发', rename_exfil:'改名掩盖', trend_spike:'外发突增'};
 // 告警来源标签(2026-08-21): 实时(事件触发) / N+1复核(次日全天视野修正) / 聚合(行为聚合如大量删除)
