@@ -389,6 +389,48 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                     if _pv is not None:
                         _wstart_ov = _pv.window_start
                 to_judge.append((emp, w, baseline, dev, _wstart_ov))
+        # ---- 兜底补判sweep(2026-09-03): ai_participated=0的verdict占着"已判过"
+        # 坑位且水位已推进,旧版无自动补判——[待补判]告警只能靠人记得点全量重判
+        # (而全量重判无条件删全部verdicts,7天外研判记录连带销毁)。每轮捞近7天
+        # 兜底窗口重建重判: 补判≥50同意图时,告警刷新路径会自然摘[待补判]前缀。
+        # 限流=每小时最多1轮+每轮≤5窗+兜底产生1小时内不重试,防LLM宕机时反复烧超时。
+        try:
+            _now5 = bj_now()
+            _last5 = dicts.get_setting("sweep_fallback_last", "") or ""
+            if _last5 == "" or (_now5 - datetime.strptime(_last5, "%Y-%m-%d %H:%M:%S")).total_seconds() > 3600:
+                _fbs = rs.query(VerdictRow).filter(
+                    VerdictRow.ai_participated == 0,
+                    VerdictRow.window_start >= _now5 - timedelta(days=7),
+                    VerdictRow.created_at < _now5 - timedelta(minutes=60),
+                ).order_by(VerdictRow.created_at).limit(5).all()
+                _ai_ws = set()
+                if _fbs:  # 同窗已有AI版(补判后意图变了才会残留旧兜底行)→已被顶替
+                    _ai_ws = {t[0] for t in rs.query(VerdictRow.window_start).filter(
+                        VerdictRow.ai_participated == 1,
+                        VerdictRow.employee_id.in_(list({f.employee_id for f in _fbs})[:50]),
+                        VerdictRow.window_start >= _now5 - timedelta(days=7)).all()}
+                for _fb in _fbs:
+                    if _fb.window_start in _ai_ws:
+                        continue
+                    _rows5 = events_by_hashes(rs, (_fb.event_hashes or [])[:400])
+                    if not _rows5:
+                        continue
+                    _w5 = [CanonicalEvent(
+                        occurred_at=r.occurred_at, employee_id=r.employee_id, device_id=r.device_id,
+                        category=r.category, action=r.action, target_type=r.target_type or "FILE",
+                        target_value=r.target_value or "", size_bytes=r.size_bytes or 0, count=r.count or 1,
+                        source=r.source or "", raw=r.raw or {}) for r in sorted(_rows5, key=lambda x: x.occurred_at)]
+                    _bk5 = (_fb.employee_id, _w5[0].occurred_at.date())
+                    if _bk5 not in _base_cache:
+                        _base_cache[_bk5] = profiles.baseline_for(rs, _fb.employee_id, _w5[0].occurred_at)
+                    to_judge.append((_fb.employee_id, _w5, _base_cache[_bk5],
+                                     detector.deviation(_w5, _base_cache[_bk5], global_domains=gdomains), None))
+                    _sup["sweep补判"] = _sup.get("sweep补判", 0) + 1
+                if _sup.get("sweep补判"):
+                    dicts.set_setting("sweep_fallback_last", _now5.strftime("%Y-%m-%d %H:%M:%S"))
+                    print(f"[detect] 兜底补判sweep: 本轮重判{_sup['sweep补判']}窗", flush=True)
+        except Exception as _sw5:
+            print(f"[detect] sweep失败(不影响主流程): {_sw5}", flush=True)
         _pipestat(windows=len(to_judge), **{f"sup_{k}": v for k, v in _sup.items()})
     finally:
         rs.close()
@@ -919,24 +961,32 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                         v = {**v, "explanation": f"访问{_facts}。原始说明: " + _expl}
         except Exception:
             pass
-        # ---- 双模型复核: Qwen判定达到告警级(≥阈值)时,用深度模型独立重判一遍。
+        # ---- 双模型复核: 主模型判定达到告警级(≥阈值)时,用深度模型独立重判一遍。
         # 两模型一致才维持告警;复核明显更低则降级(证据撑不起告警)。复核失败保守
         # 保留原判。说明不写复核过程,直接给结论(2026-08-19用户要求)。
         try:
             _smart = _lc_smart()
             if _smart and isinstance(v, dict) and (v.get("risk_score") or 0) >= 50 \
-                    and dicts.get_setting("llm_review", "1") == "1":
+                    and dicts.get_setting("llm_review", "1") == "1" and not _review_paused():
                 rv = detector.analyze_window(w, summary, dev, exempt, gctx, model=_smart, history=_hist, day_ctx=day_ctx)
-                rs = (rv or {}).get("risk_score") or 0
-                q = v.get("risk_score") or 0
-                if rs >= 50:  # 一致 → 维持;锚点场景用锚点分,其余取深模型说明+较高分
-                    v = {**rv, "risk_score": _anchored if _anchored is not None else max(q, rs)}
-                elif _anchored is not None:
-                    pass  # 锚点场景(访问即违规类/招聘档位)分数由客观计数决定,
-                    # 复核低分不推翻——单次访问BOSS必须65告警是用户口径,证据是
-                    # 计数不是AI观点;复核降级只作用于AI自由判分的场景
-                else:  # 分歧 → 降级到复核分(证据已被复核否定)
-                    v = {**v, "risk_score": max(rs, 30)}
+                if not (rv or {}).get("ai_participated"):
+                    # 复核结果有效性门(2026-09-03): 复核模型不可达时analyze_window
+                    # 返回规则兜底(ai_participated=False)而非异常——旧版把兜底分当
+                    # 复核分,rs<50走"分歧降级"把合格AI研判静默压到max(rs,30)
+                    # (复核槽401时每条告警级研判都被压)。复核失败=保留原判+计数,
+                    # 当日3败自动暂停(见_review_fail)。
+                    _review_fail(f"复核模型不可达,保留原判: {str((rv or {}).get('explanation'))[:60]}")
+                else:
+                    rs = rv.get("risk_score") or 0
+                    q = v.get("risk_score") or 0
+                    if rs >= 50:  # 一致 → 维持;锚点场景用锚点分,其余取深模型说明+较高分
+                        v = {**rv, "risk_score": _anchored if _anchored is not None else max(q, rs)}
+                    elif _anchored is not None:
+                        pass  # 锚点场景(访问即违规类/招聘档位)分数由客观计数决定,
+                        # 复核低分不推翻——单次访问BOSS必须65告警是用户口径,证据是
+                        # 计数不是AI观点;复核降级只作用于AI自由判分的场景
+                    else:  # 分歧 → 降级到复核分(证据已被复核否定)
+                        v = {**v, "risk_score": max(rs, 30)}
         except Exception:
             pass  # 复核异常不影响主判
         return (emp, w[0].device_id, _wstart_ov or w[0].occurred_at, w[-1].occurred_at, [e.event_hash() for e in w], v)
@@ -1033,9 +1083,36 @@ _detect_lock = threading.Lock()
 _detect_status = {"running": False, "total": 0, "done": 0, "judged": 0, "alerts": 0, "error": None,
                   "last_finished": None, "last_judged": 0, "last_alerts": 0}
 
+# ---- 复核槽健康(2026-09-03): 复核模型死槽(401/宕机)当日3败自动暂停,状态并入
+# detection_status,由syslog_recv._health_watchdog推送webhook。进程内计数即可:
+# 重启重置只是多烧3次快失败,不值得为此写库抢锁。 ----
+_review_state = {"date": "", "fails": 0, "paused": False}
+
+
+def review_status() -> dict:
+    return dict(_review_state)
+
+
+def _review_paused() -> bool:
+    _today = bj_now().strftime("%Y%m%d")
+    if _review_state["date"] != _today:  # 跨天自动清零重试
+        _review_state.update(date=_today, fails=0, paused=False)
+    return _review_state["paused"]
+
+
+def _review_fail(why: str):
+    if _review_paused():
+        return  # 已暂停,不再累计
+    _review_state["fails"] += 1
+    if _review_state["fails"] >= 3:
+        _review_state["paused"] = True
+        print(f"[review] 复核当日{_review_state['fails']}败,已自动暂停(恢复=换活复核槽或重启): {why}", flush=True)
+    else:
+        print(f"[review] 复核失败({_review_state['fails']}/3): {why}", flush=True)
+
 
 def detection_status() -> dict:
-    return dict(_detect_status)
+    return {**_detect_status, "review": review_status()}
 
 
 def start_detection(risk_threshold: int = 50) -> dict:

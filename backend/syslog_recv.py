@@ -195,6 +195,41 @@ def _health_watchdog():
             _notify(f"磁盘告警: 数据盘已用 {pct:.0f}%(剩余 {du.free/2**30:.0f}G),请清理或扩容(备份目录/旧数据)")
     except Exception:
         pass
+    # 4) 研判产出停滞(2026-09-03审计根因补缺): llm_enabled=0静默2天无人知——
+    #    旧兜底率项看"最近100条verdict的质量",停摆期不产verdict、分母全是旧数据
+    #    永不触发。本项改看"最老未判事件年龄",enabled=0/run崩溃/LLM死三种根因
+    #    全覆盖。正在跑或2小时内有run完成(补判进行中)不告警,防长积压追赶期误报。
+    try:
+        import pipeline as _pl4
+        from db import Session as _S4, EventRow as _E4, bj_now as _bj4
+        _wm4 = int(dicts_get("last_judged_event_id", "0") or "0")
+        _ss4 = _S4()
+        try:
+            _old4 = _ss4.query(_E4.occurred_at).filter(_E4.id > _wm4).order_by(_E4.id).first()
+        finally:
+            _ss4.close()
+        if _old4 and _old4[0]:
+            _age4 = (_bj4() - _old4[0]).total_seconds() / 3600
+            _st4 = _pl4.detection_status()
+            _lf4 = _st4.get("last_finished")
+            _lf_ok4 = False
+            try:  # last_finished是bj_now口径,同钟比较(容器UTC本地now会差8h)
+                _lf_ok4 = bool(_lf4) and (_bj4() - datetime.datetime.fromisoformat(_lf4)).total_seconds() < 7200
+            except Exception:
+                pass
+            if _age4 > 6 and not _st4.get("running") and not _lf_ok4 and _once_per_day("stall"):
+                _err4 = f", 上轮错误={str(_st4.get('error'))[:60]}" if _st4.get("error") else ""
+                _notify(f"研判产出停滞: 最老未判事件已积压{_age4:.0f}小时"
+                        f"(llm_enabled={dicts_get('llm_enabled') or '1'}, 上轮完成={_lf4 or '无'}{_err4}),请检查AI引擎")
+    except Exception:
+        pass
+    # 5) 复核停摆(2026-09-03): 复核槽当日3败自动暂停后,告警级研判无二次独立复核
+    try:
+        import pipeline as _pl5
+        if _pl5.review_status().get("paused") and _once_per_day("review_paused"):
+            _notify("双模型复核已自动暂停(复核槽连续失败),告警级研判当前无二次独立复核,请检查复核模型(llm_smart_model)配置")
+    except Exception:
+        pass
 
 
 _MAINT_RUNNING = set()
