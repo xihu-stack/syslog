@@ -8,7 +8,7 @@ from collections import defaultdict
 from datetime import timedelta
 import re
 
-from db import Session, EventRow, AlertRow, ProfileRow, bj_now
+from db import Session, EventRow, AlertRow, ProfileRow, bj_now, severity_of
 import dicts
 import llm_client
 
@@ -178,27 +178,41 @@ def scan_trend_spike(s) -> int:
             # 持续期间每天克隆一条75分NEW(当日审计: 同人4条并排且数字三天不变)。
             # 同一ISO周只留一行,周内数据变化才刷新;处置态不复活不重置(08-28口径)。
             key = f"{emp}|trend_exfil|{iso[0]}-W{iso[1]:02d}"
-            sm = (f"{emp}本周外发{cur_send}次(上周{prev_send}次),"
-                  f"环比增长{cur_send/max(prev_send,1):.0f}倍,属外发量突增")
+            # 窗口表述(2026-09-03): 本窗是滚动7天,原"本周/上周"与mass行的ISO周计数
+            # 同屏打架(同人两处"本周"数字差196);锚点标识对齐mass_exfil暂停期口径
+            sm = (f"{emp}近7天外发{cur_send}次(前7天{prev_send}次),"
+                  f"环比增长{cur_send/max(prev_send,1):.0f}倍,属外发量突增"
+                  f" [规则锚点分,未经AI定性]")
             existing = s.query(AlertRow).filter_by(dedup_key=key).first()
             if not existing:
                 s.add(AlertRow(employee_id=emp, scenario="trend_spike",
-                               severity="HIGH", risk_score=tier,
+                               severity=severity_of(tier), risk_score=tier,
                                summary=sm, dedup_key=key,
                                window_start=now, created_at=bj_now(), status="NEW"))
                 created += 1
                 print(f"[pattern] {emp} 外发环比{cur_send}vs{prev_send} -> {tier}分", flush=True)
             elif existing.status == "NEW" and (existing.summary or "") != sm:
+                # 档位随刷新重算(2026-09-03): 计数随滚动窗衰减后旧档冻结——当日审计
+                # 75分行近7天已落回26次(应60)。只NEW态刷新,处置态不重置(08-28口径)
                 existing.summary = sm  # 数字有变才刷说明/窗口,不变不无谓续命(否则永不超龄)
+                existing.risk_score = tier
+                existing.severity = severity_of(tier)
                 existing.window_start = now
         if _yield:
             if _trig:
                 # 环比注记并入周行(仅原触发关系仍成立时写——触发已消的存量对
                 # cur/prev≈1:1,那种"环比1倍"注记是噪音,只关行不注记)
-                _note = f"[环比:本周{cur_send}次,上周{prev_send}次,{cur_send/max(prev_send,1):.0f}倍]"
+                # 口径(2026-09-03): trend窗是滚动7天,mass行计数是ISO周,注记原同写
+                # "本周"两数字同屏打架——改标"近7天/前7天"以示窗口不同
+                _note = f"[环比:近7天{cur_send}次,前7天{prev_send}次,{cur_send/max(prev_send,1):.0f}倍]"
                 _base = re.sub(r"\s*\[环比:[^\]]*\]", "", _mass.summary or "").rstrip()
                 if _base + " " + _note != (_mass.summary or ""):
                     _mass.summary = _base + " " + _note
+            else:
+                # 触发已消(2026-09-03): 清掉旧注记,否则周行永远带着过期的"环比N倍"字样
+                _base = re.sub(r"\s*\[环比:[^\]]*\]", "", _mass.summary or "").rstrip()
+                if _base != (_mass.summary or ""):
+                    _mass.summary = _base
             _tk = s.query(AlertRow).filter_by(
                     dedup_key=f"{emp}|trend_exfil|{iso[0]}-W{iso[1]:02d}").first()
             if _tk and _tk.status == "NEW":

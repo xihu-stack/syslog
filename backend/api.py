@@ -481,14 +481,33 @@ def employee(emp: str):
         v_hashes = set()
         for vr in s.query(VerdictRow).filter_by(employee_id=emp).order_by(desc(VerdictRow.window_start)).limit(60).all():
             v_hashes.update(vr.event_hashes or [])
-        if v_hashes:  # 优先:研判命中的事件(就是 AI 判过的风险行为,最相关)
-            for e in s.query(EventRow).filter(EventRow.event_hash.in_(list(v_hashes)[:400])).all():
+        # 告警窗口的verdict优先(2026-09-03): 高活跃员工近60条verdict全是滚动研判,
+        # 告警引用的verdict被挤出池外——页面95分行引用的0831外发不出现,证据区只到
+        # 前一周。未处置告警(高分前10)的verdict hashes优先入池
+        _alert_vs = (s.query(VerdictRow).join(AlertRow, AlertRow.verdict_id == VerdictRow.id)
+                     .filter(AlertRow.employee_id == emp,
+                             AlertRow.status.in_(("NEW", "CONFIRMED")))
+                     .order_by(desc(AlertRow.risk_score)).limit(10).all())
+        _alert_hashes = []
+        _seen_h = set()
+        for vr in _alert_vs:
+            for h in (vr.event_hashes or []):
+                if h not in _seen_h:
+                    _alert_hashes.append(h)
+                    _seen_h.add(h)
+        if _alert_hashes or v_hashes:  # 优先:研判命中的事件(就是 AI 判过的风险行为,最相关)
+            _pool = _alert_hashes + [h for h in v_hashes if h not in _seen_h]
+            _cand = []
+            for e in s.query(EventRow).filter(EventRow.event_hash.in_(_pool[:500])).all():
                 dom = (e.raw or {}).get("domain") or ""
                 if (e.category == "WEB" and dicts.risk_class(dom)) or \
                    (e.category == "DOC" and e.action in detector.WRITE_ACTIONS):
-                    risk_evs.append(e)
-                if len(risk_evs) >= 30:
-                    break
+                    _cand.append(e)
+            # 外发置顶+时间倒序(两段稳定排序,2026-09-03): 风险证据区首先是"带走了
+            # 什么",DB默认序下新外发被旧WEB风险访问挤到30上限之外
+            _cand.sort(key=lambda x: x.occurred_at, reverse=True)
+            _cand.sort(key=lambda x: x.category == "DOC" and x.action in ("SEND", "UPLOAD"), reverse=True)
+            risk_evs = _cand[:30]
         for e in (s.query(EventRow).filter_by(employee_id=emp)  # 补齐:近期事件再扫一轮
                   .order_by(desc(EventRow.occurred_at)).limit(300).all()):
             if len(risk_evs) >= 30:

@@ -322,7 +322,10 @@ def scan_mass_exfil(s) -> int:
         big_txt = f",单文件最大{big / 1048576:.0f}MB" if big > 50 * 1048576 else ""
         dist = "、".join(f"{d.strftime('%m%d')}×{len(v)}" for d, v in sorted(days.items()))
         risk = 85 if (len(burst) >= 30 or burst_mb >= 100 or week_n >= 80 or week_mb >= 300) else 75
-        sm = f"{emp}本周({wk_start.strftime('%m-%d')}起)向非白名单目的地累计外发{week_n}次、共{week_mb:.1f}MB{big_txt}({mode};日分布:{dist})。样例: {sample}"
+        # 单日峰值入摘要(2026-09-03): 85档条件含"单日≥30次/单日≥100MB",原文案只给
+        # 周累计,运营无法从说明复验档位依据。注意两峰值可能不是同一天(次数峰/体量峰)
+        _peak = f",单日峰值{len(burst)}次、单日最大{burst_mb:.0f}MB"
+        sm = f"{emp}本周({wk_start.strftime('%m-%d')}起)向非白名单目的地累计外发{week_n}次、共{week_mb:.1f}MB{big_txt}{_peak}({mode};日分布:{dist})。样例: {sample}"
         # 内容定性(2026-08-26用户要求: 外发不能只看次数大小,要结合文件名推断):
         # 新建时由本地AI对文件清单做语义定性,敏感内容提分并写入说明;刷新时原摘要
         # 会被整体重写,须把[内容定性:]标签携带到新摘要,否则定性证据丢失(2026-09-02)
