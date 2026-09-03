@@ -1133,6 +1133,15 @@ _detect_status = {"running": False, "total": 0, "done": 0, "judged": 0, "alerts"
 # 重启重置只是多烧3次快失败,不值得为此写库抢锁。 ----
 _review_state = {"date": "", "fails": 0, "paused": False}
 
+# ---- webhook推送健康(2026-09-03): 推送失败原先静默吞掉(except:pass)——通道自身
+# 坏了无法经通道报警(watchdog也走同一URL),只能落在通道外:当日计数+docker日志行
+# +并入detection_status(系统健康页可见)。进程内计数,重启清零只丢统计不丢功能。 ----
+_WEBHOOK_STATE = {"date": "", "fails": 0, "sent": 0, "last_err": ""}
+
+
+def webhook_status() -> dict:
+    return dict(_WEBHOOK_STATE)
+
 
 def review_status() -> dict:
     return dict(_review_state)
@@ -1157,7 +1166,7 @@ def _review_fail(why: str):
 
 
 def detection_status() -> dict:
-    return {**_detect_status, "review": review_status()}
+    return {**_detect_status, "review": review_status(), "webhook": webhook_status()}
 
 
 def start_detection(risk_threshold: int = 50) -> dict:
@@ -1261,18 +1270,24 @@ def cleanup_old_raw_logs(days: int = 7) -> int:
 
 
 def _notify_webhook(user: str, risk: int, explanation: str):
-    """高危告警推送到钉钉/飞书/企业微信 webhook。"""
+    """高危告警推送到钉钉/飞书/企业微信 webhook。成败计入_WEBHOOK_STATE,失败落日志。"""
     import json
     import urllib.request
     url = dicts.get_setting("notify_webhook", "")
     if not url:
         return
+    _d = bj_now().strftime("%Y%m%d")
+    if _WEBHOOK_STATE["date"] != _d:
+        _WEBHOOK_STATE.update(date=_d, fails=0, sent=0, last_err="")
     try:
         body = json.dumps({"msgtype": "text", "text": {"content": f"IP-Guard 高危告警\n用户: {user}\n风险: {risk}\n说明: {explanation}"}}).encode("utf-8")
         req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
         urllib.request.urlopen(req, timeout=5)
-    except Exception:
-        pass
+        _WEBHOOK_STATE["sent"] += 1
+    except Exception as e:
+        _WEBHOOK_STATE["fails"] += 1
+        _WEBHOOK_STATE["last_err"] = f"{type(e).__name__}: {str(e)[:80]}"
+        print(f"[webhook] 推送失败(当日第{_WEBHOOK_STATE['fails']}次): {_WEBHOOK_STATE['last_err']}", flush=True)
 
 
 def rejudge_all(risk_threshold: int = 50) -> dict:

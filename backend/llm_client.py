@@ -54,10 +54,12 @@ def _candidates():
     }
     order = [active] + [m for m in ("qwen", "deepseek") if m != active]
     # 只要 base_url 有效就返回（本地模型可能无需 key）。
-    # 兜底槽三项(DB+env)均未显式配置=槽位空(单模型模式,如DeepSeek暂下线):
-    # 不进候选队列,主力失败也不浪费一次注定401的尝试;填回任一项即自动恢复
-    _ds_empty = not any(_ds_cfg) and not any(k in os.environ for k in
-                                            ("LLM_DEEPSEEK_KEY", "LLM_DEEPSEEK_MODEL", "LLM_DEEPSEEK_BASE_URL"))
+    # 兜底槽位空判定(2026-09-03用户拍板DeepSeek永久下线): 以"有key或有独立
+    # base_url"为准——model名不构成槽位(设置保存路径会把默认"deepseek"回写该
+    # 字段,旧"三项全空"判定被它顶开,空key槽位继续进队列,主力每次失败都多烧
+    # 一发注定401)。无key无独立地址=死槽,不进候选队列;填回key或独立base_url
+    # 任一项即自动恢复(共享代理免key部署=把base_url显式填成主地址)
+    _ds_empty = not (ds_key or _ds_cfg[2] or os.environ.get("LLM_DEEPSEEK_BASE_URL"))
     _skip = {"deepseek"} if _ds_empty else set()
     return [(pairs[m][0], pairs[m][1], pairs[m][2]) for m in order
             if m not in _skip and pairs[m][0] and pairs[m][0].startswith("http")]

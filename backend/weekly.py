@@ -87,8 +87,8 @@ def gen_weekly() -> dict:
                 ensure_ascii=False).encode()
             import urllib.request as _u
             _u.urlopen(_u.Request(url, data=body, headers={"Content-Type": "application/json"}), timeout=5)
-    except Exception:
-        pass
+    except Exception as _e:
+        print(f"[webhook] 周报推送失败: {type(_e).__name__}: {str(_e)[:80]}", flush=True)
     return result
 
 

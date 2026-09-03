@@ -100,6 +100,6 @@ def run_doc_scan(days: int = 7) -> dict:
             import urllib.request as _u
             _u.urlopen(_u.Request(url, data=body,
                                   headers={"Content-Type": "application/json"}), timeout=5)
-    except Exception:
-        pass
+    except Exception as _e:
+        print(f"[webhook] 文档深扫推送失败: {type(_e).__name__}: {str(_e)[:80]}", flush=True)
     return result

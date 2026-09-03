@@ -130,8 +130,8 @@ def _health_watchdog():
         try:
             body = _json.dumps({"msgtype": "text", "text": {"content": "⚠️ " + msg}}).encode("utf-8")
             _ur.urlopen(_ur.Request(url, data=body, headers={"Content-Type": "application/json"}), timeout=5)
-        except Exception:
-            pass
+        except Exception as _e:
+            print(f"[webhook] watchdog推送失败: {type(_e).__name__}: {str(_e)[:80]}", flush=True)
 
     def _once_per_day(key):
         today = datetime.datetime.now().strftime("%Y%m%d")
