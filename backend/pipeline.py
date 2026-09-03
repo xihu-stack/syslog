@@ -571,7 +571,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                             _oldh = list(vr.event_hashes or [])
                             vr.window_end = max(wend, vr.window_end) if (vr.window_end and wend) else (wend or vr.window_end)
                             vr.event_hashes = _oldh + [h for h in (hashes or []) if h not in _oldh]
-                            vr.risk_score = v.get("risk_score", 0) or vr.risk_score
+                            vr.risk_score = v.get("risk_score", 0)  # 不用or: AI判0分是合法值(2026-09-03前旧写法会把兜底85分永久保留)
                             vr.explanation = v.get("explanation") or vr.explanation
                             vr.deviation = v.get("deviation")
                             vr.channels = v.get("channels")
@@ -644,6 +644,29 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                                 existing.risk_score = v.get("risk_score", 0)
                                 existing.severity = severity_of(v.get("risk_score", 0))
                                 existing.refreshed_at = bj_now()  # ⑤刷新时间与created_at(首次)分离
+                        elif v.get("ai_participated", True):
+                            # 补判降级复原(2026-09-03): sweep/重判把窗口定性为正常或低分时,
+                            # 挂在兜底verdict上的[待补判]告警不能永远停在规则锚点分——AI已给
+                            # 结论,锚点分过期。只关verdict_id指向"本窗兜底行"的NEW告警(别的
+                            # 窗口立的/已人工确认的不牵连),关闭写明原因留痕(CLOSED非删除)。
+                            # 兜底行与重判行意图可能不同(兜底data_exfiltration/AI normal_work),
+                            # verdict行按(员工+意图+窗口)分键存两行,故按窗口反查兜底行。
+                            _fbvs = wsession.query(VerdictRow).filter(
+                                VerdictRow.employee_id == emp,
+                                VerdictRow.ai_participated == 0,
+                                VerdictRow.window_start == wstart).all()
+                            if _fbvs:
+                                _vids = [r.id for r in _fbvs]
+                                for _oa in wsession.query(AlertRow).filter(
+                                        AlertRow.employee_id == emp,
+                                        AlertRow.verdict_id.in_(_vids),
+                                        AlertRow.status == "NEW").all():
+                                    _oa.risk_score = v.get("risk_score", 0)
+                                    _oa.severity = severity_of(v.get("risk_score", 0))
+                                    _oa.status = "CLOSED"
+                                    _oa.summary = ("[自动降噪:AI补判定性为" +
+                                        ("正常工作" if v.get("intent") == "normal_work" else "低分") +
+                                        ",撤销中断期规则锚点分] " + (_oa.summary or ""))[:400]
                     wsession.commit()
                     break  # 提交成功
                 except _OpErr as e:
