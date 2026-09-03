@@ -342,8 +342,12 @@ def scan_mass_exfil(s) -> int:
             try:
                 import llm_client
                 _files = list({(e.target_value or "") for v in days.values() for e in v if (e.target_value or "")})[:20]
-                _p2 = ("对以下员工外发文件名清单做内容定性,输出JSON {sensitivity: high|mid|none, desc: 一句话(引用代表性文件名)}。"
-                       "high=实验/临床/项目数据/合同财务/数据库;mid=含项目编号的办公文档;none=缓存/私人生活文件。只输出JSON。文件: "
+                # glm-5.3-flash实测(2026-09-03): 原prompt下输出```json代码块+逐文件数组,
+                # json.loads掉except定性静默丢失;加单对象强约束后精准合规
+                _p2 = ("对以下员工外发文件名清单做整体内容定性,只输出一个JSON对象,格式严格为 "
+                       '{"sensitivity": "high|mid|none", "desc": "一句话(引用代表性文件名)"},'
+                       "禁止数组、禁止逐文件拆分、禁止markdown代码块。"
+                       "high=实验/临床/项目数据/合同财务/数据库;mid=含项目编号的办公文档;none=缓存/私人生活文件。文件: "
                        + "; ".join(_files))
                 _raw = llm_client.chat([{"role": "system", "content": _p2}], max_tokens=200, timeout=90)
                 _txt = llm_client.strip_think(_raw)

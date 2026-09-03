@@ -116,10 +116,13 @@ def chat(messages, model=None, temperature=0.1, max_tokens=1000, timeout=180):
         while True:
             try:
                 _payload = {**base_body, "model": mdl}
-                if "qwen" in mdl.lower():
-                    # Qwen3系默认开思考:思维链直接写进content,800-1000 token预算被
-                    # 推理耗尽,JSON永远出不来(2026-08-28 Qwen3.8-27B上线首验:
-                    # 17/17 verdict unknown/0,全是"我们需要回答用户…"开头无JSON)
+                if "qwen" in mdl.lower() or "glm" in mdl.lower():
+                    # 思考型模型关思考:思维链吃token预算,JSON永远出不来。
+                    # Qwen3系(2026-08-28首验:17/17 verdict unknown/0,全是
+                    # "我们需要回答用户…"开头无JSON);glm-5.3-flash(2026-09-03切换
+                    # 首验:开放prompt下思考耗尽80token预算content全空;vLLM同款
+                    # enable_thinking参数生效,关后研判schema合规不回退,偶发思路
+                    # 前导泄漏由extract_json截取大括号段兜住)
                     _payload["chat_template_kwargs"] = {"enable_thinking": False}
                 body = json.dumps(_payload).encode("utf-8")
                 req = urllib.request.Request(
