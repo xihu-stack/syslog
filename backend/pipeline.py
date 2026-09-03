@@ -395,7 +395,8 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         # intent=unknown的行也捞: 旧版"输出不可解析→unknown/0且ai=True"会永久锁
         # 死坑位(已判过抑制+无重试),重判出已知意图即被顶替。每轮捞近7天窗口重建
         # 重判: ≥50同意图时告警刷新路径自然摘[待补判]前缀。限流=每小时最多1轮+
-        # 每轮≤5窗+行产生1小时内不重试,防LLM宕机时反复烧超时。
+        # 每轮≤20窗+行产生1小时内不重试,防LLM宕机时反复烧超时(本地vLLM恢复后
+        # 20窗/小时,数小时级中断的兜底存量当天可清完)。
         try:
             _now5 = bj_now()
             _last5 = dicts.get_setting("sweep_fallback_last", "") or ""
@@ -404,7 +405,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                     or_(VerdictRow.ai_participated == 0, VerdictRow.intent == "unknown"),
                     VerdictRow.window_start >= _now5 - timedelta(days=7),
                     VerdictRow.created_at < _now5 - timedelta(minutes=60),
-                ).order_by(VerdictRow.created_at).limit(5).all()
+                ).order_by(VerdictRow.created_at).limit(20).all()
                 _ai_ws = set()
                 if _fbs:  # 同窗已有"AI+已知意图"版(意图变了才会残留旧行)→已被顶替
                     _ai_ws = {t[0] for t in rs.query(VerdictRow.window_start).filter(
@@ -598,14 +599,19 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                                     summary=("[待补判] " if _fb else "") + (v.get("explanation") or ""),
                                     dedup_key=key, window_start=wstart))
                                 # 推送门控(2026-08-26): 单次低价值不推,只推复合/高分/大体量——
-                                # 否则单张截图也轰炸webhook;兜底判定不推(2026-08-28:
-                                # 规则锚点分未经AI复核,补判成功后刷新时会再评估)
+                                # 否则单张截图也轰炸webhook。兜底判定≥85改推(2026-09-03,
+                                # 修订08-28"兜底一律不推"口径): AI中断拖长时锚点接管到85+的
+                                # 真实高危会静默无人知,与"中断期漏风险"的底线冲突——
+                                # 宁可带标识虚警,不可漏报;补判转正后刷新路径以AI结论覆盖
                                 _mb2 = sum((e.size_bytes or 0) for e in w
                                            if e.category == "DOC" and e.action in ("SEND", "UPLOAD")) / 1048576
                                 if not _fb and (v.get("risk_score", 0) >= 85
                                         or (v.get("risk_score", 0) >= 75 and _mb2 >= 5)
                                         or v.get("file_sensitivity") == "high"):
                                     _notify_webhook(emp, v.get("risk_score", 0), v.get("explanation", ""))
+                                elif _fb and v.get("risk_score", 0) >= 85:
+                                    _notify_webhook(f"{emp}[待补判·规则锚点,未经AI定性]",
+                                                    v.get("risk_score", 0), v.get("explanation", ""))
                             else:
                                 # 已有告警:当天再犯即刷新最近活动时间(window_start),让"今日告警"/趋势图
                                 # 如实反映当日复犯。
