@@ -17,9 +17,10 @@ from db import Session, EventRow, AlertRow, VerdictRow, bj_now, events_by_hashes
 import dicts
 import detector
 
-PROMPT = """你是企业行为安全分析师。输入: 某员工近几天(同一周内)删除的文件清单(IP-Guard,已排除系统/缓存文件)。
-输出 JSON: {"summary": "按5W写一段: 谁(用输入的员工名)在何时(日期+时段)通过什么(本机删除)删了什么(数量+代表性文件名3-5个+类型归纳,如『试验报告类/合同类/个人文件类』),属于什么问题(大量删除=疑似离职前清理/数据销毁前兆,结合文件名特征判断更像工作清理还是敏感清理)"}
-只输出JSON,summary一段话120字内。"""
+PROMPT = """你是生物医药研发企业的行为安全分析师。输入: 某员工同一周内删除的文件清单(IP-Guard,已排除系统/缓存文件)。
+公司业务: 核心数据资产=实验记录/细胞株与序列/临床试验文件(方案·IB·知情同意书·研究报告)/注册专利/合同客户资料;研发日常产出大量带项目编号(HX/HXN/CBL等)的过程稿属工作常态。
+输出单个JSON对象(第一个字符必须是'{',JSON之外禁止任何文字,禁止markdown代码块): {"summary":"按5W: 谁(输入员工名)在何时(周/日+时段)通过本机删除删了什么(数量+代表性文件名3-5个+按文件名归纳类型),结合文件名特征判定属哪类清理并写明依据:①敏感清理=实验/临床/注册/合同资产被删(疑似数据销毁或离职前清理)②工作清理=项目过程稿/旧版本整理③环境生活清理=下载缓存/安装包/个人文件","grade":"sensitive|work|env"}
+summary一段中文120字内,必须引用真实文件名。"""
 
 
 def scan_mass_deletes() -> dict:
@@ -94,14 +95,16 @@ def scan_mass_deletes() -> dict:
                 digest = (f"员工: {emp}\n本周({wk_start.strftime('%m-%d')}起,分日{dist}) 时段{hours[0]}-{hours[-1]}时\n"
                           f"共删除{week_n}次/{week_nf}个不同文件(类型分布: {ext_txt}):\n" + "\n".join(files[:40]))
                 summary = ""
+                _grade = ""
                 try:
                     import llm_client
                     raw = llm_client.chat([{"role": "system", "content": PROMPT},
                                            {"role": "user", "content": digest[:6000]}],
                                           max_tokens=500, timeout=120)
-                    txt = llm_client.strip_think(raw)
-                    i = txt.find("{")
-                    summary = (json.loads(txt[i:txt.rfind("}") + 1]) or {}).get("summary", "") if i >= 0 else ""
+                    _jo = llm_client.extract_json(llm_client.strip_think(raw) or "")
+                    if isinstance(_jo, dict):
+                        summary = str(_jo.get("summary") or "")
+                        _grade = str(_jo.get("grade") or "")
                 except Exception:
                     pass
                 if not summary:
@@ -111,6 +114,20 @@ def scan_mass_deletes() -> dict:
                     # 模板分支=5W定性LLM不可用,分数是规则锚点(对齐[待补判]原则,2026-09-02)
                     summary = (f"{emp}本周({wk_start.strftime('%m-%d')}起)删除{week_n}次/{week_nf}个文件(如{sample}),"
                                f"大量删除属疑似离职前清理,需核查 [规则锚点分,未经AI定性]")
+                # AI清理定性调分(2026-09-03): 敏感清理微升(封顶85,触及公司数据资产),
+                # 工作/环境生活清理降档(下限50保持队列可见,运营可快速处置)——
+                # 分数=规则锚点定档,AI按文件名+公司业务定性做档内修正,不再一律
+                # "疑似离职前清理"
+                if _grade == "sensitive":
+                    risk = min(risk + 5, 85)
+                    summary += " [AI定性:敏感清理,涉及公司数据资产]"
+                elif _grade == "work":
+                    risk = max(risk - 10, 50)
+                    summary += " [AI定性:工作清理(过程稿/旧版本整理)]"
+                elif _grade == "env":
+                    risk = max(risk - 20, 50)
+                    summary += " [AI定性:环境生活清理(缓存/安装包/个人文件)]"
+                sev = severity_of(risk)
                 s.add(AlertRow(employee_id=emp, scenario="mass_delete",
                                severity=sev, risk_score=risk,
                                summary=summary, dedup_key=key,

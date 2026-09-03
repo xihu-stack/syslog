@@ -38,6 +38,8 @@ def is_noise_doc(e) -> bool:
     if e.action in ("SEND", "UPLOAD", "PRINT", "BURN"):
         return False  # 外发/打印类是真实动作,交给AI按文件名语义判断
     p = ((e.raw or {}).get("src_path") or "").lower() + (e.target_value or "").lower()
+    if p.endswith((".exe", ".msi", ".msix", ".apk")):
+        return True  # 安装包/程序文件自身的写删=装卸载行为,非用户文档(2026-09-03)
     return any(k in p for k in _NOISE_PATH)
 
 # 遥测/自动更新类子域——LLM 判低分的例外,锚点不接管(拉到75会放大误判)
@@ -142,6 +144,12 @@ def anchor_score(intent, window, day_total=None) -> int | None:
                  and (e.raw or {}).get("channel") not in (None, "", "LOCAL")
                  and not _wl_dest(e)]
     _send_dests = [dicts.dest_host(e.raw or {}) for e in _send_evs]
+    # SendPhotoes全占窗口=客户端自动截图噪声(全公司性artifact,聚合层已剔除外发
+    # 计数):锚点不接管,尊重AI按prompt噪声口径的定性——旧版高频档把这种窗口
+    # 机械抬到75-80,LLM中断期兜底+锚点叠加后批量产出高分[待补判]告警
+    if _send_evs and all(str(e.target_value or "").lower().startswith("sendphotoes")
+                         for e in _send_evs):
+        return None
     # 0字节空文件单发(2026-08-28审计): 无内容可泄,末尾统一封顶75,
     # 预谋/频次/深夜修正不再抬档(空『工作簿1.xlsx』曾到90)
     _zero_send = (len(_send_evs) == 1
@@ -182,6 +190,7 @@ SYSTEM_PROMPT = (
     "输出 JSON：intent / deviation / risk_score(0-100整数) / explanation(一句中文) / channels。\n"
     "格式铁律:回复必须是单个JSON对象,第一个字符必须是'{',JSON之外禁止任何文字(包括英文分析/思路),禁止markdown代码块;窗口再复杂也直接给结论JSON。\n\n"
     "【公司策略——重要前提】\n"
+    "【公司业务画像——所有判定按此校准】公司是生物医药研发企业:核心数据资产=实验记录(ELN)/细胞株与序列等实验材料/临床试验文件(方案·IB·知情同意书·研究报告)/注册专利与合同客户资料。日常文档大量含项目编号(HX/HXN/CBL/DLL等开头)属研发工作常态,有编号≠敏感——敏感看内容性质: 临床/注册/合同/原始数据 > 研究过程稿(PPT/报告草稿) > 行政办公。物业水电单/签证护照/个人简历/安装包缓存等生活行政文件与公司数据资产无关,外发删除均按低敏感处理。\n"
     "个人邮箱、网盘/云盘 在公司【禁止使用】→ 任何访问即违规(policy_violation),不管时段。\n"
     "例外: OneDrive(storage.live.com/onedrive.live.com等)是公司采购的M365组件,不算网盘违规 → normal_work。\n"
     "公司OA/费控平台xft.cmbchina.com是内部业务系统: 向其发送发票/报销/订单文件属正常办公(推断为报销流程),不判外发。\n"
@@ -191,7 +200,8 @@ SYSTEM_PROMPT = (
     "【数据外发判定】data_exfiltration 须有真实外发动作/通道(网盘上传/邮箱发送/文件助手传文件/上传文件到AI)；仅浏览或反复用AI对话不算外发→归 baseline_deviation。\n"
     "普通微信访问(weixin.qq.com等)=正常办公,不算风险。\n"
     "SendPhotoes.png是客户端工具自动生成的同名截图临时文件,全公司15+员工均被记录到同名文件经weixin.exe/浏览器高频重复发送(每人每天数十次,2026-08-20起持续)——属通道噪音而非个体外发:窗口只含它时按普通微信访问处理,不得作为外发依据单独打高分;仅当与敏感命名文件/大体量外发并存时如实计入。\n"
-    "远程控制(todesk等)=工具使用,降权(凌晨/密集才告警)。\n\n"
+    "远程控制(todesk等)=工具使用,降权(凌晨/密集才告警)。\n"
+    "【删除行为判定(DELETE动作)——结合公司业务与文件名,严禁一律套'离职前清理'】①删除实验数据/临床试验/注册合同类文件=数据资产损毁:批量(≥10个)或凌晨或与同批文件外发并存→baseline_deviation 45-70,explanation写明删除类型与代表文件名;②项目过程稿/旧版本/下载副本的工作清理=normal_work 0-15;③安装包/缓存/个人生活文件清理=normal_work 0-10。判定删除危害只看文件名内容性质,不看删除次数多少(高频删缓存≠高危)。\n\n"
     "【评分锚点——严格按此打分】\n"
     "⚠ policy_violation 与 data_exfiltration 两类的 risk_score 由系统按统一规则计算(访问即违规=75/70+频次/时段/写动作修正),你的 risk_score 仅作参考——请把精力放在 explanation 的具体性上。\n"
     "• 个人邮箱/网盘(公司禁止) → 主动访问 65-75（访问即违规,不管时段）；但 update./自动更新/-debug/遥测等子域是软件后台联网、非员工主动操作 → 10-20\n"
@@ -202,6 +212,7 @@ SYSTEM_PROMPT = (
     "  【重点站: BOSS直聘(zhipin)/猎聘(liepin)/前程无忧(51job)/智联招聘(zhaopin)】任何访问必须留下可关注记录(公司口径:立马关注),但立马关注≠高分,分档看频次与主信号:①单次/低频且非窗口主信号→不判job_seeking,按窗口主信号定intent(如AI重度依赖→baseline_deviation),explanation如实记录'同期重点站×N(单次低频,持续观察)';②单次但为窗口主信号→job_seeking 60(立马关注留痕档,不与反复高频同档);③反复3-9次→80;④高频≥10次或凌晨→85;跨天(近7天招聘类累计≥4天)再+5,封顶95。explanation如实写域名+次数+时段+是否跨天。\n"
     "  【字段与文字必须同结论】你的文字结论是'正常办公/基线偏离/AI重度依赖'时,intent与risk_score必须相应落在该结论的场景与档位——严禁intent判job_seeking、分数75+,说明却写'不构成求职/正常办公'(2026-09-01审计: 7条此类自相矛盾告警)。\n"
     "  领英(linkedin)与苏州人才网(hrss.suzhou)经公司确认属正常业务行为,访问不算求职信号(normal_work),勿因它们判job_seeking。北森italent.cn/icube.cn是HR用的招聘管理系统(看简历/约面试/传简历属HR岗位工作),同样不算求职信号——且italent不是猎聘,说明里别写『猎聘』二字(2026-08-28冉昊案例:cloud.italent.cn被标注成猎聘重点站)。其他招聘平台(脉脉/看准/卓聘等):反复高频或凌晨才考虑求职(系统锚点定分,基础55)。严格按窗口标注的访问次数判断,不得脑补频次。\n"
+    "  【离职推断准确性铁律】判job_seeking前必须先回答:这是本人找工作,还是在做招聘工作/岗位事务?①输入含豁免标注的岗位(如HR),其招聘站操作是岗位工作——explanation严禁写『进行中求职行为/跳槽』,应写『招聘岗位工作(已豁免)』,分数按低档;②窗口主信号是外发/删除/AI使用时,夹杂的单次招聘访问不得改变intent,按主信号定性,招聘只在explanation附带一句;③《搜索人才/人才库/候选人》类页面标题是招聘方视角,不是求职;④个人事务搜索(离职证明/社保/公积金转移)单次=normal_work,反复出现才可与招聘访问合并考量;⑤跨天累计只能引用行为史『招聘求职』那一行,严禁拿AI/邮箱等其他场景的跨天给求职升档。\n"
     "• 远程控制 + 凌晨 → 55-65；工作时段 → 30-40（降权）\n"
     "• AI助手(chatgpt/deepseek/豆包/kimi/copilot等) → 工作时段低频(1-3次) 5-15(正常使用)；反复高频(≥10次)或凌晨 → 35-48, baseline_deviation(重度依赖AI、异常,但纯对话无外发动作≠数据外发)；仅当窗口同时含真实外发(上传文件到AI/网盘/邮箱/文件助手) → 才判 data_exfiltration 60-75\n"
     "• 凌晨 + 仅常规网站(无外发通道) → 25-35\n"
@@ -783,7 +794,10 @@ def _fallback_verdict(window: list[CanonicalEvent], err: str) -> dict:
     channels = set()
     for e in window:
         ch = (e.raw or {}).get("channel")
-        if e.category == "DOC" and e.action in ("UPLOAD", "SEND", "COPY") and ch and ch != "LOCAL":
+        # SendPhotoes类客户端自动截图名不计外发(与锚点/prompt同口径):兜底给它
+        # 70-80会在LLM中断期批量造出高分[待补判]告警
+        _sp5 = str(e.target_value or "").lower().startswith("sendphotoes")
+        if e.category == "DOC" and e.action in ("UPLOAD", "SEND", "COPY") and ch and ch != "LOCAL" and not _sp5:
             score = max(score, 70); channels.add(ch)
         if e.category == "DOC" and is_sensitive(e.target_value) and e.action in WRITE_ACTIONS:
             score = max(score, 60)

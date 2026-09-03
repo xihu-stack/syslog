@@ -401,21 +401,22 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
             _now5 = bj_now()
             _last5 = dicts.get_setting("sweep_fallback_last", "") or ""
             if _last5 == "" or (_now5 - datetime.strptime(_last5, "%Y-%m-%d %H:%M:%S")).total_seconds() > 3600:
+                # 已被顶替的行(同员工同窗存在"AI+已知意图"版)在SQL层直接排除:
+                # 旧版limit(20)取最老20条再python侧跳过,顶替行永远占坑——16:42实测
+                # 127条存量里20个最老坑位18条是幻影,真正的待补判行翻不出头
+                from sqlalchemy.orm import aliased as _al5
+                _V2 = _al5(VerdictRow)
+                _superseded5 = rs.query(_V2.id).filter(
+                    _V2.ai_participated == 1, _V2.intent != "unknown",
+                    _V2.employee_id == VerdictRow.employee_id,
+                    _V2.window_start == VerdictRow.window_start).exists()
                 _fbs = rs.query(VerdictRow).filter(
                     or_(VerdictRow.ai_participated == 0, VerdictRow.intent == "unknown"),
                     VerdictRow.window_start >= _now5 - timedelta(days=7),
                     VerdictRow.created_at < _now5 - timedelta(minutes=60),
+                    ~_superseded5,
                 ).order_by(VerdictRow.created_at).limit(20).all()
-                _ai_ws = set()
-                if _fbs:  # 同窗已有"AI+已知意图"版(意图变了才会残留旧行)→已被顶替
-                    _ai_ws = {t[0] for t in rs.query(VerdictRow.window_start).filter(
-                        VerdictRow.ai_participated == 1,
-                        VerdictRow.intent != "unknown",
-                        VerdictRow.employee_id.in_(list({f.employee_id for f in _fbs})[:50]),
-                        VerdictRow.window_start >= _now5 - timedelta(days=7)).all()}
                 for _fb in _fbs:
-                    if _fb.window_start in _ai_ws:
-                        continue
                     _rows5 = events_by_hashes(rs, (_fb.event_hashes or [])[:400])
                     if not _rows5:
                         continue
@@ -534,6 +535,14 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                         w = events_by_hashes(wsession, hashes) or w
                         # explanation剥离思维链(2026-08-26审计案例: 说明以"好,我现在需要分析"开头
                         # ——deep模型think未剥净即入库);同时清掉角色扮演残留
+                        # 英文思路泄漏(2026-09-03): glm对复杂窗口会把分析思路写进
+                        # explanation字段(JSON合法但内容是英文),运营读不了也不符5W。
+                        # 字母类ASCII占比过半=泄漏,整条清空交给下方事实模板重写,
+                        # 不再"补充"拼成中英混排
+                        _e0 = str(v.get("explanation") or "")
+                        if len(_e0) >= 15 and sum(
+                                1 for c in _e0 if ord(c) < 128 and c.isalpha()) / len(_e0) > 0.5:
+                            v["explanation"] = ""
                         if not _expl_ok(emp, wstart, v, w):
                             _orig = str(v.get("explanation") or "").strip()
                             if len(_orig) >= 15 and "→→" not in _orig:
@@ -954,12 +963,16 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                     # 的招聘访问支撑,历史标记只能加档不能独立成立
                     v = {**v, "intent": "baseline_deviation",
                          "risk_score": min(v.get("risk_score") or 30, 45)}
-        # 豁免场景的研判加显式标注: 豁免人员(如HR)的研判照常落库但告警被拦,
-        # 研判页/AI问答看到时必须能认出"这是已豁免的岗位行为"(2026-08-20审计案例)
+        # 豁免场景的研判加显式标注+分值压观察档: 豁免人员(如HR)的研判照常落库但
+        # 告警被拦,研判页/AI问答看到时必须能认出"这是已豁免的岗位行为"(2026-08-20
+        # 审计案例)。2026-09-03再压分: 豁免=运营已认定该场景属岗位行为,AI仍按通用
+        # 规则打出85-95会让研判页出现"[已豁免]95分求职"的自相矛盾行——分值一律
+        # 压到≤30观察档,explanation保留AI的事实描述但结论性文字按prompt铁律为岗位工作
         try:
             if isinstance(v, dict) and exs and any(e.signal_type == v.get("intent") for e in exs):
                 _exr = next(e.reason for e in exs if e.signal_type == v.get("intent"))
-                v = {**v, "explanation": f"[已豁免:{_exr or '岗位需要'}] " + (v.get("explanation") or "")}
+                v = {**v, "explanation": f"[已豁免:{_exr or '岗位需要'}] " + (v.get("explanation") or ""),
+                     "risk_score": min(int(v.get("risk_score") or 0), 30)}
         except Exception:
             pass
         # ---- 锚点场景说明一致性: 锚点强制intent时,AI说明可能以窗口主信号(如AI)
