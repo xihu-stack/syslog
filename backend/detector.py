@@ -179,7 +179,8 @@ def anchor_score(intent, window, day_total=None) -> int | None:
 SYSTEM_PROMPT = (
     "你是企业员工终端行为分析助手，识别数据外发、离职求职、违规等内部风险。\n"
     "输入：某员工一段时间窗口内的行为序列（可能附历史基线摘要、偏离信号、已知豁免）。\n"
-    "输出 JSON：intent / deviation / risk_score(0-100整数) / explanation(一句中文) / channels。\n\n"
+    "输出 JSON：intent / deviation / risk_score(0-100整数) / explanation(一句中文) / channels。\n"
+    "格式铁律:回复必须是单个JSON对象,第一个字符必须是'{',JSON之外禁止任何文字(包括英文分析/思路),禁止markdown代码块;窗口再复杂也直接给结论JSON。\n\n"
     "【公司策略——重要前提】\n"
     "个人邮箱、网盘/云盘 在公司【禁止使用】→ 任何访问即违规(policy_violation),不管时段。\n"
     "例外: OneDrive(storage.live.com/onedrive.live.com等)是公司采购的M365组件,不算网盘违规 → normal_work。\n"
@@ -742,9 +743,23 @@ def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exempti
             _msgs.append({"role": "assistant", "content": _txt[:300]})
             _msgs.append({"role": "user", "content": "工具[" + _m2.group(1) + "]返回: " + _tresult[:800] + " 请基于补充信息给出最终研判JSON。"})
         v = llm_client.extract_json(raw)
+        _KNOWN_INTENT = ("job_seeking", "data_exfiltration", "baseline_deviation",
+                         "policy_violation", "normal_work")
+        if not isinstance(v, dict) or v.get("intent") not in _KNOWN_INTENT:
+            # 输出不可解析(2026-09-03: glm对难窗口把英文思路写进content,800token
+            # 耗尽仍无JSON) → 纠偏重试一次: 带着原输出要求"只给JSON"
+            raw = llm_client.chat(_msgs + [
+                {"role": "assistant", "content": (llm_client.strip_think(raw) or str(raw))[:300]},
+                {"role": "user", "content": "上一次输出不是合法JSON或缺intent字段。重新回答:只输出一个"
+                                            "JSON对象,第一个字符必须是{,JSON之外禁止任何文字。"}],
+                max_tokens=800, timeout=180, model=model)
+            v = llm_client.extract_json(raw)
+        if not isinstance(v, dict) or v.get("intent") not in _KNOWN_INTENT:
+            # 仍不可解析 → 规则兜底(ai=False): 进每小时sweep自动重试,不再产出
+            # 锁死"已判过"坑位的unknown/0行
+            return _fallback_verdict(window, "AI输出不可解析(无合法JSON)")
         v.setdefault("explanation", raw[:120])
         v.setdefault("risk_score", 0)
-        v.setdefault("intent", "unknown")
         v.setdefault("deviation", "none")
         v.setdefault("channels", [])
         v["ai_participated"] = True

@@ -389,24 +389,27 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                     if _pv is not None:
                         _wstart_ov = _pv.window_start
                 to_judge.append((emp, w, baseline, dev, _wstart_ov))
-        # ---- 兜底补判sweep(2026-09-03): ai_participated=0的verdict占着"已判过"
-        # 坑位且水位已推进,旧版无自动补判——[待补判]告警只能靠人记得点全量重判
-        # (而全量重判无条件删全部verdicts,7天外研判记录连带销毁)。每轮捞近7天
-        # 兜底窗口重建重判: 补判≥50同意图时,告警刷新路径会自然摘[待补判]前缀。
-        # 限流=每小时最多1轮+每轮≤5窗+兜底产生1小时内不重试,防LLM宕机时反复烧超时。
+        # ---- 兜底/unknown补判sweep(2026-09-03): ai_participated=0的verdict占着
+        # "已判过"坑位且水位已推进,旧版无自动补判——[待补判]告警只能靠人记得点
+        # 全量重判(而全量重判无条件删全部verdicts,7天外研判记录连带销毁)。
+        # intent=unknown的行也捞: 旧版"输出不可解析→unknown/0且ai=True"会永久锁
+        # 死坑位(已判过抑制+无重试),重判出已知意图即被顶替。每轮捞近7天窗口重建
+        # 重判: ≥50同意图时告警刷新路径自然摘[待补判]前缀。限流=每小时最多1轮+
+        # 每轮≤5窗+行产生1小时内不重试,防LLM宕机时反复烧超时。
         try:
             _now5 = bj_now()
             _last5 = dicts.get_setting("sweep_fallback_last", "") or ""
             if _last5 == "" or (_now5 - datetime.strptime(_last5, "%Y-%m-%d %H:%M:%S")).total_seconds() > 3600:
                 _fbs = rs.query(VerdictRow).filter(
-                    VerdictRow.ai_participated == 0,
+                    or_(VerdictRow.ai_participated == 0, VerdictRow.intent == "unknown"),
                     VerdictRow.window_start >= _now5 - timedelta(days=7),
                     VerdictRow.created_at < _now5 - timedelta(minutes=60),
                 ).order_by(VerdictRow.created_at).limit(5).all()
                 _ai_ws = set()
-                if _fbs:  # 同窗已有AI版(补判后意图变了才会残留旧兜底行)→已被顶替
+                if _fbs:  # 同窗已有"AI+已知意图"版(意图变了才会残留旧行)→已被顶替
                     _ai_ws = {t[0] for t in rs.query(VerdictRow.window_start).filter(
                         VerdictRow.ai_participated == 1,
+                        VerdictRow.intent != "unknown",
                         VerdictRow.employee_id.in_(list({f.employee_id for f in _fbs})[:50]),
                         VerdictRow.window_start >= _now5 - timedelta(days=7)).all()}
                 for _fb in _fbs:
