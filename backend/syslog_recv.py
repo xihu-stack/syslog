@@ -371,6 +371,18 @@ def _maint_hourly():
                       f"升{_r8.get('upgraded')}降{_r8.get('downgraded')}", flush=True)
         except Exception as _de8:
             print(f"[dayreview] 失败: {_de8}", flush=True)
+        try:  # 日级漏报巡检(2026-09-04治本②): 零研判员工全天摘要一次轻AI调用,
+            # 疑似漏报→写unknown桩verdict→既有sweep补判1小时内自动深判(标准锚点/告警)
+            from db import bj_now as _bj10
+            _d10 = _bj10()
+            if _d10.hour >= 2 and dicts.get_setting("daygate_last", "") != _d10.strftime("%Y%m%d"):
+                from daygate import run_day_gate
+                _r10 = run_day_gate()
+                # daygate_last由模块内部落(LLM全灭时不落,下小时重试)
+                print(f"[daygate] 日级巡检: 候选{_r10.get('candidates')} 调用{_r10.get('called')}"
+                      f" 疑似{_r10.get('suspects')} 立桩{len(_r10.get('stubs', []))}", flush=True)
+        except Exception as _de10:
+            print(f"[daygate] 失败: {_de10}", flush=True)
         try:  # 风险故事线(每周,R1): 离职信号串成时间叙事(2026-08-21)
             from datetime import timedelta as _td7
             from db import bj_now as _bj7
