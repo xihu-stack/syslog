@@ -831,6 +831,13 @@ function Dashboard({go, goProfile}){
         <b style={{fontSize:12.5}}>双源实时接收中</b>
         <span style={{fontSize:11,color:'var(--ink3)'}}>深信服 + IP-Guard · 事件分钟级入库研判</span>
         <div style={{flex:1}}></div>
+        {(()=>{const ma=sys.miss_audit; if(!ma) return null;
+          if(!ma.judged) return (ma.sampled||ma.pending)?<span style={{fontSize:11.5,color:'var(--ink3)',display:'flex',alignItems:'center',gap:5}}><i className="fa-solid fa-magnifying-glass-chart"></i>漏报率采样中{ma.pending>0?(' · 待判'+ma.pending+'人'):''}</span>:null;
+          const mr=Math.round((ma.flagged||0)/ma.judged*100);
+          return (<Tooltip title={'每日随机抽昨日零研判员工完整深判(抽样审计)。翻出≥50分=规则+AI门控都没拦住的漏报,已按正常告警处置;此率为近30天滚动值,驱动字典/门控调优。最近翻出: '+(ma.last_flagged||'无')}>
+            <span style={{fontSize:11.5,color:mr>0?'#f59e0b':'#16a34a',display:'flex',alignItems:'center',gap:5}}>
+              <i className="fa-solid fa-magnifying-glass-chart"></i>抽样漏报率 {mr}%({ma.flagged}/{ma.judged}){ma.pending>0?(' · 待判'+ma.pending+'人'):''}
+            </span></Tooltip>);})()}
         {crit>0
           ? <Tooltip title={'全库未处理(NEW)且≥76分的告警总数,不限日期——含往日积压,处理完才归零。与KPI「今日严重」口径不同(后者只统计今天新增)。点击进入全部高危待处理列表。'}>
             <a onClick={()=>go('alerts',{lvl:'crit',status:'NEW'})} style={{display:'flex',alignItems:'center',gap:6,padding:'5px 14px',borderRadius:8,background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'#fff',fontWeight:700,fontSize:12.5,boxShadow:'0 2px 8px rgba(239,68,68,.35)'}}><i className="fa-solid fa-triangle-exclamation"></i>{crit} 条高危未处理{crit>(sysAl.today_critical||0)?<span style={{fontWeight:400,fontSize:11,opacity:.85}}>(今日{sysAl.today_critical||0}·往日积压{crit-(sysAl.today_critical||0)})</span>:''} · 立即处置</a>

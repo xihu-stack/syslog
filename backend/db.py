@@ -175,6 +175,19 @@ class DomainClassRow(Base):
     updated_at = Column(DateTime, default=bj_now, onupdate=bj_now)
 
 
+class SampleAuditRow(Base):
+    """抽样审计(2026-09-04治本③): 每日随机抽零研判员工立桩深判,
+    结论回填——沉默人群里全链路(规则+AI门控)都没拦住的比例=可观测漏报率。"""
+    __tablename__ = "sample_audit"
+    id = Column(Integer, primary_key=True)
+    day = Column(String, index=True)            # 抽样目标日 2026-09-03
+    employee_id = Column(String, index=True)
+    sampled_at = Column(DateTime, default=bj_now)
+    outcome_intent = Column(String)             # 回填: 深判意图(normal_work/...)
+    outcome_score = Column(Integer)             # 回填: 深判最高分(0=未判/中断)
+    updated_at = Column(DateTime, onupdate=bj_now)
+
+
 class ExceptionRow(Base):
     """人工确认的误报豁免：某用户某类行为=正常（岗位/工作/时间需要）。"""
     __tablename__ = "exceptions"

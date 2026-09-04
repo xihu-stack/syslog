@@ -1226,6 +1226,13 @@ def system_stats():
         _day[_today_key] = s.query(AlertRow).filter(AlertRow.window_start >= today_start).count()  # 今日活跃=KPI口径
         alerts_by_day = list(_day.items())
 
+        # 抽样审计漏报率(治本③): 单独兜底,新表异常不拖垮整个stats端点
+        try:
+            import sampleaudit as _sa
+            _miss_audit = _sa.miss_rate_summary(s)
+        except Exception:
+            _miss_audit = None
+
         # TOP活跃风险(2026-09-01修正): 直接从未处理(NEW)告警派生,与告警页完全同源
         # ——此前从研判计算,告警已删的孤儿研判带着空summary混进TOP;
         # 每人取**最高分**那条(同分取窗口更新)。原取"最新窗口"条,模式类告警
@@ -1294,6 +1301,7 @@ def system_stats():
             "retention_days": retention_days,
             "detect": pipeline.detection_status(),
             "syslog": syslog_recv.status(),
+            "miss_audit": _miss_audit,
             "profile_updated_ts": profile_updated_ts,
             "alerts_by_day": alerts_by_day,
             "top_active": top_active,

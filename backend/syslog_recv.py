@@ -383,6 +383,17 @@ def _maint_hourly():
                       f" 疑似{_r10.get('suspects')} 立桩{len(_r10.get('stubs', []))}", flush=True)
         except Exception as _de10:
             print(f"[daygate] 失败: {_de10}", flush=True)
+        try:  # 抽样审计(2026-09-04治本③): 随机抽昨日沉默员工立桩深判→漏报率
+            from db import bj_now as _bj11
+            _d11 = _bj11()
+            if _d11.hour >= 4 and dicts.get_setting("sampleaudit_last", "") != _d11.strftime("%Y%m%d"):
+                from sampleaudit import run_sample_audit
+                _r11 = run_sample_audit()
+                # sampleaudit_last由模块内部落(全灭不落,下小时重试)
+                print(f"[sampleaudit] 抽样审计: 沉默{_r11.get('silent')} 抽{_r11.get('sampled')}"
+                      f" (目标{_r11.get('day')})", flush=True)
+        except Exception as _de11:
+            print(f"[sampleaudit] 失败: {_de11}", flush=True)
         try:  # 风险故事线(每周,R1): 离职信号串成时间叙事(2026-08-21)
             from datetime import timedelta as _td7
             from db import bj_now as _bj7
