@@ -161,6 +161,20 @@ class SettingRow(Base):
     value = Column(Text)
 
 
+class DomainClassRow(Base):
+    """AI域名定性缓存(2026-09-04治本①): 漏报复盘实锤规则召回天花板=字典覆盖率,
+    字典外求职渠道静默漏报。domain_scan每小时把字典外新域名批量交AI定性落此表,
+    dicts.risk_class()字典未命中后读它——规则表从静态枚举变成AI喂养的活表。
+    label对齐RISK_TIER词汇;正常办公/系统流量也缓存(防重扫),只是返回None。"""
+    __tablename__ = "domain_classes"
+    domain = Column(String, primary_key=True)
+    label = Column(String)              # 招聘求职/网盘/云盘/.../正常办公/系统流量
+    reason = Column(String)             # AI理由(短)
+    source = Column(String, default="ai")  # ai / manual
+    hits = Column(Integer, default=0)   # 定性时该域名近3天事件量(热度参考)
+    updated_at = Column(DateTime, default=bj_now, onupdate=bj_now)
+
+
 class ExceptionRow(Base):
     """人工确认的误报豁免：某用户某类行为=正常（岗位/工作/时间需要）。"""
     __tablename__ = "exceptions"

@@ -112,6 +112,33 @@ def _maybe_auto_scan():
     threading.Thread(target=_run, daemon=True).start()
 
 
+def _maybe_domain_scan():
+    """每小时: AI批量定性近3天字典外新域名(2026-09-04治本①)。
+    结果落domain_classes,risk_class字典未命中后读它——规则召回不再被
+    字典覆盖率封顶。LLM不可达时不更新时间戳,下轮自动重试。"""
+    import dicts
+    from datetime import timedelta
+    from db import bj_now
+    last = dicts.get_setting("domain_scan_last") or ""
+    try:
+        from datetime import datetime
+        last_dt = datetime.fromisoformat(last)
+    except Exception:
+        last_dt = None
+    if last_dt and bj_now() - last_dt < timedelta(minutes=60):
+        return
+
+    def _run():
+        try:
+            from domain_scan import scan_new_domains
+            r = scan_new_domains()
+            print(f"[domain-scan] 定性{r.get('classified')}/{r.get('candidates')}"
+                  f" 其中风险{r.get('risk_n')}: {r.get('risk_samples', '')[:120]}", flush=True)
+        except Exception as e:
+            print(f"[domain-scan] 失败(下轮重试): {type(e).__name__}: {str(e)[:100]}", flush=True)
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def _health_watchdog():
     """主动告警(每小时维护时检查,每项每天最多推1次):
     1) 数据流静默: 工作时间2小时无任何报文(深信服断推/网络变更——系统最大静默风险)
@@ -300,6 +327,7 @@ def _maint_hourly():
         pipeline.cleanup_old_raw_logs(int(dicts.get_setting("raw_logs_retention_days", "7")))
         pipeline.auto_close_alerts()
         _maybe_auto_scan()  # 每周自动开集扫描(到期才真正跑)
+        _maybe_domain_scan()  # 每小时AI定性字典外新域名(治本①: 规则表变活表)
         _health_watchdog()  # 数据流静默/兜底率/磁盘 主动告警(每项每天最多1次)
         try:
             from api import _alias_discover

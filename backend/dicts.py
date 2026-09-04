@@ -392,6 +392,49 @@ _ASSET_CDN_RE = re.compile(
 _JOB_SUBDOMAIN_RE = re.compile(
     r"^(?:talents?|careers?|careercenter|jobs?|recruits?|recruiting|hiring|employer|hirer)[-.]")
 
+# ---- AI域名定性缓存(2026-09-04治本①) ----
+# 优先级在人工字典之后: 白名单/CDN/子域模式/字典都未命中才查AI定性结果——
+# AI只填字典的空白,永不推翻人工口径。命中后与人工字典同权返回标签,
+# 触发门/窗口格式化/评分锚点(全部走risk_class)一次接线全部生效。
+_AI_DOM_CACHE = None  # None=未加载; dict: domain -> label(含正常办公等非风险)
+
+
+def ai_dom_label(domain: str):
+    """查AI定性缓存(进程内lazy全表,量级千级)。子域逐级剥最左标签向上找
+    (app.mokahr.com吃到mokahr.com的定性),与_match_domain后缀口径对齐。"""
+    global _AI_DOM_CACHE
+    if _AI_DOM_CACHE is None:
+        try:
+            from db import DomainClassRow
+            s = Session()
+            try:
+                _AI_DOM_CACHE = {r.domain: (r.label or "") for r in s.query(DomainClassRow).all()}
+            finally:
+                s.close()
+        except Exception:
+            _AI_DOM_CACHE = {}  # 表未建/读失败: 视为空,不当拖垮risk_class热路径
+    d = (domain or "").lower()
+    if not d:
+        return None
+    lab = _AI_DOM_CACHE.get(d)
+    if lab:
+        return lab
+    parts = d.split(".")
+    for i in range(1, max(len(parts) - 1, 1)):  # 保留最后两段,逐级剥最左上找
+        lab = _AI_DOM_CACHE.get(".".join(parts[i:]))
+        if lab:
+            return lab
+    return None
+
+
+def set_ai_dom(domain: str, label: str) -> None:
+    """写侧同步进程缓存(domain_scan落库后调用)。"""
+    global _AI_DOM_CACHE
+    if _AI_DOM_CACHE is None:
+        ai_dom_label("")  # 先触发lazy加载,防覆盖丢整表
+    if domain:
+        _AI_DOM_CACHE[(domain or "").lower()] = label
+
 
 def risk_class(domain: str):
     """域名 → 高风险类别中文标签（如"远程控制"/"网盘/云盘"）；非高风险返回 None。
@@ -410,7 +453,8 @@ def risk_class(domain: str):
         for p in pats:
             if _match_domain(d, p):
                 return label
-    return None
+    lab = ai_dom_label(d)
+    return lab if lab in RISK_TIER else None  # 正常办公/系统流量/未知→缓存防重扫,不产风险
 
 
 # 类别 → 信号强度（仅"上网行为日志"视角）。
