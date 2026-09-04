@@ -75,6 +75,11 @@ DEFAULTS = {
         "indeed.com", "glassdoor", "nowcoder.com", "xiaoyuan", "zhaopin.baidu",
         "jobui.com", "tianji", "fesco", "fescoadecco", "zhipin", "zhaopin", "sndhr.com",
         # linkedin(领英)/hrss.suzhou(苏州人才网)已移除: 2026-08-20用户确认属正常业务行为,不算离职求职
+        # 2026-09-04扩充(求职漏报复盘:字典外渠道实测在用): jobsdb香港/jobmd丁香人才
+        # (医疗行业对口)/lipind理聘(学术)/mokahr ATS(各公司careers页)/seek澳新/
+        # shixiseng实习僧/51jingying/597人才网
+        "jobsdb.com", "jobmd.cn", "lipind.com", "mokahr.com", "seek.com", "seek.com.au",
+        "shixiseng.com", "51jingying.com", "job592.com",
     ],
     "netdisk_domains": [
         "pan.baidu.com", "eyun.baidu.com", "alipan.com", "aliyundrive.com", "weiyun.qq.com",
@@ -97,6 +102,9 @@ DEFAULTS = {
         # 2026-08-20扩充(IPG搜索词已可用): 离职流程类前兆词
         "离职证明", "简历模板", "社保转移", "公积金提取", "年终奖发放时间", "试用期辞职",
         "背调", "工资流水", "竞业限制赔偿",
+        # 2026-09-04扩充(求职漏报复盘): 求职过程词+离职前兆词
+        "面经", "内推", "投简历", "裁员", "解约", "停缴社保", "社保停缴",
+        "人才网", "人才市场", "落户",
     ],
     "risk_search_terms": [
         "网盘", "数据恢复", "匿名", "匿名邮箱", "临时邮箱", "绕过", "外发", "解密",
@@ -375,6 +383,15 @@ _ASSET_CDN_RE = re.compile(
     r"|\.w\.kunlun"                                     # 昆仑CDN包装(源站内嵌)
     r"|(?:\.kunlunpi|\.kunlunque|\.qiniudns|\.qbox|\.clouddn)\.com$")  # CDN边缘域
 
+# 求职渠道子域模式(2026-09-04求职漏报复盘): 求职流量不只在字典招聘站——各公司
+# careers页挂在主域子域(talent.deepseek.com/careercenter.asco.org),逐域枚举永远
+# 追不全。talent/career/jobs/recruit/employer/hirer等标签开头的子域按"招聘求职"
+# 送判,由AI结合页面标题区分本人求职还是招聘方工作(面试官答复/筛选简历=招聘方);
+# 白名单与CDN豁免仍前置生效。recruitupload./talenteye.italent.cn等北森HR系统
+# 子域(关键词后无分隔符)不落本模式,维持HR工作豁免口径。
+_JOB_SUBDOMAIN_RE = re.compile(
+    r"^(?:talents?|careers?|careercenter|jobs?|recruits?|recruiting|hiring|employer|hirer)[-.]")
+
 
 def risk_class(domain: str):
     """域名 → 高风险类别中文标签（如"远程控制"/"网盘/云盘"）；非高风险返回 None。
@@ -387,6 +404,8 @@ def risk_class(domain: str):
             return None
     if _ASSET_CDN_RE.search(d):
         return None
+    if _JOB_SUBDOMAIN_RE.match(d):
+        return "招聘求职"
     for label, pats in risk_patterns():
         for p in pats:
             if _match_domain(d, p):
