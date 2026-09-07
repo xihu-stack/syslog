@@ -28,3 +28,21 @@ def test_system_prompt_contains_output_instruction():
 def test_system_prompt_stable():
     import detector
     assert detector._system_prompt() == detector._system_prompt()
+
+
+def test_prompt_disguise_four_questions():
+    """外发深度分析四问(2026-09-07): ④伪装检查——RENAME/压缩包/批量打开不符文件。"""
+    import detector
+    sp = detector.SYSTEM_PROMPT
+    assert "外发深度分析——四问" in sp
+    assert "疑似伪装外发" in sp
+    assert "压缩包外发的file_sensitivity至少mid" in sp
+    assert "文件名与工作内容错位" in sp  # ②问画像匹配
+
+
+def test_prompt_moonlight_marker():
+    """在职牟利留痕(2026-09-07): 私活/飞单→baseline_deviation+'疑似在职牟利:'。"""
+    import detector
+    sp = detector.SYSTEM_PROMPT
+    assert "疑似在职牟利" in sp
+    assert "在职利益冲突留痕" in sp
