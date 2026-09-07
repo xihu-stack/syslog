@@ -162,9 +162,15 @@ def run_day_gate() -> dict:
             if len(evs) < MIN_EVENTS:
                 continue
             res["called"] += 1
+            _cal = ""
+            try:  # 口径统一注入(2026-09-04): 与研判/domain_scan同源
+                import casebase
+                _cal = casebase.caliber_text()
+            except Exception:
+                pass
             try:
                 msg = llm_client.chat(
-                    [{"role": "user", "content": PROMPT + "\n" + _digest(evs)}],
+                    [{"role": "user", "content": PROMPT + _cal + "\n" + _digest(evs)}],
                     max_tokens=300, timeout=120)
             except Exception:
                 continue  # 单人失败不拖累整轮;全灭时ok=0不落last,下小时重试

@@ -260,8 +260,15 @@ _SYS_TAIL = ("写explanation时:域名次数优先『本窗口N次,今日累计M
 
 
 def _system_prompt() -> str:
-    """研判system消息唯一出口(TTL语义由口径段引入,此处先做结构归位)。"""
-    return SYSTEM_PROMPT + "\n" + _SYS_TAIL
+    """研判system消息唯一出口(2026-09-04口径统一注入): SYSTEM_PROMPT+恒定指令
+    +【人工口径】段(casebase.caliber_text——白名单+高频误报判例,人工字典真源
+    渲染,TTL缓存字节级稳定,vLLM prefix caching命中共享前缀)。italent事故
+    根因=人工口径只活在研判prompt文本,其他AI通道看不到——现在统一出自一处。"""
+    try:
+        import casebase
+        return SYSTEM_PROMPT + "\n" + _SYS_TAIL + casebase.caliber_text()
+    except Exception:
+        return SYSTEM_PROMPT + "\n" + _SYS_TAIL
 
 
 def build_windows(events: list[CanonicalEvent]) -> dict[str, list[list[CanonicalEvent]]]:

@@ -118,8 +118,14 @@ def scan_new_domains():
         return res
 
     lines = [f'{d}(访问{h}次/{u}人,标题: {"; ".join(t) or "无"})' for d, h, u, t in cands]
+    _cal = ""
+    try:  # 口径统一注入(2026-09-04): italent事故——定性AI看不到人工白名单口径
+        import casebase
+        _cal = casebase.caliber_text()
+    except Exception:
+        pass
     msg = llm_client.chat(
-        [{"role": "user", "content": PROMPT + "\n".join(lines)}],
+        [{"role": "user", "content": PROMPT + _cal + "\n" + "\n".join(lines)}],
         max_tokens=3000, timeout=240)
     items = [it for it in _parse_items(msg) if it["domain"] in {c[0] for c in cands}]
     hits = {c[0]: c[1] for c in cands}
