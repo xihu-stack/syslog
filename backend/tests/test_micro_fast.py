@@ -39,3 +39,11 @@ def test_too_many_events_false():
 def test_empty_false():
     import pipeline
     assert pipeline._micro_fast([]) is False
+
+
+def test_pool_workers_adaptive():
+    import pipeline
+    assert pipeline._pool_workers(2) == 4      # 常态增量: 4并发保吞吐
+    assert pipeline._pool_workers(100) == 4
+    assert pipeline._pool_workers(101) == 2    # 大批量(全量重判): 2并发
+    assert pipeline._pool_workers(572) == 2

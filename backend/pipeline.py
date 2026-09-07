@@ -271,6 +271,13 @@ def _micro_fast(w) -> bool:
     return True
 
 
+def _pool_workers(n_pending: int) -> int:
+    """研判并发自适应(2026-09-04 prompt降压④): 常态增量(≤100窗)4并发保吞吐;
+    全量重判大批量(>100窗)降2并发——4并发压满本地vLLM时超时率实测上升
+    (2026-08-28兜底补判15/486),降半换稳定,大批量时长换排队不换失败重试。"""
+    return 2 if n_pending > 100 else 4
+
+
 def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]:
     """增量研判（3 阶段；写锁只在第 3 阶段批量写时短暂持有，可与入库并发）：
     1) 只读：取新事件、建窗口、算历史基线、去重 → 收集待研判窗口
@@ -1063,7 +1070,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         return llm_client.smart_model()
 
     done_count = 0
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=_pool_workers(len(to_judge))) as pool:
         def _judge_auto0(item):
             """超长窗口自动切分(2026-08-26用户要求: 本地AI不费钱,增加研判次数
             保证完整输入输出不截断丢风险)。子窗口各自送LLM取最高分。"""
