@@ -188,6 +188,27 @@ class SampleAuditRow(Base):
     updated_at = Column(DateTime, onupdate=bj_now)
 
 
+class CaseRow(Base):
+    """人工判例库(AI灵魂一期,2026-09-04): 处置/豁免/抽样审计沉淀的"行为级"
+    判例——按 behavior_key(行为口径hash)建档,同名口径跨员工跨意图复用,
+    供难例few-shot注入与【人工口径】段检索。去重=同key近30天更新,不清理(量小)。"""
+    __tablename__ = "cases"
+    id = Column(Integer, primary_key=True)
+    source = Column(String)                    # disposition_confirm/disposition_fp/exemption/sample_audit
+    employee_id = Column(String, index=True)
+    intent = Column(String)
+    behavior_key = Column(String, index=True)  # 行为口径hash(主检索键,12位hex)
+    outcome = Column(String)                   # confirmed/false_positive/exempt/audited_clean/audited_flag
+    attribution = Column(String)               # 行为归因(域名定性错/意图错/程度夸大/时段可豁免/通道误判)
+    facts_digest = Column(Text)                # 窗口事实摘要(daygate _digest同源格式)
+    feature_keys = Column(JSON)                # {intent,dom_classes,actions,off_hours,volume}
+    ai_verdict = Column(Text)                  # 当时AI结论摘要(intent/分: explanation截断)
+    delta = Column(Text)                       # 人工结论与AI结论差异(处置备注)
+    verdict_id = Column(Integer)               # 溯源链接(可空)
+    alert_id = Column(Integer)                 # 溯源链接(可空)
+    created_at = Column(DateTime, default=bj_now)  # 北京时间;去重窗口近30天以此为准
+
+
 class ExceptionRow(Base):
     """人工确认的误报豁免：某用户某类行为=正常（岗位/工作/时间需要）。"""
     __tablename__ = "exceptions"

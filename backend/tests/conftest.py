@@ -19,10 +19,10 @@ import pytest  # noqa: E402
 @pytest.fixture(autouse=True)
 def _clean_tables():
     """每测清空判例/处置相关表,测试互不污染。"""
-    from db import Session, FeedbackRow, ExceptionRow
+    from db import Session, CaseRow, FeedbackRow, ExceptionRow
     s = Session()
     try:
-        for _m in (FeedbackRow, ExceptionRow):
+        for _m in (CaseRow, FeedbackRow, ExceptionRow):
             for _r in s.query(_m).all():
                 s.delete(_r)
         s.commit()
