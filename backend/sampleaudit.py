@@ -103,6 +103,16 @@ def backfill(s) -> int:
             continue  # sweep还没判,下轮再看
         r.outcome_intent, r.outcome_score = best.intent, best.risk_score or 0
         n += 1
+        try:  # 判例入库(2026-09-04灵魂一期): 审计结论也是判例源(spec:
+            # sample_audit)——深判翻出的flag与确认的clean都是可检索口径
+            import casebase
+            _flag = (r.outcome_score or 0) >= FLAG_SCORE \
+                and r.outcome_intent not in ("normal_work", "unknown")
+            casebase.record_case("sample_audit", r.employee_id,
+                                 outcome="audited_flag" if _flag else "audited_clean",
+                                 verdict_row=best)
+        except Exception:
+            pass  # fail-soft: 入库失败不影响回填
     if n:
         with write_lock:
             s.commit()
