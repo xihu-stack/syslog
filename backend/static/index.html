@@ -1100,8 +1100,8 @@ function Alerts({goProfile,filter}){
   const submitConfirm=()=>{
     POST('/api/verdicts/'+cfModal.vid+'/confirm?reason='+encodeURIComponent(cfModal.note||'')).then(()=>{ message.success('已标记已知晓'); setCfModal({...cfModal,open:false}); load(); });
   };
-  const [fpModal,setFpModal]=useState({open:false,vid:0,intent:'',emp:'',reason:'岗位需要',note:'',allScenarios:[]});
-  const doFP=(e,r)=>{ e.stopPropagation(); setFpModal({open:true,vid:r.verdict_id,intent:r.intent,emp:r.employee,reason:'岗位需要',note:'',allScenarios:r.scenarios||[{label:r.intent}]}); };
+  const [fpModal,setFpModal]=useState({open:false,vid:0,intent:'',emp:'',reason:'岗位需要',note:'',allScenarios:[],attr:''});
+  const doFP=(e,r)=>{ e.stopPropagation(); setFpModal({open:true,vid:r.verdict_id,intent:r.intent,emp:r.employee,reason:'岗位需要',note:'',allScenarios:r.scenarios||[{label:r.intent}],attr:''}); };
   const submitFP=()=>{
     // 豁免语义对齐UI文案(2026-08-26修复): 旧版除"临时项目"外一律expires_days=0(永久)
     // ——"工作需要(90天)"实际建了永久豁免;"一般误报(不创建豁免)"更是建了永久豁免,
@@ -1110,7 +1110,7 @@ function Alerts({goProfile,filter}){
     const fullReason=fpModal.reason+(fpModal.note.trim()?' | '+fpModal.note.trim():'');
     const days=fpModal.reason==='临时项目'?'30':(fpModal.reason==='工作需要'?'90':'0');
     const st=fpModal.reason==='误报'?'':fpModal.intent;
-    POST('/api/verdicts/'+fpModal.vid+'/false_positive?reason='+encodeURIComponent(fullReason)+'&signal_type='+encodeURIComponent(st)+'&expires_days='+days).then(()=>{ message.success(st?('已标记误报，'+(days==='0'?'该场景永久豁免':'豁免'+days+'天')):'已标记误报(未创建豁免，同类复犯仍会提醒)'); setFpModal({...fpModal,open:false}); load(); });
+    POST('/api/verdicts/'+fpModal.vid+'/false_positive?reason='+encodeURIComponent(fullReason)+'&signal_type='+encodeURIComponent(st)+'&expires_days='+days+'&attribution='+encodeURIComponent(fpModal.attr||'')).then(()=>{ message.success(st?('已标记误报，'+(days==='0'?'该场景永久豁免':'豁免'+days+'天')):'已标记误报(未创建豁免，同类复犯仍会提醒)'); setFpModal({...fpModal,open:false}); load(); });
   };
   const scenSet=[...new Set((rows||[]).map(r=>r.scenario).filter(Boolean))];
   const agData=(()=>{const filtered=(rows||[]).filter(v=>{if(focusOnly&&v.priority!=='优先')return false;if(q&&!(v.employee||'').toLowerCase().includes(q.toLowerCase()))return false;if(lvl==='crit'&&v.risk_score<76)return false;if(lvl==='high'&&(v.risk_score<56||v.risk_score>75))return false;if(lvl==='mid'&&(v.risk_score<31||v.risk_score>55))return false;if(scenario!=='all'&&v.scenario!==scenario)return false;return true;});const _live=v=>v.status==='NEW'||v.status==='TRIAGING'||v.status==='CONFIRMED';const ag={};filtered.forEach(v=>{if(!ag[v.employee])ag[v.employee]={key:v.employee,employee:v.employee,scenarios:[],maxRisk:0,liveRisk:0,count:0,latest:v.window_start,first:v.created_at,summary:'',verdict_id:v.verdict_id,intent:v.scenario,status:v.status,reviewed:false};const g=ag[v.employee];const sc=INTENT[v.scenario]||v.scenario;if(!g.scenarios.find(s=>s.label===sc))g.scenarios.push({label:sc,risk:v.risk_score});if((v.risk_score||0)>g.maxRisk)g.maxRisk=v.risk_score;if(_live(v)&&(v.risk_score||0)>=g.liveRisk){g.liveRisk=v.risk_score;g.disp=v;}else if(!_live(v)&&!g.dispHist&&(v.risk_score||0)>=g.maxRisk)g.dispHist=v;g.count++;if(v.window_start>g.latest)g.latest=v.window_start;if(v.created_at&&(!g.first||v.created_at<g.first))g.first=v.created_at;g.reviewed=g.reviewed||((v.summary||'').indexOf('[次日复核')===0);});const arr=Object.values(ag).map(g=>{const d=g.disp||g.dispHist||{};g.summary=d.summary||'';g.verdict_id=d.verdict_id;g.intent=d.scenario;g.status=d.status;g.dispRisk=d.risk_score||0;return g;});
@@ -1163,6 +1163,7 @@ function Alerts({goProfile,filter}){
           </Space>):(()=>{const w=closeWhy(r.summary);const tg=<Tag color={r.status==='CONFIRMED'?'green':r.status==='FP'?'default':'blue'}>{({CONFIRMED:'已知晓',FP:'误报',CLOSED:'已关闭',TRIAGING:'处理中'}[r.status])||r.status}</Tag>;return w?<Tooltip title={w}>{tg}</Tooltip>:tg;})()}]}/>
     </Card>
     <Modal open={fpModal.open} title={'确认误报 — '+fpModal.emp} okText="确认误报" cancelText="取消" okType="danger"
+      okButtonProps={{disabled:!fpModal.attr}}
       onCancel={()=>setFpModal({...fpModal,open:false})} onOk={submitFP}>
       <div style={{marginBottom:12}}>
         <Typography.Text strong>该用户的风险场景：</Typography.Text>
@@ -1176,6 +1177,18 @@ function Alerts({goProfile,filter}){
           ))}
         </div>
         <Typography.Text type="secondary" style={{fontSize:12}}>点击选择要豁免的场景（其他场景仍正常告警）</Typography.Text>
+      </div>
+      <div style={{marginBottom:8}}>
+        <Typography.Text>行为归因（必选——此判定将沉淀为同类行为的判例，对所有人生效）：</Typography.Text>
+        <Radio.Group value={fpModal.attr} onChange={e=>setFpModal({...fpModal,attr:e.target.value})}
+          style={{display:'flex',flexDirection:'column',gap:2,marginTop:6}}>
+          {[['域名定性错','域名被错误定性为风险类（如公司系统/白名单被当成风险站）'],
+            ['意图错','行为性质判断反了（如HR招聘工作被判成求职）'],
+            ['程度夸大','有该行为，但不至于这个分数/严重度'],
+            ['时段可豁免','夜班/跨时区岗位，非工作时段属正常'],
+            ['通道误判','通道被认错（如公司邮箱当成个人邮箱）']].map(([v,d])=>
+            <Radio key={v} value={v}>{v} — {d}</Radio>)}
+        </Radio.Group>
       </div>
       <div style={{marginBottom:8}}>
         <Typography.Text>误报原因（身份标签，AI后续会参考）：</Typography.Text>
@@ -1196,10 +1209,10 @@ function Alerts({goProfile,filter}){
       </div>
       <Alert type="info" showIcon style={{marginTop:12}}
         message={fpModal.reason==='误报'
-          ?"仅将本条标记为误报并留痕——不创建豁免，同类行为后续仍会正常告警。"
+          ?"仅将本条标记为误报并留痕(归因:"+ (fpModal.attr||'未选') +")——不创建豁免，同类行为后续仍会正常告警。"
           :("将豁免「"+(INTENT[fpModal.intent]||fpModal.intent)+"」场景"
             +(fpModal.reason==='工作需要'?'（90天有效）':fpModal.reason==='临时项目'?'（30天有效）':'（永久，直至在豁免管理中删除）')
-            +"，其他场景仍正常监控。AI会记住此标签。")} />
+            +"，其他场景仍正常监控。归因判例对同类行为全局生效。")} />
     </Modal>
     <Modal open={cfModal.open} title="标记已知晓" okText="已知晓" cancelText="取消"
       onCancel={()=>setCfModal({...cfModal,open:false})} onOk={submitConfirm}>
