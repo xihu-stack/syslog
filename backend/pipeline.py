@@ -781,31 +781,6 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         _hist_cache[emp] = txt
         return txt
 
-    def _judge_with_split(w, emp, baseline, dev, item):
-        """超长窗口切分研判(2026-08-26用户要求: 增加研判次数保证完整输入输出)。
-        子窗口各自独立送LLM,结果取最高分,explanation标注[切分研判]。"""
-        _txt = detector._fmt_window(w)
-        if len(_txt) <= 3500:
-            return _judge_item_direct(item, w)
-        # 切分
-        subs = detector.split_window(w)
-        if len(subs) <= 1:
-            return _judge_item_direct(item, w)
-        best = None
-        for i, sub in enumerate(subs):
-            _sub_item = (item[0], sub, item[2])  # (emp, w, ...)保持结构
-            r = _judge_item_direct(_sub_item, sub)
-            if r is None:
-                continue
-            if best is None or (r.get("risk_score") or 0) > (best.get("risk_score") or 0):
-                r = {**r, "explanation": f"[切分研判{i + 1}/{len(subs)}] " + str(r.get("explanation") or "")}
-                best = r
-        return best
-
-    def _judge_item_direct(item, w=None):
-        # 原始 _judge 的内联调用(不走切分)
-        return _judge(item)
-
     def _judge(item, cases_txt=""):
         emp, w, baseline, dev, _wstart_ov = item
         summary = profiles.summarize_for_llm(baseline)  # 冷启动返回 None（由 analyze_window 喂全局参照）
