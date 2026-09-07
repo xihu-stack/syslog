@@ -257,6 +257,27 @@ def _health_watchdog():
             _notify("双模型复核已自动暂停(复核槽连续失败),告警级研判当前无二次独立复核,请检查复核模型(llm_smart_model)配置")
     except Exception:
         pass
+    # 6) 待补判积压(2026-09-07盘点③): [待补判]=LLM失败走规则兜底的告警,sweep自动
+    #    补判限流每小时1轮——NEW存量≥10说明追不上(网关长故障/持续抖动),提醒人看
+    try:
+        import llm_client as _lc6
+        from db import Session as _S6, AlertRow as _A6
+        _ss6 = _S6()
+        try:
+            _pj6 = _ss6.query(_A6).filter(_A6.summary.like("[待补判]%"),
+                                          _A6.status == "NEW").count()
+        finally:
+            _ss6.close()
+        if _pj6 >= 10 and _once_per_day("pending_rejudge"):
+            _le6 = ""
+            try:
+                _le6 = (_lc6.stats().get("last_err") or "")[:80]
+            except Exception:
+                pass
+            _notify(f"待补判积压: {_pj6}条告警停在规则锚点分未经AI定性"
+                    f"(AI最近失败: {_le6 or '无记录'}),请检查模型网关;LLM恢复后自动补判")
+    except Exception:
+        pass
 
 
 _MAINT_RUNNING = set()

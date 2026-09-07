@@ -72,8 +72,7 @@ def _ensure_admin():
             print("[auth] 首次启动:已初始化管理员 admin,初始密码见环境变量(请尽快修改)", flush=True)
         con.commit()
     finally:
-        con.close()
-        print(f"[auth] 已初始化管理员 {ADMIN_USER},初始密码: {INITIAL_PWD}(请尽快在系统设置中修改)")
+        con.close()  # 首启提示在if分支内;finally里这句原每次启动都打(且报早已改掉的初始密码)
 
 
 _ensure_admin()
@@ -1212,6 +1211,10 @@ def system_stats():
         vd_total = s.query(VerdictRow).count()
         vd_ai = s.query(VerdictRow).filter(VerdictRow.ai_participated == 1).count()
         vd_fallback = s.query(VerdictRow).filter(VerdictRow.ai_participated == 0).count()
+        # AI输出质量(2026-09-07盘点③): [待补判]=LLM失败走规则兜底的告警(停在锚点分
+        # 未经AI定性),NEW状态存量=积压趋势,sweep自动补判追不上时会持续走高
+        health["ai"]["pending_rejudge"] = s.query(AlertRow).filter(
+            AlertRow.summary.like("[待补判]%"), AlertRow.status == "NEW").count()
 
         # 告警（今日/昨日/总量）
         al_today = s.query(AlertRow).filter(AlertRow.window_start >= today_start).count()

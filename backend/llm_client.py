@@ -68,7 +68,8 @@ def _candidates():
 LAST_MODEL = ""  # 最近一次成功调用实际使用的模型(研判落库时读,替代硬编码)
 
 # LLM 调用统计(进程内存级,重启清零): 供系统健康页展示 AI 性能
-_STATS = {"total": 0, "fail": 0, "ms": 0, "last_ms": 0, "chars": 0, "by_model": {}}
+# last_err(2026-09-07盘点③): 最近一次失败原因——健康页/watchdog直接读,排查不用翻日志
+_STATS = {"total": 0, "fail": 0, "ms": 0, "last_ms": 0, "chars": 0, "last_err": "", "by_model": {}}
 
 
 def prompt_chars(messages) -> int:
@@ -146,6 +147,9 @@ def chat(messages, model=None, temperature=0.1, max_tokens=1000, timeout=180):
                     # 否则上层拿到空串会把调用当成功(2026-08-18 摸鱼总结空结果排查结论)
                     last_err = RuntimeError(f"{mdl} 返回空内容(疑似思考token耗尽或网关拥塞)")
                     print(f"[llm] {mdl} 空内容(耗时{round((time.time()-_t0)*1000)}ms)", flush=True)
+                    _STATS["fail"] += 1  # 空内容最终raise,也计入失败(原漏计,2026-09-07)
+                    _STATS["last_err"] = f"{mdl}: 空内容"
+                    _STATS["by_model"].setdefault(mdl, {"calls": 0, "ms": 0, "fails": 0})["fails"] += 1
                     break
                 LAST_MODEL = mdl  # 记录实际命中模型(可能是兜底切换后的)
                 _dt = round((time.time() - _t0) * 1000)
@@ -164,12 +168,14 @@ def chat(messages, model=None, temperature=0.1, max_tokens=1000, timeout=180):
                 # docker logs里grep不到任何痕迹,兜底告警混进AI研判无据可查)
                 print(f"[llm] {mdl} HTTP{e.code}: {str(e)[:120]}", flush=True)
                 _STATS["fail"] += 1
+                _STATS["last_err"] = f"{mdl} HTTP{e.code}: {str(e)[:100]}"
                 _STATS["by_model"].setdefault(mdl, {"calls": 0, "ms": 0, "fails": 0})["fails"] += 1
                 break
             except Exception as e:
                 last_err = e
                 print(f"[llm] {mdl} {type(e).__name__}: {str(e)[:120]}", flush=True)
                 _STATS["fail"] += 1
+                _STATS["last_err"] = f"{mdl} {type(e).__name__}: {str(e)[:100]}"
                 _STATS["by_model"].setdefault(mdl, {"calls": 0, "ms": 0, "fails": 0})["fails"] += 1
                 break
     raise RuntimeError(f"所有模型均调用失败: {last_err}")
