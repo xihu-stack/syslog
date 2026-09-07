@@ -806,7 +806,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
         # 原始 _judge 的内联调用(不走切分)
         return _judge(item)
 
-    def _judge(item):
+    def _judge(item, cases_txt=""):
         emp, w, baseline, dev, _wstart_ov = item
         summary = profiles.summarize_for_llm(baseline)  # 冷启动返回 None（由 analyze_window 喂全局参照）
         # 查该用户是否有豁免（已确认正常的行为），传给 AI 作为上下文
@@ -871,7 +871,8 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                                "; " + fam_txt)
         except Exception:
             pass
-        v = detector.analyze_window(w, summary, dev, exempt, gctx, history=_hist, day_ctx=day_ctx)
+        v = detector.analyze_window(w, summary, dev, exempt, gctx, history=_hist, day_ctx=day_ctx,
+                                    cases_txt=cases_txt)
         # ---- 说明后校验(2026-08-21 AI准确性): 数字与窗口实际比对,不匹配自动修正 ----
         try:
             if isinstance(v, dict) and v.get("explanation"):
@@ -1071,7 +1072,7 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
 
     done_count = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=_pool_workers(len(to_judge))) as pool:
-        def _judge_auto0(item):
+        def _judge_auto0(item, cases_txt=""):
             """超长窗口自动切分(2026-08-26用户要求: 本地AI不费钱,增加研判次数
             保证完整输入输出不截断丢风险)。子窗口各自送LLM取最高分。"""
             emp, w, baseline, dev, wstart_ov = item
@@ -1085,13 +1086,13 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                          "file_sensitivity": "none"})
             _txt = detector._fmt_window(w)
             if len(_txt) <= 3500:
-                return _judge(item)
+                return _judge(item, cases_txt)
             subs = detector.split_window(w)
             if len(subs) <= 1:
-                return _judge(item)
+                return _judge(item, cases_txt)
             best = None
             for i, sub in enumerate(subs):
-                r = _judge((emp, sub, baseline, dev, wstart_ov))
+                r = _judge((emp, sub, baseline, dev, wstart_ov), cases_txt)
                 if r is None:
                     continue
                 if best is None or ((r[5] or {}).get("risk_score") or 0) > ((best[5] or {}).get("risk_score") or 0):
@@ -1107,13 +1108,32 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
             r = _judge_auto0(item)
             if not (isinstance(r, tuple) and len(r) > 5 and isinstance(r[5], dict)
                     and r[5].get("ai_participated") is False):
-                return r
-            import time as _t2
-            _t2.sleep(5)
-            r2 = _judge_auto0(item)
-            if isinstance(r2, tuple) and len(r2) > 5 and isinstance(r2[5], dict) \
-                    and r2[5].get("ai_participated") is not False:
-                return r2
+                pass  # 首判成功 → 继续走难例判定
+            else:
+                import time as _t2
+                _t2.sleep(5)
+                r2 = _judge_auto0(item)
+                if isinstance(r2, tuple) and len(r2) > 5 and isinstance(r2[5], dict) \
+                        and r2[5].get("ai_participated") is not False:
+                    r = r2
+            # 难例带判例重判(2026-09-04灵魂一期,spec: 只给难例控prompt体积):
+            # 首判落在阈值±15带或意图unknown → 取相似人工判例注入重判一次。
+            # 分数判前未知,只能post式: 先判→难例→带判例重判。
+            try:
+                if isinstance(r, tuple) and len(r) > 5 and isinstance(r[5], dict) \
+                        and r[5].get("ai_participated"):
+                    import casebase as _cb
+                    _v5 = r[5]
+                    if _cb.is_hard(_v5.get("intent"), _v5.get("risk_score") or 0, risk_threshold):
+                        _cs = _cb.cases_for_prompt(_cb.feature_keys_of(item[1], _v5))
+                        if _cs:
+                            r2 = _judge_auto0(item, cases_txt=_cs)
+                            if isinstance(r2, tuple) and len(r2) > 5 and isinstance(r2[5], dict) \
+                                    and r2[5].get("ai_participated"):
+                                r = (*r2[:5], {**r2[5], "explanation":
+                                      "[判例对齐] " + str(r2[5].get("explanation") or "")})
+            except Exception:
+                pass  # 判例注入失败保留首判
             return r
 
         futs = {pool.submit(_judge_auto, item): i for i, item in enumerate(to_judge)}

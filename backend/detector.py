@@ -696,7 +696,7 @@ def _run_judge_tool(name: str, window, emp: str) -> str:
 
 
 def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exemptions=None, global_ctx=None,
-                   model=None, history=None, day_ctx=None) -> dict:
+                   model=None, history=None, day_ctx=None, cases_txt: str = "") -> dict:
     if profile:
         profile_txt = f"\n{profile}"
     else:
@@ -749,8 +749,9 @@ def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exempti
         except Exception:
             pass
 
+    _case_txt = f"\n{cases_txt}" if cases_txt else ""
     user = (f"员工：{window[0].employee_id}（设备：{window[0].employee_id}）\n"
-            f"行为序列：\n{_fmt_window(window)}{_dest_hint}{g_txt}{profile_txt}{dev_txt}{exempt_txt}{hist_txt}{day_txt}{_mem}\n\n")
+            f"行为序列：\n{_fmt_window(window)}{_dest_hint}{g_txt}{profile_txt}{dev_txt}{exempt_txt}{hist_txt}{day_txt}{_mem}{_case_txt}\n\n")
     try:
         # 工具循环(2026-08-26用户要求: AI信息不足时可主动查询关联日志再分析,
         # 最多追问2轮,防止无限循环)
