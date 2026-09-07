@@ -34,7 +34,7 @@ REMOTE = "/root/syslog/backend"
 CONTAINER = "ipguard-ai"
 # 白名单(2026-08-26补全): 原缺 parser_ipguard/parser_sangfor(pipeline模块级import,
 # 新容器直接起不来)与 riskmemory(风险记忆,缺了内存注入静默失效)
-PY_FILES = ["api.py", "db.py", "dicts.py", "detector.py", "llm_client.py", "pipeline.py", "profiles.py", "syslog_recv.py", "selfheal.py", "parser_ipg.py", "parser_ipguard.py", "parser_sangfor.py", "riskmemory.py", "docscan.py", "massops.py", "storyline.py", "dayreview.py", "timeline.py", "riskboard.py", "weekly.py", "patterns.py", "web_aggregator.py", "models.py", "deepaudit.py", "domain_scan.py", "daygate.py", "sampleaudit.py", "casebase.py"]
+PY_FILES = ["api.py", "db.py", "dicts.py", "detector.py", "llm_client.py", "pipeline.py", "profiles.py", "syslog_recv.py", "selfheal.py", "parser_ipg.py", "parser_ipguard.py", "parser_sangfor.py", "riskmemory.py", "docscan.py", "massops.py", "storyline.py", "dayreview.py", "timeline.py", "riskboard.py", "weekly.py", "patterns.py", "web_aggregator.py", "models.py", "deepaudit.py", "domain_scan.py", "daygate.py", "sampleaudit.py", "casebase.py", "ruleaudit.py"]
 
 
 def _node() -> str:

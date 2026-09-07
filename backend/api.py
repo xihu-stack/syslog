@@ -882,6 +882,23 @@ def stories_run():
     return build_stories()
 
 
+@app.get("/api/ruleaudit")
+def ruleaudit_get():
+    """规则体检最近一次结果(每周一自动/手动run触发)。"""
+    import json as _js
+    try:
+        return {"report": _js.loads(dicts.get_setting("rule_audit_report") or "{}")}
+    except Exception:
+        return {"report": {}}
+
+
+@app.post("/api/ruleaudit/run")
+def ruleaudit_run():
+    """手动触发规则体检(类级命中→告警→处置聚合+三类信号)。"""
+    from ruleaudit import run_rule_audit
+    return run_rule_audit()
+
+
 @app.post("/api/massops")
 def massops_run():
     """行为聚合扫描(大量删除=离职前兆),手动触发。"""

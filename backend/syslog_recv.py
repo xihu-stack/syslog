@@ -394,6 +394,19 @@ def _maint_hourly():
                       f" (目标{_r11.get('day')})", flush=True)
         except Exception as _de11:
             print(f"[sampleaudit] 失败: {_de11}", flush=True)
+        try:  # 规则体检(2026-09-07持续性①): 每周一凌晨给规则自己的成绩单——
+            # 类级[命中→告警→处置]聚合,标 过紧(high_fp)/死字典(dead)/漂移(drift),
+            # webhook推送+结果存settings。让"哪条规则该改"由系统指出,不靠个案撞
+            from db import bj_now as _bj12
+            _d12 = _bj12()
+            if _d12.weekday() == 0 and _d12.hour >= 5 and \
+                    dicts.get_setting("ruleaudit_last", "") != _d12.strftime("%Y%m%d"):
+                from ruleaudit import run_rule_audit
+                _r12 = run_rule_audit()
+                print(f"[ruleaudit] 规则体检: 活跃类{len(_r12.get('classes', {}))}"
+                      f" 信号{len(_r12.get('flags', []))}", flush=True)
+        except Exception as _de12:
+            print(f"[ruleaudit] 失败: {_de12}", flush=True)
         try:  # 风险故事线(每周,R1): 离职信号串成时间叙事(2026-08-21)
             from datetime import timedelta as _td7
             from db import bj_now as _bj7
