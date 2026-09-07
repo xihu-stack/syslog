@@ -20,6 +20,7 @@ import llm_client
 import pipeline
 import profiles
 import dicts
+import facts
 
 def _ui_write(fn):
     """UI小写端点装饰器(2026-08-24): write_lock串行+locked重试。
@@ -2110,7 +2111,7 @@ def _rules_scan_core() -> dict:
         sys_p = ("你是企业数据安全助手。分析这些【未分类】的域名,判断是否需要纳入风险监控。\n"
                  "对每个域名输出 JSON: {domain, target, cat, reason}\n"
                  "target 取值:\n"
-                 "- 已知风险类(纳入对应字典): netdisk_domains(网盘云盘) / personal_email_domains(个人邮箱) / recruitment_sites(招聘求职) / remote_control_domains(远程控制) / code_repo_domains(代码仓库) / wechat_file_domains(微信文件助手) / ai_assistant_domains(AI助手chatgpt/deepseek等,往AI塞数据) / slack_domains(摸鱼娱乐)  (注: 翻墙VPN经业务确认不算风险,勿建议)\n"
+                 "- 已知风险类(纳入对应字典): netdisk_domains(网盘云盘) / personal_email_domains(个人邮箱) / recruitment_sites(招聘求职) / remote_control_domains(远程控制) / code_repo_domains(代码仓库) / wechat_file_domains(微信文件助手) / ai_assistant_domains(AI助手chatgpt/deepseek等,往AI塞数据) / slack_domains(摸鱼娱乐)  (注: " + facts.VPN_POLICY_FACTS + ")\n"
                  "- **suspect_new(疑似新风险)**: 不属于上述任何类,但像数据外发/泄露/规避监控的可疑行为(如未知网盘、匿名传输、临时邮箱、屏幕共享、代码粘贴pastebin、内网穿透ngrok/frp、加密货币、敏感数据爬取等)。这类即使无法精确归类也要标出,供人工审核。\n"
                  "【传输动作特别规则】标注了'含传输动作(upload/send)'的域名=有员工在向上传内容:个人向社交平台/图床/外部云/招聘平台传文件属外发嫌疑,默认 suspect_new 或归入对应风险类,不要因'知名网站的子域'就判 ignore(如知乎图片上传、招聘系统传简历)。\n"
                  "- ignore: 明确的正常办公/厂商后台/CDN/SDK/系统更新/认证服务\n"

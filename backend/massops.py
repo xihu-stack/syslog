@@ -16,11 +16,14 @@ from datetime import timedelta
 from db import Session, EventRow, AlertRow, VerdictRow, bj_now, events_by_hashes, severity_of
 import dicts
 import detector
+import facts
 
-PROMPT = """你是生物医药研发企业的行为安全分析师。输入: 某员工同一周内删除的文件清单(IP-Guard,已排除系统/缓存文件)。
-公司业务: 核心数据资产=实验记录/细胞株与序列/临床试验文件(方案·IB·知情同意书·研究报告)/注册专利/合同客户资料;研发日常产出大量带项目编号(HX/HXN/CBL等)的过程稿属工作常态。
-输出单个JSON对象(第一个字符必须是'{',JSON之外禁止任何文字,禁止markdown代码块): {"summary":"按5W: 谁(输入员工名)在何时(周/日+时段)通过本机删除删了什么(数量+代表性文件名3-5个+按文件名归纳类型),结合文件名特征判定属哪类清理并写明依据:①敏感清理=实验/临床/注册/合同资产被删(疑似数据销毁或离职前清理)②工作清理=项目过程稿/旧版本整理③环境生活清理=下载缓存/安装包/个人文件","grade":"sensitive|work|env"}
-summary一段中文120字内,必须引用真实文件名。"""
+# 公司业务画像引自 facts.py 单源(2026-09-07盘点②): 此前内嵌精简副本,
+# detector 画像改口径时这里不跟——画像与 detector 条款C04 同源同字节。
+PROMPT = ("你是生物医药研发企业的行为安全分析师。输入: 某员工同一周内删除的文件清单(IP-Guard,已排除系统/缓存文件)。\n"
+          + facts.BUSINESS_PROFILE_FACTS +
+          "输出单个JSON对象(第一个字符必须是'{',JSON之外禁止任何文字,禁止markdown代码块): {\"summary\":\"按5W: 谁(输入员工名)在何时(周/日+时段)通过本机删除删了什么(数量+代表性文件名3-5个+按文件名归纳类型),结合文件名特征判定属哪类清理并写明依据:①敏感清理=实验/临床/注册/合同资产被删(疑似数据销毁或离职前清理)②工作清理=项目过程稿/旧版本整理③环境生活清理=下载缓存/安装包/个人文件\",\"grade\":\"sensitive|work|env\"}\n"
+          "summary一段中文120字内,必须引用真实文件名。")
 
 
 def scan_mass_deletes() -> dict:
@@ -364,7 +367,7 @@ def scan_mass_exfil(s) -> int:
                 _p2 = ("对以下员工外发文件名清单做整体内容定性,只输出一个JSON对象,格式严格为 "
                        '{"sensitivity": "high|mid|none", "desc": "一句话(引用代表性文件名)"},'
                        "禁止数组、禁止逐文件拆分、禁止markdown代码块。"
-                       "high=实验/临床/项目数据/合同财务/数据库;mid=含项目编号的办公文档;none=缓存/私人生活文件。文件: "
+                       + facts.SENSITIVITY_TIER_FACTS + "文件: "
                        + "; ".join(_files))
                 _raw = llm_client.chat([{"role": "system", "content": _p2}], max_tokens=200, timeout=90)
                 _txt = llm_client.strip_think(_raw)
