@@ -252,6 +252,25 @@ def ingest_events(events) -> int:
             s.close()
 
 
+def _micro_fast(w) -> bool:
+    """微窗口快速通道(2026-09-04 prompt降压②): 全WEB+全部域名无风险类+非
+    深夜凌晨+≤6事件 → 规则直判 normal_work 不调AI。这类窗口会进研判只因为
+    daygate/sampleaudit/sweep 立桩(should_trigger 本就不会为纯常规浏览触发),
+    内容全良性,LLM 只会复读"正常办公"——白烧调用。事实降噪属代码层,不交AI。"""
+    if not w or len(w) > 6:
+        return False
+    for e in w:
+        if e.category != "WEB":
+            return False
+        if detector._is_off_hours(e.occurred_at):
+            return False
+        raw = e.raw if isinstance(e.raw, dict) else {}
+        d = str(raw.get("domain") or e.target_value or "").lower().split("/")[0].split(":")[0]
+        if d and dicts.risk_class(d):
+            return False
+    return True
+
+
 def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]:
     """增量研判（3 阶段；写锁只在第 3 阶段批量写时短暂持有，可与入库并发）：
     1) 只读：取新事件、建窗口、算历史基线、去重 → 收集待研判窗口
@@ -415,6 +434,9 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
                     VerdictRow.window_start >= _now5 - timedelta(days=7),
                     VerdictRow.created_at < _now5 - timedelta(minutes=60),
                     ~_superseded5,
+                    # 快速通道行已规则定性,不再烧LLM重判。NULL陷阱: 旧行model为NULL,
+                    # SQL的!=对NULL得NULL(整行被过滤),须显式放行NULL
+                    or_(VerdictRow.model.is_(None), VerdictRow.model != "micro-fast"),
                 ).order_by(VerdictRow.created_at).limit(20).all()
                 for _fb in _fbs:
                     _rows5 = events_by_hashes(rs, (_fb.event_hashes or [])[:400])
@@ -1046,6 +1068,14 @@ def run_detection(risk_threshold: int = 50, on_progress=None) -> tuple[int, int]
             """超长窗口自动切分(2026-08-26用户要求: 本地AI不费钱,增加研判次数
             保证完整输入输出不截断丢风险)。子窗口各自送LLM取最高分。"""
             emp, w, baseline, dev, wstart_ov = item
+            if _micro_fast(w):  # 微窗口快速通道(2026-09-04): 规则直判,不烧LLM
+                return (emp, w[0].device_id, wstart_ov or w[0].occurred_at,
+                        w[-1].occurred_at, [e.event_hash() for e in w],
+                        {"intent": "normal_work", "deviation": "none", "risk_score": 8,
+                         "explanation": "[快速通道] 窗口内全部为常规网站浏览,无风险类"
+                                        "域名/文件操作/非工作时段信号,规则直判正常办公(未调AI)",
+                         "channels": [], "ai_participated": False, "model": "micro-fast",
+                         "file_sensitivity": "none"})
             _txt = detector._fmt_window(w)
             if len(_txt) <= 3500:
                 return _judge(item)
