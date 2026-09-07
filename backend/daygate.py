@@ -20,7 +20,8 @@ from db import EventRow, Session, VerdictRow, bj_now, write_lock
 import detector
 import dicts
 
-MAX_CALLS = 60      # 每日巡检调用上限(本地vLLM,轻调用)
+MAX_CALLS = 100000  # 沉默人群全查(2026-09-07用户拍板: 砍掉原60人上限,零研判员工
+                    # 次日100%巡检)。凌晨串行轻扫~10s/人,百人级公司全天沉默量可承受;上限仅防极端值
 MIN_EVENTS = 3      # 低于此事件量的员工不值得巡检
 SCORE_GATE = 50     # 巡检分低于此不立桩(弱联想放过)
 
