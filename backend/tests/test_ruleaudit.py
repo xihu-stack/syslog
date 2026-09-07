@@ -48,3 +48,14 @@ def test_no_drift_on_flat_usage():
     by = {"招聘求职": _cls(hits=100, weeks={"2026-W35": 10, "2026-W36": 12,
                                              "2026-W37": 9, "2026-W38": 11, "2026-W39": 13})}
     assert not [f for f in ruleaudit._make_flags(by, {}) if f["type"] == "drift"]
+
+
+def test_clauses_digest_shape():
+    """周报条款概览(2026-09-07条款化): 总数=条款表长度,recent均为条款号开头。"""
+    import ruleaudit
+    import detector
+    cd = ruleaudit._clauses_digest()
+    assert cd["total"] == len(detector.CLAUSES)
+    assert all(r.startswith("C") for r in cd["recent"])
+    txt = ruleaudit._fmt({}, {}, [], cd)
+    assert "准则条款" in txt and str(cd["total"]) in txt

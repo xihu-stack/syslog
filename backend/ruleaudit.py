@@ -104,7 +104,26 @@ def _make_flags(by_cls: dict, disp: dict, expected=EXPECTED) -> list:
     return flags
 
 
-def _fmt(by_cls, disp, flags) -> str:
+def _clauses_digest(days: int = 7) -> dict:
+    """准则条款概览(2026-09-07条款化): 总数+近N天新增(按since日期)。
+    口径膨胀速度可观测——蒸馏轮的清退参照: 新增持续>清退就该蒸一轮。"""
+    import detector
+    from datetime import date
+    today = date.today()
+    recent = []
+    for c in detector.CLAUSES:
+        if c["since"] == "v0":
+            continue
+        try:
+            y, m, d = map(int, c["since"].split("-"))
+            if 0 <= (today - date(y, m, d)).days <= days:
+                recent.append(f"{c['id']}{c['name']}")
+        except ValueError:
+            continue
+    return {"total": len(detector.CLAUSES), "recent": recent}
+
+
+def _fmt(by_cls, disp, flags, clauses=None) -> str:
     lines = [f"规则体检(近{WINDOW_DAYS}天按风险类):"]
     for cls in sorted(by_cls, key=lambda c: -by_cls[c]["hits"]):
         st, d = by_cls[cls], disp.get(cls) or {}
@@ -115,6 +134,12 @@ def _fmt(by_cls, disp, flags) -> str:
         lines += [f"  [{f['type']}] {f['detail']}" for f in flags]
     else:
         lines.append("信号: 无(各类健康)")
+    if clauses is not None:
+        if clauses["recent"]:
+            lines.append(f"准则条款: 共{clauses['total']}条,近7天新增{len(clauses['recent'])}条"
+                         f"({'; '.join(clauses['recent'])})——口径在长,蒸馏轮留意清退")
+        else:
+            lines.append(f"准则条款: 共{clauses['total']}条,近7天无新增")
     return "\n".join(lines)[:4000]
 
 
@@ -131,6 +156,7 @@ def run_rule_audit() -> dict:
                    "weeks": dict(st["weeks"])} for cls, st in by_cls.items()}
     disp_s = {cls: dict(d) for cls, d in disp.items()}
     flags = _make_flags(by_cls, disp)
+    clauses = _clauses_digest()
     # AI一句话建议(fail-soft): 信号已可读,LLM只做归并降噪
     ai = ""
     try:
@@ -138,13 +164,14 @@ def run_rule_audit() -> dict:
                                "你是企业行为审计系统的规则运营助手。根据下面的规则体检结果,"
                                "用不超过3句话给出本周最值得动手的1-2条规则优化建议"
                                "(优先high_fp;dead类提醒可能是字典漂移;drift只提示观察)。\n"
-                               + _fmt(by_cls, disp, flags)}],
+                               + _fmt(by_cls, disp, flags, clauses)}],
                               max_tokens=300, timeout=120)
         ai = llm_client.strip_think(ai).strip()
     except Exception as e:
         print(f"[ruleaudit] AI总结失败(不影响体检): {e}", flush=True)
     res = {"ran_at": d1.isoformat()[:16], "window_days": WINDOW_DAYS,
-           "classes": stats, "dispositions": disp_s, "flags": flags, "ai_summary": ai}
+           "classes": stats, "dispositions": disp_s, "flags": flags,
+           "clauses": clauses, "ai_summary": ai}
     dicts.set_setting("rule_audit_report", json.dumps(res, ensure_ascii=False)[:200000])
     dicts.set_setting("ruleaudit_last", d1.strftime("%Y%m%d"))
     try:
@@ -154,7 +181,8 @@ def run_rule_audit() -> dict:
              "drift": sum(1 for f in flags if f["type"] == "drift")}
         _pl._notify_webhook("规则体检", 0,
                             f"本周规则体检: 活跃类{len(by_cls)}个, 信号: 过紧{n['high_fp']}/"
-                            f"死字典{n['dead']}/漂移{n['drift']}。"
+                            f"死字典{n['dead']}/漂移{n['drift']}; 准则条款{clauses['total']}条"
+                            f"(本周新增{len(clauses['recent'])})。"
                             + ("; ".join(f["detail"] for f in flags[:3]))
                             + ("。" + ai[:120] if ai else "")
                             + "(详情GET /api/ruleaudit)")

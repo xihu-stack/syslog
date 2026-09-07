@@ -2003,8 +2003,13 @@ def _ask_query(action, employee, category="", days_arg=None):
                 lines.append("异常: " + ", ".join(abnormal[:15]))
             return "\n".join(lines)
         if action == "help":
+            # 判定口径从条款表动态取(2026-09-07盘点③): 原文本硬编码口径浓缩副本
+            # ("访问即违规/降权/求职意图"),条款改口径这里不跟→漂。name清单动态生成,
+            # 条款增删自动同步;口径细节以条款表为准,help只报场景与清单。
+            import detector as _det
+            _names = "; ".join(f"{c['id']}{c['name']}" for c in _det.CLAUSES)
             return ("系统能力: 安全告警(邮箱/网盘/文件助手/远程控制/招聘)、效率监控(视频/社交/购物/资讯/音乐摸鱼)、画像(风险行为/基线)。\n"
-                    "规则: 个人邮箱/网盘公司禁止→访问即违规; 微信文件助手=外发; 远程控制降权; 招聘=求职意图。\n"
+                    f"研判准则: 系统当前生效{len(_det.CLAUSES)}条编号条款({_names}),具体判定口径以条款表为准。\n"
                     "可问: 某员工风险行为 / 告警榜 / 摸鱼榜 / 在岗情况 / 谁访问了网盘·邮箱·招聘·文件助手·远程控制。")
         return ""
     finally:

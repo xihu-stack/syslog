@@ -119,3 +119,12 @@ def test_canary_crossday_scope():
 def test_canary_time_alignment():
     """说明时间铁律: 日期须与本窗口一致(2026-08-26时间错位事故)。"""
     assert "本窗口时间" in _by_id("C41")["text"] and "完全一致" in _by_id("C41")["text"]
+
+
+def test_ask_help_uses_clause_table():
+    """ask通道help文本弃口径浓缩副本,改动态引用条款表(盘点③接线不回退)。"""
+    import inspect
+    import api
+    src = inspect.getsource(api)
+    assert "研判准则: 系统当前生效" in src          # 动态生成段在
+    assert "访问即违规; 微信文件助手=外发" not in src  # 旧硬编码副本已清
