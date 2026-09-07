@@ -898,8 +898,10 @@ def rejudge():
 
 @app.post("/api/feedback")
 @_ui_write
-def feedback(alert_id: int, label: str, reason: str = "", signal_type: str = "", expires_days: int = 0):
-    """标记告警 TP/FP。FP 可带原因+信号类型创建豁免（下次同类不再告警）。"""
+def feedback(alert_id: int, label: str, reason: str = "", signal_type: str = "",
+             expires_days: int = 0, attribution: str = ""):
+    """标记告警 TP/FP。FP 可带原因+信号类型创建豁免（下次同类不再告警）。
+    attribution=可选归因透传(向后兼容可空);给了且合法才建档。"""
     if label not in ("TP", "FP"):
         raise HTTPException(400, "label 必须是 TP 或 FP")
     from datetime import datetime, timedelta
@@ -917,6 +919,15 @@ def feedback(alert_id: int, label: str, reason: str = "", signal_type: str = "",
             s.add(ExceptionRow(employee_id=a.employee_id, signal_type=signal_type,
                                reason=reason, expires_at=exp))
         s.commit()
+        try:  # feedback路径无verdict在手,fk为空dict建档——behavior_key为空口径键,
+            # 仍留outcome/attribution供蒸馏;难例检索40分门槛自然过滤空键案例
+            if label == "FP" and attribution:
+                import casebase
+                if attribution in casebase.ATTRIBUTIONS:
+                    casebase.record_case("disposition_fp", a.employee_id, outcome="false_positive",
+                                         attribution=attribution, verdict_row=None, note=reason)
+        except Exception:
+            pass
         return {"ok": True}
     finally:
         s.close()
@@ -945,10 +956,11 @@ def update_alert_status(alert_id: int, status: str = "TRIAGING"):
 
 @app.post("/api/verdicts/{vid}/confirm")
 @_ui_write
-def verdict_confirm(vid: int, reason: str = ""):
+def verdict_confirm(vid: int, reason: str = "", attribution: str = ""):
     """通过研判ID标记已知晓(自动找到对应alert);reason=备注(可空),留痕到feedback。
     已知晓=纯状态标记:不写豁免、不影响研判和复犯提醒(告警非事故,无需"确认"处置,
-    2026-08-19用户语义:只有误报才影响系统)。"""
+    2026-08-19用户语义:只有误报才影响系统)。attribution=可选行为确认归因,
+    给了就沉淀confirmed判例(2026-09-04灵魂一期)。"""
     s = Session()
     try:
         a = s.query(AlertRow).filter_by(verdict_id=vid).first()
@@ -962,6 +974,14 @@ def verdict_confirm(vid: int, reason: str = ""):
         a.status = "CONFIRMED"
         s.add(FeedbackRow(alert_id=a.id, label="TP", reason=reason or "已知晓"))
         s.commit()
+        try:  # 确认同理留档判例outcome=confirmed;归因可选(空=只确认不归因)——
+            # 计划自审修正: 测试要求不带归因也建档,守卫去掉
+            import casebase
+            v0 = s.query(VerdictRow).get(vid)
+            casebase.record_case("disposition_confirm", a.employee_id, outcome="confirmed",
+                                 attribution=attribution, verdict_row=v0, note=reason)
+        except Exception:
+            pass
         return {"ok": True}
     finally:
         s.close()
@@ -969,26 +989,42 @@ def verdict_confirm(vid: int, reason: str = ""):
 
 @app.post("/api/verdicts/{vid}/false_positive")
 @_ui_write
-def verdict_false_positive(vid: int, reason: str = "误报", signal_type: str = "", expires_days: int = 0):
-    """通过研判ID标记误报 + 创建豁免。"""
+def verdict_false_positive(vid: int, reason: str = "误报", signal_type: str = "",
+                           expires_days: int = 0, attribution: str = ""):
+    """通过研判ID标记误报 + 创建豁免 + 沉淀行为判例(2026-09-04灵魂一期:
+    误报必须选行为归因五选一——判例按行为口径建档,对所有人所有窗口生效)。"""
     from datetime import datetime, timedelta
     from db import ExceptionRow
+    import casebase
+    if attribution not in casebase.ATTRIBUTIONS:
+        raise HTTPException(400, "误报必须选行为归因(五选一): " + "/".join(casebase.ATTRIBUTIONS))
     s = Session()
     try:
         a = s.query(AlertRow).filter_by(verdict_id=vid).first()
+        v0 = s.query(VerdictRow).get(vid)
         if not a:
-            v0 = s.query(VerdictRow).get(vid)
             if v0:
                 a = s.query(AlertRow).filter_by(employee_id=v0.employee_id, scenario=v0.intent).first()
         if not a:
             return {"ok": False, "error": "未找到对应告警"}
         a.status = "FP"
-        s.add(FeedbackRow(alert_id=a.id, label="FP", reason=reason))
+        s.add(FeedbackRow(alert_id=a.id, label="FP", reason=f"[{attribution}] {reason}"))
         if signal_type:
             exp = datetime.utcnow() + timedelta(days=expires_days) if expires_days > 0 else None
             s.add(ExceptionRow(employee_id=a.employee_id, signal_type=signal_type,
                                reason=reason, expires_at=exp))
         s.commit()
+        # 判例入库(fail-soft): FP处置 → disposition_fp; 若同动作建了豁免,再记
+        # exemption一条(同behavior_key 30天去重会让豁免顶掉FP——豁免是更强结论,
+        # 覆盖合理)。处置成功才建档。
+        try:
+            casebase.record_case("disposition_fp", a.employee_id, outcome="false_positive",
+                                 attribution=attribution, verdict_row=v0, note=reason)
+            if signal_type:
+                casebase.record_case("exemption", a.employee_id, outcome="exempt",
+                                     attribution=attribution, verdict_row=v0, note=reason)
+        except Exception as _ce:
+            print(f"[casebase] 处置判例入库失败(不影响处置): {_ce}", flush=True)
         return {"ok": True}
     finally:
         s.close()
