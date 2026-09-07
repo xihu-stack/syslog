@@ -169,9 +169,15 @@ def run_day_gate() -> dict:
                 _cal = casebase.caliber_text()
             except Exception:
                 pass
+            _facts_txt = ""
+            try:  # 公司域名事实单源注入(2026-09-07): 公司主域/M365/北森事实同源
+                import facts as _facts
+                _facts_txt = _facts.SCAN_CALIBER_FACTS
+            except Exception:
+                pass
             try:
                 msg = llm_client.chat(
-                    [{"role": "user", "content": PROMPT + _cal + "\n" + _digest(evs)}],
+                    [{"role": "user", "content": PROMPT + _facts_txt + _cal + "\n" + _digest(evs)}],
                     max_tokens=300, timeout=120)
             except Exception:
                 continue  # 单人失败不拖累整轮;全灭时ok=0不落last,下小时重试

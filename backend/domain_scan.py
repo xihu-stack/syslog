@@ -124,8 +124,14 @@ def scan_new_domains():
         _cal = casebase.caliber_text()
     except Exception:
         pass
+    _facts_txt = ""
+    try:  # 公司域名事实单源注入(2026-09-07): 公司主域/M365/北森等事实与研判同源,
+        import facts as _facts  # 定性AI看不到这些口径=italent误标一类事故的病根
+        _facts_txt = _facts.SCAN_CALIBER_FACTS
+    except Exception:
+        pass
     msg = llm_client.chat(
-        [{"role": "user", "content": PROMPT + _cal + "\n" + "\n".join(lines)}],
+        [{"role": "user", "content": PROMPT + _facts_txt + _cal + "\n" + "\n".join(lines)}],
         max_tokens=3000, timeout=240)
     items = [it for it in _parse_items(msg) if it["domain"] in {c[0] for c in cands}]
     hits = {c[0]: c[1] for c in cands}
