@@ -1226,6 +1226,47 @@ def detection_status() -> dict:
     return {**_detect_status, "review": review_status(), "webhook": webhook_status()}
 
 
+# ---- 灵魂生命体征(2026-09-04一期,防再挂死16h无人知) ----
+_SOUL_WD = {"done": None, "since": None, "dumped": False, "stop": False}
+
+
+def start_soul_watchdog(stall_seconds: int = 1800, poll_seconds: int = 60):
+    """研判看门狗(守护线程): running且phase=LLM研判中 且 done 停滞>stall_seconds
+    → faulthandler dump全线程栈 + [soul-watchdog]日志行(2026-09-03挂死16h事故:
+    7线程futex_wait,零[llm]日志,无栈可查)。顺带注册SIGUSR1: Linux容器里
+    `docker exec ipguard-ai kill -USR1 1` 随时安全dump,不用等看门狗。"""
+    import faulthandler
+    try:
+        import signal
+        faulthandler.register(signal.SIGUSR1)
+    except (ValueError, OSError, AttributeError):
+        pass  # Windows本地/无SIGUSR1平台: 注册跳过,看门狗照常工作
+
+    def _wd():
+        import time as _t
+        while not _SOUL_WD.get("stop"):
+            _t.sleep(poll_seconds)
+            try:
+                st = detection_status()
+                if not st.get("running") or st.get("phase") != "LLM研判中":
+                    _SOUL_WD.update(done=None, since=None, dumped=False)
+                    continue
+                d = st.get("done")
+                if d != _SOUL_WD["done"]:
+                    _SOUL_WD.update(done=d, since=_t.time(), dumped=False)
+                    continue
+                if _SOUL_WD["since"] and _t.time() - _SOUL_WD["since"] > stall_seconds \
+                        and not _SOUL_WD["dumped"]:
+                    _SOUL_WD["dumped"] = True  # 一次停滞只dump一次;done再动自动复位
+                    faulthandler.dump_traceback()
+                    print(f"[soul-watchdog] 研判停滞>{stall_seconds // 60}min(done={d}),"
+                          f"已dump全线程栈,请人工检查容器", flush=True)
+            except Exception:
+                pass  # 看门狗自身永不出错拖垮进程
+    _SOUL_WD["stop"] = False
+    threading.Thread(target=_wd, daemon=True).start()
+
+
 def start_detection(risk_threshold: int = 50) -> dict:
     """启动后台研判（单飞）。已在跑则返回 busy，不重复启动。
     2026-09-01: llm_enabled=0(本地AI暂停)时直接拒绝——窗口保持待判,

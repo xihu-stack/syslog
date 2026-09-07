@@ -320,6 +320,12 @@ if _se == "1":
         print("[startup] syslog 自启失败:", e)
     syslog_recv.start_watchdog()  # 兜底: syslog停了自动重启(每60s检查)
 
+try:
+    pipeline.start_soul_watchdog()
+    print("[startup] soul watchdog 已启动(SIGUSR1栈dump+研判停滞看门狗)")
+except Exception as _se2:
+    print("[startup] soul watchdog 启动失败:", _se2)
+
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 
