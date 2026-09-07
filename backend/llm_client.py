@@ -68,7 +68,13 @@ def _candidates():
 LAST_MODEL = ""  # 最近一次成功调用实际使用的模型(研判落库时读,替代硬编码)
 
 # LLM 调用统计(进程内存级,重启清零): 供系统健康页展示 AI 性能
-_STATS = {"total": 0, "fail": 0, "ms": 0, "last_ms": 0, "by_model": {}}
+_STATS = {"total": 0, "fail": 0, "ms": 0, "last_ms": 0, "chars": 0, "by_model": {}}
+
+
+def prompt_chars(messages) -> int:
+    """消息总字符数(2026-09-04度量先行): prompt降压各杠杆要有前后对照,
+    先把输入体积记下来——chat成功路径累计进_STATS['chars'],健康页/探针可读。"""
+    return sum(len(str((m or {}).get("content") or "")) for m in (messages or []))
 
 
 def stats() -> dict:
@@ -112,6 +118,7 @@ def chat(messages, model=None, temperature=0.1, max_tokens=1000, timeout=180):
     if model:
         attempts += [(base, key, mdl) for base, key, mdl in cands]  # 回退:不指定模型再试一轮
     last_err = None
+    _pc = prompt_chars(messages)
     for base, key, mdl in attempts:
         _retry_429 = 2  # 上游限流(glm-5"访问量过大")通常几秒即恢复:退避重试再回退
         _t0 = time.time()
@@ -143,6 +150,7 @@ def chat(messages, model=None, temperature=0.1, max_tokens=1000, timeout=180):
                 LAST_MODEL = mdl  # 记录实际命中模型(可能是兜底切换后的)
                 _dt = round((time.time() - _t0) * 1000)
                 _STATS["total"] += 1; _STATS["ms"] += _dt; _STATS["last_ms"] = _dt
+                _STATS["chars"] += _pc
                 _m = _STATS["by_model"].setdefault(mdl, {"calls": 0, "ms": 0, "fails": 0})
                 _m["calls"] += 1; _m["ms"] += _dt
                 return content

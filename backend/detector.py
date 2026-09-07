@@ -252,6 +252,17 @@ SYSTEM_PROMPT = (
 
 )
 
+# user消息尾部的恒定输出指令,归位进system常量区(2026-09-04): 常量全在system、
+# 变量全在user——user以"员工:id"开头立即分叉,共享前缀只到system为止,后续
+# 口径段(2026-09-04一期)必须接在system尾才进vLLM prefix caching的命中范围。
+_SYS_TAIL = ("写explanation时:域名次数优先『本窗口N次,今日累计M次』双口径"
+             "(今日累计仅当序列标注了[当日累计]才可引用,未标注就只写窗口次数,严禁编造累计)。请输出 JSON。")
+
+
+def _system_prompt() -> str:
+    """研判system消息唯一出口(TTL语义由口径段引入,此处先做结构归位)。"""
+    return SYSTEM_PROMPT + "\n" + _SYS_TAIL
+
 
 def build_windows(events: list[CanonicalEvent]) -> dict[str, list[list[CanonicalEvent]]]:
     by_emp: dict[str, list[CanonicalEvent]] = defaultdict(list)
@@ -732,12 +743,11 @@ def analyze_window(window: list[CanonicalEvent], profile=None, dev=None, exempti
             pass
 
     user = (f"员工：{window[0].employee_id}（设备：{window[0].employee_id}）\n"
-            f"行为序列：\n{_fmt_window(window)}{_dest_hint}{g_txt}{profile_txt}{dev_txt}{exempt_txt}{hist_txt}{day_txt}{_mem}\n\n"
-            f"写explanation时:域名次数优先『本窗口N次,今日累计M次』双口径(今日累计仅当序列标注了[当日累计]才可引用,未标注就只写窗口次数,严禁编造累计)。请输出 JSON。")
+            f"行为序列：\n{_fmt_window(window)}{_dest_hint}{g_txt}{profile_txt}{dev_txt}{exempt_txt}{hist_txt}{day_txt}{_mem}\n\n")
     try:
         # 工具循环(2026-08-26用户要求: AI信息不足时可主动查询关联日志再分析,
         # 最多追问2轮,防止无限循环)
-        _msgs = [{"role": "system", "content": SYSTEM_PROMPT},
+        _msgs = [{"role": "system", "content": _system_prompt()},
                  {"role": "user", "content": user}]
         raw = ""
         for _round in range(3):
